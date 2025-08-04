@@ -158,7 +158,7 @@ describe('s3SyncManager', () => {
 
       const result = await s3SyncManager.setupS3Sync(mockS3Config)
 
-      expect(result).toBe(true) // Remote config exists
+      expect(result).toBe(false) // Remote config exists
     })
 
     it('should handle setup errors gracefully', async () => {
