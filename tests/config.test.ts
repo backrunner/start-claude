@@ -1,14 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
-import { ConfigManager } from '@/config'
 import type { ClaudeConfig } from '@/types'
 
 // Mock the file system operations
 vi.mock('node:fs')
 vi.mock('node:os', () => ({
   default: {
-    homedir: vi.fn(),
+    homedir: vi.fn().mockReturnValue('/home/user'),
   },
 }))
 
@@ -16,10 +15,11 @@ const mockFs = vi.mocked(fs)
 const mockOs = vi.mocked(os)
 
 describe('ConfigManager', () => {
-  let configManager: ConfigManager
+  let ConfigManager: any
+  let configManager: any
   let mockConfigDir: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockConfigDir = '/home/user/.start-claude'
     
     mockOs.homedir.mockReturnValue('/home/user')
@@ -28,7 +28,9 @@ describe('ConfigManager', () => {
     mockFs.readFileSync.mockReturnValue('{}')
     mockFs.writeFileSync.mockImplementation(() => undefined)
     
-    // Create manager after mocks are set up
+    // Import ConfigManager after mocks are set up
+    const configModule = await import('@/config')
+    ConfigManager = configModule.ConfigManager
     configManager = new ConfigManager()
   })
 

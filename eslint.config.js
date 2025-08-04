@@ -32,4 +32,10 @@ export default antfu({
     '**/*.bundle.js',
   ],
   isInEditor: true,
+  rules: {
+    'ts/strict-boolean-expressions': 'off',
+    'ts/no-unsafe-call': 'off',
+    'ts/no-unsafe-assignment': 'off',
+    'ts/no-unsafe-member-access': 'off',
+  },
 })

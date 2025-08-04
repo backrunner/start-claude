@@ -247,7 +247,7 @@ program
         type: 'input',
         name: 'model',
         message: 'Model:',
-        default: (config.model ?? 'claude-sonnet-4-20250514') as string,
+        default: config.model || 'claude-sonnet-4-20250514',
       },
       {
         type: 'confirm',
