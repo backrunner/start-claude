@@ -1,15 +1,18 @@
 # Start Claude
 
-A friendly CLI tool to start Claude Code with different environment configurations. Easily manage multiple Claude configurations and switch between them with a beautiful, interactive interface.
+A powerful CLI tool to manage and start Claude Code with different configurations. Easily manage multiple Claude configurations, sync them across devices with S3, and switch between them with a beautiful, interactive interface.
 
 ## Features
 
 - 🚀 **Easy Configuration Management**: Add, edit, remove, and list Claude configurations
-- 🔧 **Environment Switching**: Quickly switch between different API endpoints and keys
+- 🔧 **Environment Variable Support**: Full support for all 35+ Claude Code environment variables
 - 🎯 **Default Configuration**: Set a default configuration for quick startup
 - 📦 **Auto-Install**: Automatically detect and install Claude Code CLI if missing
+- ☁️ **S3 Sync**: Sync configurations across devices using Amazon S3
+- 📝 **Editor Mode**: Edit configurations in your preferred editor (VS Code, Cursor, etc.)
 - 🎨 **Beautiful Interface**: Colorful, user-friendly command-line interface
-- ⚡ **Quick Commands**: Use shortcuts like `-c config-name` for fast switching
+- ⚡ **Quick Commands**: Use shortcuts and positional arguments for fast switching
+- 🔒 **Permission Modes**: Configure Claude's permission behavior per configuration
 
 ## Installation
 
@@ -34,13 +37,19 @@ npm link
 1. **First time setup**: Just run `start-claude` and follow the interactive setup to create your first configuration.
 
 2. **Add a configuration**:
+
    ```bash
    start-claude add
+   # Or use editor mode
+   start-claude add -e
    ```
 
 3. **Use a specific configuration**:
+
    ```bash
-   start-claude -c my-config
+   start-claude myconfig
+   # Or
+   start-claude --config myconfig
    ```
 
 4. **List all configurations**:
@@ -53,98 +62,263 @@ npm link
 ### Basic Commands
 
 - `start-claude` - Start with default config or choose from available configs
-- `start-claude -c <name>` - Start with a specific configuration
+- `start-claude <config>` - Start with a specific configuration
+- `start-claude --config <name>` - Start with a specific configuration
 - `start-claude --list` - List all configurations
 - `start-claude add` - Add a new configuration
+- `start-claude add -e` - Add configuration in editor
 - `start-claude edit <name>` - Edit an existing configuration
+- `start-claude edit <name> -e` - Edit configuration in editor
 - `start-claude remove <name>` - Remove a configuration
 - `start-claude default <name>` - Set a configuration as default
 - `start-claude override` - Manage Claude command override settings
 
+### S3 Sync Commands
+
+- `start-claude s3-setup` - Setup S3 synchronization
+- `start-claude s3-sync` - Sync local configurations to S3
+- `start-claude s3-upload` - Upload configurations to S3
+- `start-claude s3-download` - Download configurations from S3
+- `start-claude s3-download -f` - Force download (overwrite local)
+- `start-claude s3-status` - Show S3 sync status
+
 ### Configuration Options
 
-Each configuration can include:
+Each configuration supports all Claude Code environment variables:
+
+#### **Basic Settings**
+
 - **Name**: Unique identifier for the configuration
-- **Description**: Optional description for easy identification
-- **Base URL**: Custom API endpoint (ANTHROPIC_BASE_URL)
-- **API Key**: Your Claude API key (ANTHROPIC_API_KEY)
-- **Model**: The Claude model to use (ANTHROPIC_MODEL, defaults to claude-sonnet-4-20250514)
-- **Default**: Mark as default configuration
+- **Base URL**: Custom API endpoint (`ANTHROPIC_BASE_URL`)
+- **API Key**: Your Claude API key (`ANTHROPIC_API_KEY`)
+- **Model**: The Claude model to use (`ANTHROPIC_MODEL`)
+- **Permission Mode**: Configure permission behavior (`default`, `acceptEdits`, `plan`, `bypassPermissions`)
+
+#### **Authentication & API**
+
+- **Auth Token**: Custom authorization token (`ANTHROPIC_AUTH_TOKEN`)
+- **Custom Headers**: Custom HTTP headers (`ANTHROPIC_CUSTOM_HEADERS`)
+
+#### **AWS/Bedrock Configuration**
+
+- **AWS Bearer Token**: Bedrock API authentication (`AWS_BEARER_TOKEN_BEDROCK`)
+- **Use Bedrock**: Enable Bedrock integration (`CLAUDE_CODE_USE_BEDROCK`)
+- **Skip Bedrock Auth**: Skip AWS authentication (`CLAUDE_CODE_SKIP_BEDROCK_AUTH`)
+
+#### **Google Vertex AI**
+
+- **Use Vertex**: Enable Vertex AI integration (`CLAUDE_CODE_USE_VERTEX`)
+- **Skip Vertex Auth**: Skip Google authentication (`CLAUDE_CODE_SKIP_VERTEX_AUTH`)
+- **Vertex Regions**: Custom regions for different Claude models
+
+#### **Performance & Limits**
+
+- **Bash Timeouts**: Configure command execution timeouts
+- **Max Output Tokens**: Set token limits for responses
+- **Max Thinking Tokens**: Configure reasoning token budget
+- **MCP Settings**: Configure Model Context Protocol timeouts
+
+#### **Behavior Controls**
+
+- **Disable Features**: Turn off autoupdate, telemetry, error reporting, etc.
+- **Terminal Settings**: Configure terminal title updates
+- **Project Directory**: Maintain working directory for bash commands
+
+#### **Network Configuration**
+
+- **HTTP/HTTPS Proxy**: Configure proxy servers
 
 ### Examples
 
 **Create a production configuration:**
+
 ```bash
 start-claude add
 # Follow prompts:
 # Name: production
-# Description: Production environment
 # Base URL: https://api.anthropic.com
 # API Key: your-production-key
 # Model: claude-sonnet-4-20250514
+# Permission mode: Default
 # Set as default: Yes
 ```
 
-**Create a development configuration:**
+**Create configuration in editor:**
+
 ```bash
-start-claude add
-# Follow prompts:
-# Name: development
-# Description: Development environment
-# Base URL: https://dev-api.anthropic.com
-# API Key: your-dev-key
-# Model: claude-sonnet-4-20250514
-# Set as default: No
+start-claude add -e
+# Opens your preferred editor with a JSON template
+# Fill in all the configuration options
+# Save and close to create the configuration
 ```
 
 **Switch to development:**
+
 ```bash
-start-claude -c development
+start-claude development
 ```
 
-**List all configurations:**
+**Pass Claude Code flags:**
+
 ```bash
-start-claude list
-# Output:
-# 📋 production (default) - Production environment
-#    Base URL: https://api.anthropic.com
-#    API Key: sk-ant-api***
-# 
-# 📋 development - Development environment
-#    Base URL: https://dev-api.anthropic.com
-#    API Key: sk-ant-dev***
+start-claude production --verbose --max-turns 10 --model claude-haiku-3
 ```
+
+## S3 Sync Setup
+
+Synchronize your configurations across multiple devices using Amazon S3 or any S3-compatible storage service:
+
+### Supported Storage Services
+
+- **Amazon S3** - AWS's native object storage
+- **Cloudflare R2** - Zero-egress storage with S3 compatibility
+- **Backblaze B2** - Cost-effective cloud storage via S3-compatible API
+- **Any S3-compatible service** - Custom endpoints supported
+
+```bash
+# Setup S3/S3-compatible sync (interactive)
+start-claude s3-setup
+
+# Upload local configs to storage
+start-claude s3-upload
+
+# Download configs from storage
+start-claude s3-download
+
+# Check sync status
+start-claude s3-status
+```
+
+**Setup Flow:**
+
+1. **Service Selection**: Choose from Amazon S3, Cloudflare R2, Backblaze B2, or custom S3-compatible service
+2. **Credentials Setup**: Prompts for service-specific credentials and configuration
+3. **Connection Test**: Automatically tests connection and checks for existing remote configurations
+4. **Conflict Resolution**: Handles conflicts intelligently (local vs remote configs)
+5. **Auto-Download**: Automatically downloads remote configs if no local ones exist
+
+### Service-Specific Setup Examples
+
+#### Cloudflare R2
+
+```bash
+start-claude s3-setup
+# Select: Cloudflare R2
+# Bucket name: my-claude-configs
+# Cloudflare Account ID: your-account-id
+# R2 Token: your-r2-token
+# R2 Secret: your-r2-secret
+# Custom endpoint: https://your-account-id.r2.cloudflarestorage.com
+```
+
+#### Backblaze B2
+
+```bash
+start-claude s3-setup
+# Select: Backblaze B2
+# Bucket name: my-claude-configs
+# Region: us-west-004
+# Application Key ID: your-key-id
+# Application Key: your-application-key
+# Custom endpoint: https://s3.us-west-004.backblazeb2.com
+```
+
+#### Custom S3-Compatible Service
+
+```bash
+start-claude s3-setup
+# Select: Other S3-compatible service
+# Bucket name: my-claude-configs
+# Region: your-region
+# Access Key ID: your-access-key
+# Secret Access Key: your-secret
+# Custom endpoint: https://your-s3-compatible-endpoint.com
+```
+
+## Editor Mode
+
+Use your preferred editor to manage configurations:
+
+**Supported Editors:**
+
+- VS Code (`code`)
+- Cursor (`cursor`)
+- Windsurf (`windsurf`)
+- Trae (`trae`)
+- System default editors (Notepad on Windows, etc.)
+
+```bash
+# Edit configuration in editor
+start-claude edit myconfig -e
+
+# Add new configuration in editor
+start-claude add -e
+```
+
+The editor opens a JSON file with your complete configuration, including all environment variables.
 
 ## Claude Command Override
 
-You can optionally set up `start-claude` to override the `claude` command, so typing `claude` will use `start-claude` instead:
+You can optionally set up `start-claude` to override the `claude` command:
 
 ```bash
 start-claude override
 # Choose "Enable Claude command override"
 ```
 
-This adds an alias to your shell configuration file. To restore the original `claude` command, run the same command and choose "Disable".
-
-## Configuration Storage
-
-Configurations are stored in `~/.start-claude/config.json`. This file contains:
-- All your Claude configurations
-- Settings like command override preferences
+This allows you to use `claude` instead of `start-claude` while maintaining all the configuration management features.
 
 ## Auto-Installation
 
 If Claude Code CLI is not installed, `start-claude` will:
-1. Detect available package managers (npm, pnpm, yarn, bun)
-2. Offer to automatically install Claude Code CLI
-3. Guide you through the installation process
+
+1. Detect that Claude Code is missing
+2. Ask: "Claude Code CLI is not installed. Would you like to install it automatically?"
+3. Install via `npm install -g @anthropic-ai/claude-code`
+4. Automatically start Claude with your configuration
+
+**No more manual installation steps!**
+
+## Configuration Storage
+
+Configurations are stored in `~/.start-claude/config.json`:
+
+```json
+{
+  "configs": [
+    {
+      "name": "production",
+      "apiKey": "sk-ant-...",
+      "model": "claude-sonnet-4-20250514",
+      "permissionMode": "default",
+      "isDefault": true,
+      "useBedrock": false,
+      "disableTelemetry": true
+    }
+  ],
+  "settings": {
+    "overrideClaudeCommand": false,
+    "s3Sync": {
+      "bucket": "my-claude-configs",
+      "region": "us-east-1",
+      "key": "start-claude-config.json"
+    }
+  }
+}
+```
+
+## Claude Code Documentation
+
+For complete information about Claude Code CLI, visit the official documentation:
+
+**📖 [Claude Code Documentation](https://docs.anthropic.com/en/docs/claude-code)**
 
 ## Development
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm, pnpm, yarn, or bun
+- Node.js 18+
+- npm (for installation and Claude Code CLI)
 
 ### Setup
 
@@ -161,20 +335,16 @@ npm install
 - `npm run lint` - Run ESLint
 - `npm run lint:fix` - Fix linting issues
 - `npm test` - Run tests
-- `npm run test:ui` - Run tests with UI
 - `npm run test:run` - Run tests once
 - `npm run test:coverage` - Run tests with coverage
 
 ### Testing
 
-The project uses Vitest for testing. Tests focus on business logic rather than UI:
+The project uses Vitest for testing:
 
 ```bash
 # Run tests
 npm test
-
-# Run tests with UI
-npm run test:ui
 
 # Run tests with coverage
 npm run test:coverage
@@ -187,10 +357,10 @@ src/
 ├── types.ts          # TypeScript type definitions
 ├── config.ts         # Configuration management logic
 ├── config.test.ts    # Configuration tests
-├── claude.ts         # Claude CLI integration
+├── claude.ts         # Claude CLI integration & auto-install
 ├── detection.ts      # Claude installation detection
-├── detection.test.ts # Detection tests
-├── override.ts       # Shell command override logic
+├── s3-sync.ts        # S3 synchronization functionality
+├── editor.ts         # Editor integration
 ├── ui.ts             # User interface utilities
 └── main.ts           # Main CLI application
 ```
@@ -209,4 +379,4 @@ src/
 
 ## License
 
-MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License

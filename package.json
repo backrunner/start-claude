@@ -2,13 +2,13 @@
   "name": "start-claude",
   "type": "module",
   "version": "0.1.0",
-  "description": "Start your claude with specified config friendly :D",
+  "description": "Start your claude code with specified config friendly :D",
   "author": "BackRunner",
   "license": "MIT",
   "main": "./bin/cli.cjs",
   "module": "./bin/cli.mjs",
   "bin": {
-    "start-claude": "./bin/cli.js"
+    "start-claude": "./bin/cli.mjs"
   },
   "files": [
     "bin"
@@ -24,6 +24,8 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.859.0",
+    "boxen": "^8.0.1",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "inquirer": "^12.7.0"

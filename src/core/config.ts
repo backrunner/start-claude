@@ -56,7 +56,7 @@ export class ConfigManager {
   addConfig(config: ClaudeConfig): void {
     const configFile = this.load()
 
-    const existingIndex = configFile.configs.findIndex(c => c.name === config.name)
+    const existingIndex = configFile.configs.findIndex(c => c.name.toLowerCase() === config.name.toLowerCase())
     if (existingIndex >= 0) {
       configFile.configs[existingIndex] = config
     }
@@ -70,7 +70,7 @@ export class ConfigManager {
   removeConfig(name: string): boolean {
     const configFile = this.load()
     const initialLength = configFile.configs.length
-    configFile.configs = configFile.configs.filter(c => c.name !== name)
+    configFile.configs = configFile.configs.filter(c => c.name.toLowerCase() !== name.toLowerCase())
 
     if (configFile.configs.length < initialLength) {
       this.save(configFile)
@@ -81,7 +81,7 @@ export class ConfigManager {
 
   getConfig(name: string): ClaudeConfig | undefined {
     const configFile = this.load()
-    return configFile.configs.find(c => c.name === name)
+    return configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
   }
 
   getDefaultConfig(): ClaudeConfig | undefined {
@@ -94,7 +94,7 @@ export class ConfigManager {
 
     configFile.configs.forEach(c => c.isDefault = false)
 
-    const targetConfig = configFile.configs.find(c => c.name === name)
+    const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
     if (targetConfig) {
       targetConfig.isDefault = true
       this.save(configFile)
@@ -117,5 +117,13 @@ export class ConfigManager {
   getSettings(): ConfigFile['settings'] {
     const configFile = this.load()
     return configFile.settings
+  }
+
+  getConfigFile(): ConfigFile {
+    return this.load()
+  }
+
+  saveConfigFile(configFile: ConfigFile): void {
+    this.save(configFile)
   }
 }

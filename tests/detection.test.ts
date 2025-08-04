@@ -18,7 +18,7 @@ describe('checkClaudeInstallation', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     // Import the function after mocks are set up
-    const detectionModule = await import('@/detection')
+    const detectionModule = await import('@/utils/detection')
     checkClaudeInstallation = detectionModule.checkClaudeInstallation
   })
 

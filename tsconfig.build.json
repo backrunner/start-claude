@@ -1,8 +1,6 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
     "baseUrl": ".",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -16,12 +14,27 @@
     "noImplicitAny": true,
     "noImplicitThis": true,
     "noUnusedLocals": true,
+    "declaration": false,
     "noEmit": false,
     "removeComments": true,
+    "sourceMap": false,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*", "tests/**/*", "rollup.config.ts", "vitest.config.ts"],
-  "exclude": ["node_modules", ".history", "bin"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules/**/*",
+    "tests/**/*",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "bin",
+    ".history",
+    "dist",
+    "lib",
+    "libs",
+    "coverage"
+  ]
 }
