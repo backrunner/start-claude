@@ -9,6 +9,7 @@ import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
 import { createConfigInEditor, editConfigInEditor } from '../utils/editor'
 import { displayConfigList, displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/ui'
+import { checkForUpdates, performAutoUpdate } from '../utils/update-checker'
 import { startClaude } from './claude'
 import { OverrideManager } from './override'
 
@@ -65,6 +66,37 @@ program
       const configs = configManager.listConfigs()
       displayConfigList(configs)
       return
+    }
+
+    // Check for updates (non-blocking)
+    const updateInfo = await checkForUpdates()
+    if (updateInfo?.hasUpdate) {
+      displayWelcome()
+      displayWarning(`Update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}`)
+      
+      const updateAnswer = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'autoUpdate',
+          message: 'Would you like to update now?',
+          default: false,
+        },
+      ])
+
+      if (updateAnswer.autoUpdate) {
+        displayInfo('Updating start-claude...')
+        const updateSuccess = await performAutoUpdate()
+        
+        if (updateSuccess) {
+          displaySuccess(`Successfully updated to version ${updateInfo.latestVersion}!`)
+          displayInfo('Please restart the command to use the new version.')
+          process.exit(0)
+        } else {
+          displayError('Failed to auto-update. Please run manually:')
+          displayInfo(updateInfo.updateCommand)
+          displayWarning('Continuing with current version...')
+        }
+      }
     }
 
     const claudeCheck = await checkClaudeInstallation()
