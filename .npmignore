@@ -1,0 +1,11 @@
+.history
+.babelrc
+.vscode
+.editorconfig
+.eslintignore
+.eslintrc.js
+.prettierrc.js
+CHANGELOG.md
+main.ts
+rollup.config.js
+tsconfig.json

@@ -1,0 +1,16 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "bradlc.vscode-tailwindcss",
+    "antfu.iconify",
+    "antfu.browse-lite",
+    "antfu.goto-alias",
+    "antfu.smart-clicks",
+    "antfu.where-am-i",
+    "ms-vscode.vscode-typescript-next",
+    "formulahendry.auto-rename-tag",
+    "christian-kohler.path-intellisense",
+    "usernamehw.errorlens",
+    "gruntfuggly.todo-tree"
+  ]
+}
