@@ -1,5 +1,6 @@
 import type { ConfigFile } from '../core/types'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import inquirer from 'inquirer'
 import { ConfigManager } from '../core/config'
 import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/ui'
 
@@ -23,6 +24,11 @@ export class S3SyncManager {
   private getS3Config(): S3Config | null {
     const settings = this.configManager.getSettings()
     return settings.s3Sync || null
+  }
+
+  private normalizeS3Key(key: string): string {
+    // Remove leading slash if present
+    return key.startsWith('/') ? key.slice(1) : key
   }
 
   private initializeS3Client(config: S3Config): void {
@@ -49,24 +55,59 @@ export class S3SyncManager {
       this.initializeS3Client(config)
 
       // Test the connection by trying to check if the key exists
-      const exists = await this.checkS3KeyExists(config)
+      const remoteExists = await this.checkS3KeyExists(config)
 
-      // Save the S3 configuration
+      // Save the S3 configuration with normalized key
       this.configManager.updateSettings({
-        s3Sync: config,
+        s3Sync: {
+          ...config,
+          key: this.normalizeS3Key(config.key),
+        },
       })
 
       displaySuccess('S3 sync configuration saved successfully!')
 
-      if (exists) {
-        displayWarning('An existing configuration was found on S3.')
-        return true // Indicate that remote config exists
+      // Check local configs existence
+      const localConfigs = this.configManager.listConfigs()
+      const hasLocalConfigs = localConfigs.length > 0
+
+      if (remoteExists && !hasLocalConfigs) {
+        // Remote exists, no local configs - auto download
+        displayInfo('Remote configuration found, downloading automatically...')
+        await this.downloadConfigs(true)
+        return true
+      }
+      else if (!remoteExists && hasLocalConfigs) {
+        // No remote, has local configs - auto upload
+        displayInfo('No remote configuration found, uploading local configs...')
+        await this.uploadConfigs()
+        return false
+      }
+      else if (remoteExists && hasLocalConfigs) {
+        // Both exist - prompt user to decide
+        displayWarning('Both remote and local configurations exist.')
+
+        const overwriteAnswer = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'overwrite',
+            message: 'Download remote configuration and overwrite local configs?',
+            default: false,
+          },
+        ])
+
+        if (overwriteAnswer.overwrite) {
+          await this.downloadConfigs(true)
+        }
+        return true
       }
 
-      return false // No remote config exists
+      // Neither exists - just return false
+      return false
     }
     catch (error) {
-      displayError(`Failed to setup S3 sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      displayError(`Failed to setup S3 sync: ${errorMessage}`)
       return false
     }
   }
@@ -79,7 +120,7 @@ export class S3SyncManager {
     try {
       const command = new HeadObjectCommand({
         Bucket: config.bucket,
-        Key: config.key,
+        Key: this.normalizeS3Key(config.key),
       })
 
       await this.s3Client.send(command)
@@ -108,7 +149,7 @@ export class S3SyncManager {
 
       const command = new PutObjectCommand({
         Bucket: s3Config.bucket,
-        Key: s3Config.key,
+        Key: this.normalizeS3Key(s3Config.key),
         Body: configData,
         ContentType: 'application/json',
       })
@@ -148,7 +189,7 @@ export class S3SyncManager {
 
       const command = new GetObjectCommand({
         Bucket: s3Config.bucket,
-        Key: s3Config.key,
+        Key: this.normalizeS3Key(s3Config.key),
       })
 
       const response = await this.s3Client!.send(command)
@@ -194,6 +235,6 @@ export class S3SyncManager {
       return 'Not configured'
     }
     const endpoint = config.endpointUrl ? ` Endpoint: ${config.endpointUrl},` : ''
-    return `Configured (Bucket: ${config.bucket}, Region: ${config.region},${endpoint} Key: ${config.key})`
+    return `Configured (Bucket: ${config.bucket}, Region: ${config.region},${endpoint} Key: ${this.normalizeS3Key(config.key)})`
   }
 }

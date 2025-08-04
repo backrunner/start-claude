@@ -73,7 +73,7 @@ program
     if (updateInfo?.hasUpdate) {
       displayWelcome()
       displayWarning(`Update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}`)
-      
+
       const updateAnswer = await inquirer.prompt([
         {
           type: 'confirm',
@@ -86,12 +86,13 @@ program
       if (updateAnswer.autoUpdate) {
         displayInfo('Updating start-claude...')
         const updateSuccess = await performAutoUpdate()
-        
+
         if (updateSuccess) {
           displaySuccess(`Successfully updated to version ${updateInfo.latestVersion}!`)
           displayInfo('Please restart the command to use the new version.')
           process.exit(0)
-        } else {
+        }
+        else {
           displayError('Failed to auto-update. Please run manually:')
           displayInfo(updateInfo.updateCommand)
           displayWarning('Continuing with current version...')
@@ -666,7 +667,7 @@ program
         if (success) {
           displaySuccess('Claude command override disabled')
           displayInfo('The original "claude" command will be used')
-          
+
           // Update settings
           configManager.updateSettings({ overrideClaudeCommand: false })
         }
@@ -680,7 +681,7 @@ program
         if (success) {
           displaySuccess('Claude command override enabled')
           displayInfo('You can now use "claude" to run start-claude')
-          
+
           if (shellInfo.platform === 'windows') {
             if (shellInfo.shell === 'powershell') {
               displayWarning('Note: You may need to restart PowerShell for changes to take effect')
@@ -696,7 +697,7 @@ program
           else {
             displayWarning('Note: You may need to restart your shell or run "source ~/.bashrc" (or equivalent) for changes to take effect')
           }
-          
+
           // Update settings
           configManager.updateSettings({ overrideClaudeCommand: true })
         }
@@ -717,7 +718,7 @@ program
     else if (answers.action === 'shells') {
       const supportedShells = overrideManager.getSupportedShells()
       displayInfo(`Supported shells on ${shellInfo.platform}:`)
-      supportedShells.forEach(shell => {
+      supportedShells.forEach((shell) => {
         displayInfo(`  - ${shell}`)
       })
     }
@@ -763,19 +764,13 @@ program
         name: 'region',
         message: (answers: Partial<S3SetupAnswers>) => {
           if (answers.serviceType === 'r2')
-            return 'Cloudflare Account ID:'
+            return 'AWS Region (e.g., us-east-1):'
           if (answers.serviceType === 'b2')
             return 'Region (e.g., us-west-004):'
           return 'AWS Region:'
         },
-        default: (answers: Partial<S3SetupAnswers>) => {
-          if (answers.serviceType === 'r2')
-            return ''
-          if (answers.serviceType === 'b2')
-            return 'us-west-004'
-          return 'us-east-1'
-        },
-        validate: (input: string) => input.trim() ? true : 'Region/Account ID is required',
+        default: 'us-east-1',
+        validate: (input: string) => input.trim() ? true : 'Region is required',
       },
       {
         type: 'input',
@@ -805,20 +800,23 @@ program
       {
         type: 'input',
         name: 'endpointUrl',
-        message: 'Custom endpoint URL (optional):',
+        message: (answers: Partial<S3SetupAnswers>) => {
+          if (answers.serviceType === 'r2')
+            return 'R2 Endpoint URL (e.g., https://abc123.r2.cloudflarestorage.com):'
+          if (answers.serviceType === 'b2')
+            return 'B2 Endpoint URL (optional):'
+          return 'Custom endpoint URL (optional):'
+        },
         when: (answers: Partial<S3SetupAnswers>) => answers.serviceType !== 's3',
         default: (answers: Partial<S3SetupAnswers>) => {
-          if (answers.serviceType === 'r2') {
-            return `https://${answers.region}.r2.cloudflarestorage.com`
-          }
           if (answers.serviceType === 'b2') {
             return `https://s3.${answers.region}.backblazeb2.com`
           }
           return ''
         },
         validate: (input: string, answers?: Partial<S3SetupAnswers>) => {
-          if (answers?.serviceType === 'custom' && !input.trim()) {
-            return 'Endpoint URL is required for custom S3-compatible services'
+          if ((answers?.serviceType === 'custom' || answers?.serviceType === 'r2') && !input.trim()) {
+            return 'Endpoint URL is required'
           }
           return true
         },
@@ -841,40 +839,7 @@ program
       endpointUrl: answers.endpointUrl?.trim() || undefined,
     }
 
-    const remoteExists = await s3SyncManager.setupS3Sync(s3Config)
-
-    if (remoteExists) {
-      const localConfigs = configManager.listConfigs()
-
-      if (localConfigs.length > 0) {
-        const overwriteAnswer = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'overwrite',
-            message: 'Remote configuration found and local configurations exist. Download and overwrite local configs?',
-            default: false,
-          },
-        ])
-
-        if (overwriteAnswer.overwrite) {
-          await s3SyncManager.downloadConfigs(true)
-        }
-      }
-      else {
-        const downloadAnswer = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'download',
-            message: 'Remote configuration found. Download it now?',
-            default: true,
-          },
-        ])
-
-        if (downloadAnswer.download) {
-          await s3SyncManager.downloadConfigs(true)
-        }
-      }
-    }
+    await s3SyncManager.setupS3Sync(s3Config)
   })
 
 program
