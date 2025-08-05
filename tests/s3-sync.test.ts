@@ -1,5 +1,5 @@
 import type { ConfigFile } from '@/core/types'
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Create mock instances
@@ -23,7 +23,6 @@ const mockConfigManagerInstance = {
 vi.mock('@aws-sdk/client-s3', () => ({
   S3Client: vi.fn().mockImplementation(() => mockS3ClientInstance),
   PutObjectCommand: vi.fn(),
-  GetObjectCommand: vi.fn(),
 }))
 
 // Mock the dependencies
