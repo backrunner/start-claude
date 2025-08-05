@@ -1,5 +1,6 @@
 export interface ClaudeConfig {
   name: string
+  profileType?: 'default' | 'official'
   baseUrl?: string
   apiKey?: string
   model?: string

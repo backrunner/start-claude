@@ -1,7 +1,7 @@
 {
   "name": "start-claude",
   "type": "module",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Start your claude code with specified config friendly :D",
   "author": "BackRunner",
   "license": "MIT",
@@ -17,7 +17,8 @@
   "main": "./bin/cli.cjs",
   "module": "./bin/cli.mjs",
   "bin": {
-    "start-claude": "./bin/cli.mjs"
+    "start-claude": "./bin/cli.mjs",
+    "sc": "./bin/cli.mjs"
   },
   "files": [
     "bin"
