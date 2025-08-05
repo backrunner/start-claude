@@ -1,10 +1,19 @@
 {
   "name": "start-claude",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Start your claude code with specified config friendly :D",
   "author": "BackRunner",
   "license": "MIT",
+  "homepage": "https://github.com/backrunner/start-claude",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/backrunner/start-claude.git"
+  },
+  "keywords": [
+    "claude",
+    "cli tool"
+  ],
   "main": "./bin/cli.cjs",
   "module": "./bin/cli.mjs",
   "bin": {
