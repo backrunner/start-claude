@@ -208,9 +208,10 @@ program
                   name: 'apiKey',
                   message: 'API Key (optional):',
                   mask: '*',
-                }
+                },
               )
-            } else if (profileTypeAnswer.profileType === 'official') {
+            }
+            else if (profileTypeAnswer.profileType === 'official') {
               questions.push(
                 {
                   type: 'input',
@@ -221,7 +222,7 @@ program
                   type: 'input',
                   name: 'httpsProxy',
                   message: 'HTTPS Proxy (optional):',
-                }
+                },
               )
             }
 
@@ -251,7 +252,7 @@ program
                 name: 'isDefault',
                 message: 'Set as default configuration?',
                 default: true,
-              }
+              },
             )
 
             const answers = await inquirer.prompt(questions)
@@ -269,11 +270,11 @@ program
             }
 
             configManager.addConfig(newConfig)
-            
+
             if (newConfig.isDefault) {
               configManager.setDefaultConfig(newConfig.name)
             }
-            
+
             displaySuccess(`Configuration "${newConfig.name}" created successfully!`)
 
             // If S3 is configured, ask if user wants to sync the new config
@@ -536,9 +537,10 @@ program
           name: 'apiKey',
           message: 'API Key (optional):',
           mask: '*',
-        }
+        },
       )
-    } else if (profileTypeAnswer.profileType === 'official') {
+    }
+    else if (profileTypeAnswer.profileType === 'official') {
       questions.push(
         {
           type: 'input',
@@ -549,7 +551,7 @@ program
           type: 'input',
           name: 'httpsProxy',
           message: 'HTTPS Proxy (optional):',
-        }
+        },
       )
     }
 
@@ -579,7 +581,7 @@ program
         name: 'isDefault',
         message: 'Set as default configuration?',
         default: false,
-      }
+      },
     )
 
     const answers = await inquirer.prompt(questions)
@@ -597,11 +599,11 @@ program
     }
 
     configManager.addConfig(config)
-    
+
     if (config.isDefault) {
       configManager.setDefaultConfig(config.name)
     }
-    
+
     displaySuccess(`Configuration "${config.name}" added successfully!`)
   })
 
@@ -663,9 +665,10 @@ program
           message: 'API Key:',
           default: config.apiKey ?? '',
           mask: '*',
-        }
+        },
       )
-    } else if (profileTypeAnswer.profileType === 'official') {
+    }
+    else if (profileTypeAnswer.profileType === 'official') {
       questions.push(
         {
           type: 'input',
@@ -678,7 +681,7 @@ program
           name: 'httpsProxy',
           message: 'HTTPS Proxy:',
           default: config.httpsProxy ?? '',
-        }
+        },
       )
     }
 
@@ -708,7 +711,7 @@ program
         name: 'isDefault',
         message: 'Set as default configuration?',
         default: config.isDefault ?? false,
-      }
+      },
     )
 
     const answers = await inquirer.prompt(questions)
@@ -726,11 +729,11 @@ program
     }
 
     configManager.addConfig(updatedConfig)
-    
+
     if (updatedConfig.isDefault && !config.isDefault) {
       configManager.setDefaultConfig(updatedConfig.name)
     }
-    
+
     displaySuccess(`Configuration "${name}" updated successfully!`)
   })
 

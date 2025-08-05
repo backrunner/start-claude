@@ -38,6 +38,7 @@ describe('claude', () => {
 
   const mockConfig: ClaudeConfig = {
     name: 'test-config',
+    profileType: 'default',
     baseUrl: 'https://api.test.com',
     apiKey: 'sk-test-key',
     model: 'claude-3-sonnet',
@@ -645,6 +646,100 @@ describe('claude', () => {
         expect.any(Array),
         expect.objectContaining({ shell: true }),
       )
+    })
+  })
+
+  describe('profileType handling', () => {
+    it('should skip API key and base URL for official profile type', async () => {
+      const officialConfig: ClaudeConfig = {
+        name: 'official-config',
+        profileType: 'official',
+        baseUrl: 'https://api.test.com',
+        apiKey: 'sk-test-key',
+        model: 'claude-3-sonnet',
+        httpProxy: 'http://proxy:8080',
+        httpsProxy: 'https://proxy:8080',
+        isDefault: true,
+      }
+
+      const promise = startClaude(officialConfig)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      // Should NOT set API key and base URL for official profile
+      expect(env!.ANTHROPIC_API_KEY).toBeUndefined()
+      expect(env!.ANTHROPIC_BASE_URL).toBeUndefined()
+      // Should set model and proxy settings
+      expect(env!.ANTHROPIC_MODEL).toBe('claude-3-sonnet')
+      expect(env!.HTTP_PROXY).toBe('http://proxy:8080')
+      expect(env!.HTTPS_PROXY).toBe('https://proxy:8080')
+    })
+
+    it('should set API key and base URL for default profile type', async () => {
+      const defaultConfig: ClaudeConfig = {
+        name: 'default-config',
+        profileType: 'default',
+        baseUrl: 'https://api.test.com',
+        apiKey: 'sk-test-key',
+        model: 'claude-3-sonnet',
+        isDefault: true,
+      }
+
+      const promise = startClaude(defaultConfig)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      // Should set API key and base URL for default profile
+      expect(env!.ANTHROPIC_API_KEY).toBe('sk-test-key')
+      expect(env!.ANTHROPIC_BASE_URL).toBe('https://api.test.com')
+      expect(env!.ANTHROPIC_MODEL).toBe('claude-3-sonnet')
+    })
+
+    it('should set API key and base URL when profileType is undefined (backward compatibility)', async () => {
+      const legacyConfig: ClaudeConfig = {
+        name: 'legacy-config',
+        // profileType is undefined for backward compatibility
+        baseUrl: 'https://api.test.com',
+        apiKey: 'sk-test-key',
+        model: 'claude-3-sonnet',
+        isDefault: true,
+      }
+
+      const promise = startClaude(legacyConfig)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      // Should set API key and base URL when profileType is undefined
+      expect(env!.ANTHROPIC_API_KEY).toBe('sk-test-key')
+      expect(env!.ANTHROPIC_BASE_URL).toBe('https://api.test.com')
+      expect(env!.ANTHROPIC_MODEL).toBe('claude-3-sonnet')
     })
   })
 })

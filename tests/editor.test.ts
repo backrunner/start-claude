@@ -34,7 +34,7 @@ describe('editor', () => {
     mockFs.existsSync.mockReturnValue(true)
 
     // Mock spawn to return a successful process
-    const mockProcess = {
+    const mockProcess: any = {
       on: vi.fn((event: string, callback: Function) => {
         if (event === 'close') {
           setTimeout(() => callback(0), 10) // Successful completion
@@ -42,7 +42,7 @@ describe('editor', () => {
         return mockProcess
       }),
     }
-    mockSpawn.mockReturnValue(mockProcess as any)
+    mockSpawn.mockReturnValue(mockProcess)
   })
 
   afterEach(() => {

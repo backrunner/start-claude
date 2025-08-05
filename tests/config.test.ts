@@ -389,6 +389,7 @@ describe('configManager', () => {
     it('should handle config with all optional fields', () => {
       const fullConfig: ClaudeConfig = {
         name: 'full-config',
+        profileType: 'default',
         baseUrl: 'https://api.test.com',
         apiKey: 'sk-test-key',
         model: 'claude-3-sonnet',
@@ -506,6 +507,96 @@ describe('configManager', () => {
 
       expect(savedData.settings.overrideClaudeCommand).toBe(true)
       expect(savedData.settings.s3Sync).toEqual(existingSettings.settings.s3Sync)
+    })
+  })
+
+  describe('profileType handling', () => {
+    it('should handle official profileType configuration', () => {
+      const officialConfig: ClaudeConfig = {
+        name: 'official-config',
+        profileType: 'official',
+        httpProxy: 'http://proxy:8080',
+        httpsProxy: 'https://proxy:8080',
+        model: 'claude-3-sonnet',
+        isDefault: false,
+      }
+
+      configManager.addConfig(officialConfig)
+
+      expect(mockFs.writeFileSync).toHaveBeenCalled()
+    })
+
+    it('should handle default profileType configuration', () => {
+      const defaultConfig: ClaudeConfig = {
+        name: 'default-config',
+        profileType: 'default',
+        baseUrl: 'https://api.test.com',
+        apiKey: 'sk-test-key',
+        model: 'claude-3-sonnet',
+        isDefault: false,
+      }
+
+      configManager.addConfig(defaultConfig)
+
+      expect(mockFs.writeFileSync).toHaveBeenCalled()
+    })
+
+    it('should handle configuration without profileType (backward compatibility)', () => {
+      const legacyConfig: ClaudeConfig = {
+        name: 'legacy-config',
+        // profileType not specified for backward compatibility
+        baseUrl: 'https://api.test.com',
+        apiKey: 'sk-test-key',
+        model: 'claude-3-sonnet',
+        isDefault: false,
+      }
+
+      configManager.addConfig(legacyConfig)
+
+      expect(mockFs.writeFileSync).toHaveBeenCalled()
+    })
+
+    it('should retrieve configuration with profileType correctly', () => {
+      const configWithProfileType = {
+        name: 'profile-test',
+        profileType: 'official',
+        httpProxy: 'http://proxy:8080',
+        isDefault: false,
+      }
+      const mockConfigData = {
+        configs: [configWithProfileType],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
+
+      const result = configManager.getConfig('profile-test')
+
+      expect(result).toEqual(configWithProfileType)
+      expect(result?.profileType).toBe('official')
+    })
+
+    it('should handle mixed profileType configurations in list', () => {
+      const configs = [
+        { name: 'default-config', profileType: 'default', baseUrl: 'https://api.test.com', isDefault: false },
+        { name: 'official-config', profileType: 'official', httpProxy: 'http://proxy:8080', isDefault: false },
+        { name: 'legacy-config', baseUrl: 'https://api.legacy.com', isDefault: true }, // no profileType
+      ]
+      const mockConfigData = {
+        configs,
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
+
+      const result = configManager.listConfigs()
+
+      expect(result).toEqual(configs)
+      expect(result[0].profileType).toBe('default')
+      expect(result[1].profileType).toBe('official')
+      expect(result[2].profileType).toBeUndefined()
     })
   })
 })

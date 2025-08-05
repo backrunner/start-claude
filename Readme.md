@@ -42,6 +42,9 @@ npm link
 # Start Claude Code directly with CLI overrides (no config needed)
 start-claude --api-key sk-your-key --model claude-3-sonnet
 
+# Use the short command alias
+sc --api-key sk-your-key --model claude-3-sonnet
+
 # Set environment variables on the fly
 start-claude -e DEBUG=1 -e NODE_ENV=production --verbose
 
@@ -78,8 +81,8 @@ start-claude --base-url https://custom.api.com --model claude-3-opus
 
 ### Basic Commands
 
-- `start-claude` - Start with default config or directly without config
-- `start-claude <config>` - Start with a specific configuration
+- `start-claude` or `sc` - Start with default config or directly without config
+- `start-claude <config>` or `sc <config>` - Start with a specific configuration
 - `start-claude --config <name>` - Start with a specific configuration
 - `start-claude --list` - List all configurations
 - `start-claude add` - Add a new configuration
@@ -89,6 +92,8 @@ start-claude --base-url https://custom.api.com --model claude-3-opus
 - `start-claude remove <name>` - Remove a configuration
 - `start-claude default <name>` - Set a configuration as default
 - `start-claude override` - Manage Claude command override settings
+
+**💡 Pro Tip**: Use `sc` as a short alias for `start-claude` to save typing!
 
 ### CLI Overrides
 
@@ -152,10 +157,23 @@ Each configuration supports all Claude Code environment variables:
 #### **Basic Settings**
 
 - **Name**: Unique identifier for the configuration
-- **Base URL**: Custom API endpoint (`ANTHROPIC_BASE_URL`)
-- **API Key**: Your Claude API key (`ANTHROPIC_API_KEY`)
+- **Profile Type**: Configuration type (`default` for custom API settings, `official` for official Claude login with proxy support)
+- **Base URL**: Custom API endpoint (`ANTHROPIC_BASE_URL`) - for `default` profile type
+- **API Key**: Your Claude API key (`ANTHROPIC_API_KEY`) - for `default` profile type
 - **Model**: The Claude model to use (`ANTHROPIC_MODEL`)
 - **Permission Mode**: Configure permission behavior (`default`, `acceptEdits`, `plan`, `bypassPermissions`)
+
+#### **Profile Types**
+
+- **Default Profile** (`profileType: "default"`): Traditional custom API configuration
+  - Requires manual API key and base URL configuration
+  - Full control over API endpoints and authentication
+  - Suitable for custom Claude API setups
+
+- **Official Profile** (`profileType: "official"`): Official Claude login with proxy support
+  - Uses official Claude authentication (no manual API key needed)
+  - Supports HTTP/HTTPS proxy configuration for network restrictions
+  - Ideal for users who want to use official Claude with proxy support
 
 #### **Authentication & API**
 
@@ -206,17 +224,30 @@ start-claude --api-key sk-key --model claude-3-opus -e DEBUG=1 --verbose --max-t
 start-claude --base-url https://custom.anthropic.com --api-key sk-key --model claude-3-haiku
 ```
 
-**Create a production configuration:**
+**Create different types of configurations:**
 
 ```bash
+# Create a default profile configuration (custom API)
 start-claude add
 # Follow prompts:
+# Profile type: Default (custom API settings)
 # Name: production
 # Base URL: https://api.anthropic.com
 # API Key: your-production-key
 # Model: claude-sonnet-4-20250514
 # Permission mode: Default
 # Set as default: Yes
+
+# Create an official profile configuration (with proxy)
+start-claude add
+# Follow prompts:
+# Profile type: Official (use official Claude login with proxy support)
+# Name: work-proxy
+# HTTP Proxy: http://proxy.company.com:8080
+# HTTPS Proxy: https://proxy.company.com:8080
+# Model: claude-3-sonnet
+# Permission mode: Default
+# Set as default: No
 ```
 
 **Create configuration in editor:**
@@ -377,12 +408,23 @@ Configurations are stored in `~/.start-claude/config.json`:
   "configs": [
     {
       "name": "production",
+      "profileType": "default",
       "apiKey": "sk-ant-...",
+      "baseUrl": "https://api.anthropic.com",
       "model": "claude-sonnet-4-20250514",
       "permissionMode": "default",
       "isDefault": true,
       "useBedrock": false,
       "disableTelemetry": true
+    },
+    {
+      "name": "work-proxy",
+      "profileType": "official",
+      "httpProxy": "http://proxy.company.com:8080",
+      "httpsProxy": "https://proxy.company.com:8080",
+      "model": "claude-3-sonnet",
+      "permissionMode": "default",
+      "isDefault": false
     }
   ],
   "settings": {
