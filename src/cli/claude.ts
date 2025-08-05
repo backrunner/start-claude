@@ -6,11 +6,25 @@ import process from 'node:process'
 import inquirer from 'inquirer'
 import { displayError, displayInfo, displaySuccess } from '../utils/ui'
 
-export async function startClaude(config: ClaudeConfig, args: string[] = []): Promise<number> {
+interface CliOverrides {
+  env?: string[]
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+}
+
+export async function startClaude(config: ClaudeConfig | undefined, args: string[] = [], cliOverrides?: CliOverrides): Promise<number> {
   const env = { ...process.env }
 
-  // Set environment variables from config
-  setEnvFromConfig(env, config)
+  // Set environment variables from config (if config exists)
+  if (config) {
+    setEnvFromConfig(env, config)
+  }
+
+  // Apply CLI overrides
+  if (cliOverrides) {
+    applyCliOverrides(env, cliOverrides)
+  }
 
   // Check if claude command is available
   const claudePath = findExecutable('claude', env)
@@ -192,6 +206,32 @@ function setEnvFromConfig(env: Record<string, string | undefined>, config: Claud
       env[envKey] = value ? '1' : '0'
     }
   })
+}
+
+function applyCliOverrides(env: Record<string, string | undefined>, overrides: CliOverrides): void {
+  // Apply environment variables from -e/--env flags
+  if (overrides.env) {
+    overrides.env.forEach((envVar) => {
+      const [key, ...valueParts] = envVar.split('=')
+      if (key && valueParts.length > 0) {
+        const value = valueParts.join('=') // Handle values that contain '='
+        env[key] = value
+      }
+    })
+  }
+
+  // Apply API overrides
+  if (overrides.apiKey) {
+    env.ANTHROPIC_API_KEY = overrides.apiKey
+  }
+
+  if (overrides.baseUrl) {
+    env.ANTHROPIC_BASE_URL = overrides.baseUrl
+  }
+
+  if (overrides.model) {
+    env.ANTHROPIC_MODEL = overrides.model
+  }
 }
 
 // Function to find executable in PATH

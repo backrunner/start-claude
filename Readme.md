@@ -6,6 +6,8 @@ A powerful CLI tool to manage and start Claude Code with different configuration
 
 - 🚀 **Easy Configuration Management**: Add, edit, remove, and list Claude configurations
 - 🔧 **Environment Variable Support**: Full support for all 35+ Claude Code environment variables
+- ⚡ **CLI Overrides**: Override API key, model, base URL, and set custom environment variables directly from command line
+- 🆔 **No Config Required**: Run Claude Code directly without any configuration setup
 - 🎯 **Default Configuration**: Set a default configuration for quick startup
 - 📦 **Auto-Install**: Automatically detect and install Claude Code CLI if missing
 - ☁️ **S3 Sync**: Sync configurations across devices using Amazon S3
@@ -34,7 +36,22 @@ npm link
 
 ## Quick Start
 
-1. **First time setup**: Just run `start-claude` and follow the interactive setup to create your first configuration.
+**🚀 No setup required!** You can start using start-claude immediately:
+
+```bash
+# Start Claude Code directly with CLI overrides (no config needed)
+start-claude --api-key sk-your-key --model claude-3-sonnet
+
+# Set environment variables on the fly
+start-claude -e DEBUG=1 -e NODE_ENV=production --verbose
+
+# Override base URL for custom endpoints
+start-claude --base-url https://custom.api.com --model claude-3-opus
+```
+
+**📚 For persistent configurations:**
+
+1. **First time setup**: Run `start-claude` and follow the interactive setup to create your first configuration.
 
 2. **Add a configuration**:
 
@@ -61,7 +78,7 @@ npm link
 
 ### Basic Commands
 
-- `start-claude` - Start with default config or choose from available configs
+- `start-claude` - Start with default config or directly without config
 - `start-claude <config>` - Start with a specific configuration
 - `start-claude --config <name>` - Start with a specific configuration
 - `start-claude --list` - List all configurations
@@ -72,6 +89,52 @@ npm link
 - `start-claude remove <name>` - Remove a configuration
 - `start-claude default <name>` - Set a configuration as default
 - `start-claude override` - Manage Claude command override settings
+
+### CLI Overrides
+
+**⚡ Override settings without modifying configurations:**
+
+```bash
+# Override API settings for a single session
+start-claude --api-key sk-new-key --model claude-3-opus --base-url https://custom.api.com
+
+# Set environment variables on the fly
+start-claude -e DEBUG=1 -e CUSTOM_VAR=value myconfig
+
+# Combine config with overrides
+start-claude production --model claude-3-haiku --verbose
+
+# Use overrides without any config
+start-claude --api-key sk-key --model claude-3-sonnet --max-turns 5
+```
+
+**Available CLI Override Options:**
+
+- `-e, --env <key=value>` - Set environment variable (can be used multiple times)
+- `--api-key <key>` - Override `ANTHROPIC_API_KEY` for this session
+- `--model <model>` - Override `ANTHROPIC_MODEL` for this session
+- `--base-url <url>` - Override `ANTHROPIC_BASE_URL` for this session
+
+**Environment Variable Examples:**
+
+```bash
+# Database and service configuration
+start-claude -e DATABASE_URL=postgres://localhost:5432/db -e REDIS_URL=redis://localhost:6379
+
+# Debug and development settings
+start-claude -e DEBUG=1 -e NODE_ENV=development -e LOG_LEVEL=verbose
+
+# Custom API settings
+start-claude -e CUSTOM_TIMEOUT=30000 -e MAX_RETRIES=3
+```
+
+**Priority Order (highest to lowest):**
+
+1. CLI overrides (`--api-key`, `--model`, `--base-url`, `-e`)
+2. Configuration file settings
+3. System environment variables
+
+**Need help?** Run `start-claude --help` to see all available options.
 
 ### S3 Sync Commands
 
@@ -130,6 +193,19 @@ Each configuration supports all Claude Code environment variables:
 
 ### Examples
 
+**Quick start without any configuration:**
+
+```bash
+# Start immediately with API key and model
+start-claude --api-key sk-ant-your-key --model claude-3-sonnet
+
+# Add environment variables and Claude options
+start-claude --api-key sk-key --model claude-3-opus -e DEBUG=1 --verbose --max-turns 10
+
+# Use custom endpoint
+start-claude --base-url https://custom.anthropic.com --api-key sk-key --model claude-3-haiku
+```
+
 **Create a production configuration:**
 
 ```bash
@@ -150,6 +226,19 @@ start-claude add -e
 # Opens your preferred editor with a JSON template
 # Fill in all the configuration options
 # Save and close to create the configuration
+```
+
+**Override settings for specific sessions:**
+
+```bash
+# Use production config but with different model
+start-claude production --model claude-3-haiku
+
+# Use development config with custom environment variables
+start-claude development -e NODE_ENV=staging -e LOG_LEVEL=debug
+
+# Override multiple settings at once
+start-claude myconfig --api-key sk-temp-key --model claude-3-opus --base-url https://test.api.com
 ```
 
 **Switch to development:**

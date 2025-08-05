@@ -66,7 +66,7 @@ describe('claude', () => {
 
   describe('startClaude', () => {
     it('should start Claude with basic configuration', async () => {
-      const mockClaudeStartProcess = {
+      const mockClaudeStartProcess: any = {
         on: vi.fn((event: string, callback: Function) => {
           if (event === 'close') {
             setTimeout(() => callback(0), 10) // Successful start
@@ -74,7 +74,7 @@ describe('claude', () => {
           return mockClaudeStartProcess
         }),
       }
-      mockSpawn.mockReturnValue(mockClaudeStartProcess as any)
+      mockSpawn.mockReturnValue(mockClaudeStartProcess)
 
       const result = await startClaude(mockConfig)
 
@@ -97,8 +97,32 @@ describe('claude', () => {
       expect(result).toBe(0)
     })
 
+    it('should start Claude Code directly when no config is provided', async () => {
+      const mockClaudeStartProcess: any = {
+        on: vi.fn((event: string, callback: Function) => {
+          if (event === 'close') {
+            setTimeout(() => callback(0), 10) // Successful start
+          }
+          return mockClaudeStartProcess
+        }),
+      }
+      mockSpawn.mockReturnValue(mockClaudeStartProcess)
+
+      const result = await startClaude(undefined)
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        expect.stringContaining('claude'),
+        [],
+        expect.objectContaining({
+          stdio: 'inherit',
+          env: expect.any(Object),
+        }),
+      )
+      expect(result).toBe(0)
+    })
+
     it('should pass additional command line arguments', async () => {
-      const mockClaudeStartProcess = {
+      const mockClaudeStartProcess: any = {
         on: vi.fn((event: string, callback: Function) => {
           if (event === 'close') {
             setTimeout(() => callback(0), 10)
@@ -106,7 +130,7 @@ describe('claude', () => {
           return mockClaudeStartProcess
         }),
       }
-      mockSpawn.mockReturnValue(mockClaudeStartProcess as any)
+      mockSpawn.mockReturnValue(mockClaudeStartProcess)
 
       const args = ['--verbose', '--max-turns', '10']
       const result = await startClaude(mockConfig, args)
@@ -120,7 +144,7 @@ describe('claude', () => {
     })
 
     it('should handle Claude process errors', async () => {
-      const erroringProcess = {
+      const erroringProcess: any = {
         on: vi.fn((event: string, callback: Function) => {
           if (event === 'error') {
             setTimeout(() => callback(new Error('Process failed')), 10)
@@ -128,7 +152,7 @@ describe('claude', () => {
           return erroringProcess
         }),
       }
-      mockSpawn.mockReturnValue(erroringProcess as any)
+      mockSpawn.mockReturnValue(erroringProcess)
 
       const result = await startClaude(mockConfig)
 
@@ -136,7 +160,7 @@ describe('claude', () => {
     })
 
     it('should handle Claude exit with non-zero code', async () => {
-      const failingProcess = {
+      const failingProcess: any = {
         on: vi.fn((event: string, callback: Function) => {
           if (event === 'close') {
             setTimeout(() => callback(1), 10) // Non-zero exit code
@@ -144,7 +168,7 @@ describe('claude', () => {
           return failingProcess
         }),
       }
-      mockSpawn.mockReturnValue(failingProcess as any)
+      mockSpawn.mockReturnValue(failingProcess)
 
       const result = await startClaude(mockConfig)
 
@@ -163,7 +187,7 @@ describe('claude', () => {
       vi.mocked(mockInquirer.default.prompt).mockResolvedValue({ install: true })
 
       // Mock npm spawn for installation
-      const mockNpmInstallProcess = {
+      const mockNpmInstallProcess: any = {
         on: vi.fn((event: string, callback: Function) => {
           if (event === 'close') {
             setTimeout(() => callback(0), 10) // Successful install
@@ -172,7 +196,7 @@ describe('claude', () => {
         }),
       }
 
-      const mockClaudeStartProcess = {
+      const mockClaudeStartProcess: any = {
         on: vi.fn((event: string, callback: Function) => {
           if (event === 'close') {
             setTimeout(() => callback(0), 10) // Successful Claude start
@@ -182,8 +206,8 @@ describe('claude', () => {
       }
 
       mockSpawn
-        .mockReturnValueOnce(mockNpmInstallProcess as any) // npm install process
-        .mockReturnValueOnce(mockClaudeStartProcess as any) // claude process after install
+        .mockReturnValueOnce(mockNpmInstallProcess) // npm install process
+        .mockReturnValueOnce(mockClaudeStartProcess) // claude process after install
 
       // Mock that Claude is found after installation on second check
       let accessCallCount = 0
@@ -212,7 +236,7 @@ describe('claude', () => {
 
       vi.mocked(mockInquirer.default.prompt).mockResolvedValue({ install: true })
 
-      const failingNpmProcess = {
+      const failingNpmProcess: any = {
         on: vi.fn((event: string, callback: Function) => {
           if (event === 'close') {
             setTimeout(() => callback(1), 10) // Failed installation
@@ -220,7 +244,7 @@ describe('claude', () => {
           return failingNpmProcess
         }),
       }
-      mockSpawn.mockReturnValue(failingNpmProcess as any)
+      mockSpawn.mockReturnValue(failingNpmProcess)
 
       const result = await startClaude(mockConfig)
 
@@ -387,6 +411,210 @@ describe('claude', () => {
       expect(env!.ANTHROPIC_BASE_URL).toBeUndefined()
       expect(env!.ANTHROPIC_API_KEY).toBeUndefined()
       expect(env!.ANTHROPIC_MODEL).toBeUndefined()
+    })
+  })
+
+  describe('cli overrides', () => {
+    it('should apply environment variable overrides from -e flag', async () => {
+      const cliOverrides = {
+        env: ['CUSTOM_VAR=custom_value', 'ANOTHER_VAR=another_value'],
+      }
+
+      const promise = startClaude(mockConfig, [], cliOverrides)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.CUSTOM_VAR).toBe('custom_value')
+      expect(env!.ANOTHER_VAR).toBe('another_value')
+    })
+
+    it('should handle environment variables with equals signs in values', async () => {
+      const cliOverrides = {
+        env: ['DATABASE_URL=postgres://user:pass@host:5432/db?param=value'],
+      }
+
+      const promise = startClaude(mockConfig, [], cliOverrides)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.DATABASE_URL).toBe('postgres://user:pass@host:5432/db?param=value')
+    })
+
+    it('should override API key from CLI', async () => {
+      const cliOverrides = {
+        apiKey: 'sk-cli-override-key',
+      }
+
+      const promise = startClaude(mockConfig, [], cliOverrides)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.ANTHROPIC_API_KEY).toBe('sk-cli-override-key')
+    })
+
+    it('should override base URL from CLI', async () => {
+      const cliOverrides = {
+        baseUrl: 'https://cli-override.api.com',
+      }
+
+      const promise = startClaude(mockConfig, [], cliOverrides)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.ANTHROPIC_BASE_URL).toBe('https://cli-override.api.com')
+    })
+
+    it('should override model from CLI', async () => {
+      const cliOverrides = {
+        model: 'claude-3-opus-override',
+      }
+
+      const promise = startClaude(mockConfig, [], cliOverrides)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.ANTHROPIC_MODEL).toBe('claude-3-opus-override')
+    })
+
+    it('should apply multiple CLI overrides together', async () => {
+      const cliOverrides = {
+        env: ['CUSTOM_VAR=custom_value'],
+        apiKey: 'sk-override-key',
+        baseUrl: 'https://override.api.com',
+        model: 'claude-3-override',
+      }
+
+      const promise = startClaude(mockConfig, [], cliOverrides)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.CUSTOM_VAR).toBe('custom_value')
+      expect(env!.ANTHROPIC_API_KEY).toBe('sk-override-key')
+      expect(env!.ANTHROPIC_BASE_URL).toBe('https://override.api.com')
+      expect(env!.ANTHROPIC_MODEL).toBe('claude-3-override')
+    })
+
+    it('should handle empty or invalid environment variable formats', async () => {
+      const cliOverrides = {
+        env: ['VALID_VAR=valid_value', 'INVALID_VAR', '=no_key', ''],
+      }
+
+      const promise = startClaude(mockConfig, [], cliOverrides)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.VALID_VAR).toBe('valid_value')
+      // Invalid formats should not be set
+      expect(env!.INVALID_VAR).toBeUndefined()
+    })
+
+    it('should not apply CLI overrides when none are provided', async () => {
+      const promise = startClaude(mockConfig, [])
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      // Should only have config values, not CLI overrides
+      expect(env!.ANTHROPIC_API_KEY).toBe('sk-test-key')
+      expect(env!.ANTHROPIC_BASE_URL).toBe('https://api.test.com')
+    })
+
+    it('should apply CLI overrides without config', async () => {
+      const cliOverrides = {
+        env: ['CUSTOM_VAR=test_value'],
+        apiKey: 'sk-no-config-key',
+        baseUrl: 'https://no-config.api.com',
+        model: 'claude-3-haiku',
+      }
+
+      const promise = startClaude(undefined, [], cliOverrides)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.CUSTOM_VAR).toBe('test_value')
+      expect(env!.ANTHROPIC_API_KEY).toBe('sk-no-config-key')
+      expect(env!.ANTHROPIC_BASE_URL).toBe('https://no-config.api.com')
+      expect(env!.ANTHROPIC_MODEL).toBe('claude-3-haiku')
     })
   })
 

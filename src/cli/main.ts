@@ -35,6 +35,9 @@ interface ProgramOptions {
   resume?: boolean
   continue?: boolean
   dangerouslySkipPermissions?: boolean
+  env?: string[]
+  apiKey?: string
+  baseUrl?: string
 }
 
 program
@@ -59,6 +62,9 @@ program
   .option('--resume', 'Resume previous session')
   .option('--continue', 'Continue previous session')
   .option('--dangerously-skip-permissions', 'Skip permission checks (dangerous)')
+  .option('-e, --env <key=value>', 'Set environment variable', (value, previous: string[] = []) => [...previous, value])
+  .option('--api-key <key>', 'Override API key for this session')
+  .option('--base-url <url>', 'Override base URL for this session')
   .argument('[config]', 'Configuration name (alternative to --config)')
   .action(async (configArg: string | undefined, options: ProgramOptions) => {
     if (options.list === true) {
@@ -265,126 +271,146 @@ program
 
     if (config) {
       displayInfo(`Using configuration: ${config.name}`)
-
-      // Build arguments to pass to claude command
-      const claudeArgs: string[] = []
-
-      // Add new flags
-      if (options.addDir) {
-        options.addDir.forEach((dir) => {
-          claudeArgs.push('--add-dir', dir)
-        })
-      }
-
-      if (options.allowedTools) {
-        claudeArgs.push('--allowedTools', options.allowedTools.join(','))
-      }
-
-      if (options.disallowedTools) {
-        claudeArgs.push('--disallowedTools', options.disallowedTools.join(','))
-      }
-
-      if (options.print) {
-        claudeArgs.push('--print')
-      }
-
-      if (options.outputFormat) {
-        claudeArgs.push('--output-format', options.outputFormat)
-      }
-
-      if (options.inputFormat) {
-        claudeArgs.push('--input-format', options.inputFormat)
-      }
-
-      if (options.verbose) {
-        claudeArgs.push('--verbose')
-      }
-
-      if (options.maxTurns) {
-        claudeArgs.push('--max-turns', options.maxTurns.toString())
-      }
-
-      if (options.model) {
-        claudeArgs.push('--model', options.model)
-      }
-
-      if (config.permissionMode && !options.permissionMode) {
-        claudeArgs.push('--permission-mode', config.permissionMode)
-      }
-      if (options.permissionMode) {
-        claudeArgs.push('--permission-mode', options.permissionMode)
-      }
-
-      if (options.permissionPromptTool) {
-        claudeArgs.push('--permission-prompt-tool')
-      }
-
-      if (options.resume) {
-        claudeArgs.push('--resume')
-      }
-
-      if (options.continue) {
-        claudeArgs.push('--continue')
-      }
-
-      if (options.dangerouslySkipPermissions) {
-        claudeArgs.push('--dangerously-skip-permissions')
-      }
-
-      // Filter out start-claude specific arguments and add remaining ones
-      const filteredArgs = process.argv.slice(2).filter((arg) => {
-        // Skip flags we handle internally
-        const skipFlags = [
-          '--config',
-          '--list',
-          '--add-dir',
-          '--allowedTools',
-          '--disallowedTools',
-          '-p',
-          '--print',
-          '--output-format',
-          '--input-format',
-          '--verbose',
-          '--max-turns',
-          '--model',
-          '--permission-mode',
-          '--permission-prompt-tool',
-          '--resume',
-          '--continue',
-          '--dangerously-skip-permissions',
-        ]
-
-        // Skip the config argument if it was provided
-        if (configArg && arg === configArg)
-          return false
-
-        // Skip if this is a flag we handle
-        if (skipFlags.some(flag => arg.startsWith(flag)))
-          return false
-
-        // Skip values that follow flags we handle
-        const prevArg = process.argv[process.argv.indexOf(arg) - 1]
-        const flagsWithValues = [
-          '--config',
-          '--add-dir',
-          '--allowedTools',
-          '--disallowedTools',
-          '--output-format',
-          '--input-format',
-          '--max-turns',
-          '--model',
-          '--permission-mode',
-        ]
-        if (prevArg && flagsWithValues.includes(prevArg))
-          return false
-
-        return true
-      })
-
-      const allArgs = [...claudeArgs, ...filteredArgs]
-      const exitCode = await startClaude(config, allArgs)
-      process.exit(exitCode)
     }
+    else {
+      displayInfo('No configuration found, starting Claude Code directly')
+    }
+
+    // Build arguments to pass to claude command
+    const claudeArgs: string[] = []
+
+    // Add new flags
+    if (options.addDir) {
+      options.addDir.forEach((dir) => {
+        claudeArgs.push('--add-dir', dir)
+      })
+    }
+
+    if (options.allowedTools) {
+      claudeArgs.push('--allowedTools', options.allowedTools.join(','))
+    }
+
+    if (options.disallowedTools) {
+      claudeArgs.push('--disallowedTools', options.disallowedTools.join(','))
+    }
+
+    if (options.print) {
+      claudeArgs.push('--print')
+    }
+
+    if (options.outputFormat) {
+      claudeArgs.push('--output-format', options.outputFormat)
+    }
+
+    if (options.inputFormat) {
+      claudeArgs.push('--input-format', options.inputFormat)
+    }
+
+    if (options.verbose) {
+      claudeArgs.push('--verbose')
+    }
+
+    if (options.maxTurns) {
+      claudeArgs.push('--max-turns', options.maxTurns.toString())
+    }
+
+    if (options.model) {
+      claudeArgs.push('--model', options.model)
+    }
+
+    if (config?.permissionMode && !options.permissionMode) {
+      claudeArgs.push('--permission-mode', config.permissionMode)
+    }
+    if (options.permissionMode) {
+      claudeArgs.push('--permission-mode', options.permissionMode)
+    }
+
+    if (options.permissionPromptTool) {
+      claudeArgs.push('--permission-prompt-tool')
+    }
+
+    if (options.resume) {
+      claudeArgs.push('--resume')
+    }
+
+    if (options.continue) {
+      claudeArgs.push('--continue')
+    }
+
+    if (options.dangerouslySkipPermissions) {
+      claudeArgs.push('--dangerously-skip-permissions')
+    }
+
+    // Filter out start-claude specific arguments and add remaining ones
+    const filteredArgs = process.argv.slice(2).filter((arg) => {
+      // Skip flags we handle internally
+      const skipFlags = [
+        '--config',
+        '--list',
+        '--add-dir',
+        '--allowedTools',
+        '--disallowedTools',
+        '-p',
+        '--print',
+        '--output-format',
+        '--input-format',
+        '--verbose',
+        '--max-turns',
+        '--model',
+        '--permission-mode',
+        '--permission-prompt-tool',
+        '--resume',
+        '--continue',
+        '--dangerously-skip-permissions',
+        '-e',
+        '--env',
+        '--api-key',
+        '--base-url',
+      ]
+
+      // Skip the config argument if it was provided
+      if (configArg && arg === configArg)
+        return false
+
+      // Skip if this is a flag we handle
+      if (skipFlags.some(flag => arg.startsWith(flag)))
+        return false
+
+      // Skip values that follow flags we handle
+      const prevArg = process.argv[process.argv.indexOf(arg) - 1]
+      const flagsWithValues = [
+        '--config',
+        '--add-dir',
+        '--allowedTools',
+        '--disallowedTools',
+        '--output-format',
+        '--input-format',
+        '--max-turns',
+        '--model',
+        '--permission-mode',
+        '--env',
+        '-e',
+        '--api-key',
+        '--base-url',
+      ]
+      if (prevArg && flagsWithValues.includes(prevArg))
+        return false
+
+      return true
+    })
+
+    const allArgs = [...claudeArgs, ...filteredArgs]
+
+    // Create CLI overrides for environment variables and API settings
+    const cliOverrides = {
+      env: options.env || [],
+      apiKey: options.apiKey,
+      baseUrl: options.baseUrl,
+      model: options.model,
+    }
+
+    const exitCode = await startClaude(config, allArgs, cliOverrides)
+    process.exit(exitCode)
   })
 
 program
