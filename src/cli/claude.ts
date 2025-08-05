@@ -187,6 +187,10 @@ function setEnvFromConfig(env: Record<string, string | undefined>, config: Claud
   basicEnvMap.forEach(([configKey, envKey]) => {
     const value = config[configKey]
     if (typeof value === 'string' && value.length > 0) {
+      // For official profile type, skip setting API key and base URL
+      if (config.profileType === 'official' && (configKey === 'baseUrl' || configKey === 'apiKey')) {
+        return
+      }
       env[envKey] = value
     }
   })

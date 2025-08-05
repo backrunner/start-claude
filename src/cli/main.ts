@@ -172,24 +172,61 @@ program
           if (!config) {
             displayWarning('No configurations found. Let\'s create your first one!')
 
-            const answers = await inquirer.prompt([
+            // First ask for profile type
+            const profileTypeAnswer = await inquirer.prompt([
+              {
+                type: 'list',
+                name: 'profileType',
+                message: 'Profile type:',
+                choices: [
+                  { name: 'Default (custom API settings)', value: 'default' },
+                  { name: 'Official (use official Claude login with proxy support)', value: 'official' },
+                ],
+                default: 'default',
+              },
+            ])
+
+            const questions: any[] = [
               {
                 type: 'input',
                 name: 'name',
                 message: 'Configuration name:',
-                validate: input => input.trim() ? true : 'Name is required',
+                validate: (input: string) => input.trim() ? true : 'Name is required',
               },
-              {
-                type: 'input',
-                name: 'baseUrl',
-                message: 'Base URL (optional):',
-              },
-              {
-                type: 'password',
-                name: 'apiKey',
-                message: 'API Key (optional):',
-                mask: '*',
-              },
+            ]
+
+            // Add profile-specific questions
+            if (profileTypeAnswer.profileType === 'default') {
+              questions.push(
+                {
+                  type: 'input',
+                  name: 'baseUrl',
+                  message: 'Base URL (optional):',
+                },
+                {
+                  type: 'password',
+                  name: 'apiKey',
+                  message: 'API Key (optional):',
+                  mask: '*',
+                }
+              )
+            } else if (profileTypeAnswer.profileType === 'official') {
+              questions.push(
+                {
+                  type: 'input',
+                  name: 'httpProxy',
+                  message: 'HTTP Proxy (optional):',
+                },
+                {
+                  type: 'input',
+                  name: 'httpsProxy',
+                  message: 'HTTPS Proxy (optional):',
+                }
+              )
+            }
+
+            // Add common questions
+            questions.push(
               {
                 type: 'input',
                 name: 'model',
@@ -214,19 +251,29 @@ program
                 name: 'isDefault',
                 message: 'Set as default configuration?',
                 default: true,
-              },
-            ])
+              }
+            )
+
+            const answers = await inquirer.prompt(questions)
 
             const newConfig: ClaudeConfig = {
               name: answers.name.trim(),
-              baseUrl: answers.baseUrl?.trim() || undefined,
-              apiKey: answers.apiKey?.trim() || undefined,
+              profileType: profileTypeAnswer.profileType,
+              baseUrl: profileTypeAnswer.profileType === 'default' ? (answers.baseUrl?.trim() || undefined) : undefined,
+              apiKey: profileTypeAnswer.profileType === 'default' ? (answers.apiKey?.trim() || undefined) : undefined,
+              httpProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpProxy?.trim() || undefined) : undefined,
+              httpsProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpsProxy?.trim() || undefined) : undefined,
               model: answers.model?.trim() || undefined,
               permissionMode: answers.permissionMode || undefined,
               isDefault: answers.isDefault,
             }
 
             configManager.addConfig(newConfig)
+            
+            if (newConfig.isDefault) {
+              configManager.setDefaultConfig(newConfig.name)
+            }
+            
             displaySuccess(`Configuration "${newConfig.name}" created successfully!`)
 
             // If S3 is configured, ask if user wants to sync the new config
@@ -441,12 +488,26 @@ program
       return
     }
 
-    const answers = await inquirer.prompt([
+    // First ask for profile type
+    const profileTypeAnswer = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'profileType',
+        message: 'Profile type:',
+        choices: [
+          { name: 'Default (custom API settings)', value: 'default' },
+          { name: 'Official (use official Claude login with proxy support)', value: 'official' },
+        ],
+        default: 'default',
+      },
+    ])
+
+    const questions: any[] = [
       {
         type: 'input',
         name: 'name',
         message: 'Configuration name:',
-        validate: (input) => {
+        validate: (input: string) => {
           const name = input.trim()
           if (!name) {
             return 'Name is required'
@@ -460,17 +521,40 @@ program
           return true
         },
       },
-      {
-        type: 'input',
-        name: 'baseUrl',
-        message: 'Base URL (optional):',
-      },
-      {
-        type: 'password',
-        name: 'apiKey',
-        message: 'API Key (optional):',
-        mask: '*',
-      },
+    ]
+
+    // Add profile-specific questions
+    if (profileTypeAnswer.profileType === 'default') {
+      questions.push(
+        {
+          type: 'input',
+          name: 'baseUrl',
+          message: 'Base URL (optional):',
+        },
+        {
+          type: 'password',
+          name: 'apiKey',
+          message: 'API Key (optional):',
+          mask: '*',
+        }
+      )
+    } else if (profileTypeAnswer.profileType === 'official') {
+      questions.push(
+        {
+          type: 'input',
+          name: 'httpProxy',
+          message: 'HTTP Proxy (optional):',
+        },
+        {
+          type: 'input',
+          name: 'httpsProxy',
+          message: 'HTTPS Proxy (optional):',
+        }
+      )
+    }
+
+    // Add common questions
+    questions.push(
       {
         type: 'input',
         name: 'model',
@@ -495,24 +579,29 @@ program
         name: 'isDefault',
         message: 'Set as default configuration?',
         default: false,
-      },
-    ])
+      }
+    )
+
+    const answers = await inquirer.prompt(questions)
 
     const config: ClaudeConfig = {
       name: answers.name.trim(),
-      baseUrl: answers.baseUrl?.trim() || undefined,
-      apiKey: answers.apiKey?.trim() || undefined,
+      profileType: profileTypeAnswer.profileType,
+      baseUrl: profileTypeAnswer.profileType === 'default' ? (answers.baseUrl?.trim() || undefined) : undefined,
+      apiKey: profileTypeAnswer.profileType === 'default' ? (answers.apiKey?.trim() || undefined) : undefined,
+      httpProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpProxy?.trim() || undefined) : undefined,
+      httpsProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpsProxy?.trim() || undefined) : undefined,
       model: answers.model?.trim() || undefined,
       permissionMode: answers.permissionMode || undefined,
       isDefault: answers.isDefault,
     }
 
-    if (config.isDefault) {
-      const configs = configManager.listConfigs()
-      configs.forEach(c => c.isDefault = false)
-    }
-
     configManager.addConfig(config)
+    
+    if (config.isDefault) {
+      configManager.setDefaultConfig(config.name)
+    }
+    
     displaySuccess(`Configuration "${config.name}" added successfully!`)
   })
 
@@ -543,20 +632,58 @@ program
       return
     }
 
-    const answers = await inquirer.prompt([
+    // Ask for profile type (with current value as default)
+    const profileTypeAnswer = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'baseUrl',
-        message: 'Base URL:',
-        default: config.baseUrl ?? '',
+        type: 'list',
+        name: 'profileType',
+        message: 'Profile type:',
+        choices: [
+          { name: 'Default (custom API settings)', value: 'default' },
+          { name: 'Official (use official Claude login with proxy support)', value: 'official' },
+        ],
+        default: config.profileType || 'default',
       },
-      {
-        type: 'password',
-        name: 'apiKey',
-        message: 'API Key:',
-        default: config.apiKey ?? '',
-        mask: '*',
-      },
+    ])
+
+    const questions: any[] = []
+
+    // Add profile-specific questions
+    if (profileTypeAnswer.profileType === 'default') {
+      questions.push(
+        {
+          type: 'input',
+          name: 'baseUrl',
+          message: 'Base URL:',
+          default: config.baseUrl ?? '',
+        },
+        {
+          type: 'password',
+          name: 'apiKey',
+          message: 'API Key:',
+          default: config.apiKey ?? '',
+          mask: '*',
+        }
+      )
+    } else if (profileTypeAnswer.profileType === 'official') {
+      questions.push(
+        {
+          type: 'input',
+          name: 'httpProxy',
+          message: 'HTTP Proxy:',
+          default: config.httpProxy ?? '',
+        },
+        {
+          type: 'input',
+          name: 'httpsProxy',
+          message: 'HTTPS Proxy:',
+          default: config.httpsProxy ?? '',
+        }
+      )
+    }
+
+    // Add common questions
+    questions.push(
       {
         type: 'input',
         name: 'model',
@@ -581,24 +708,29 @@ program
         name: 'isDefault',
         message: 'Set as default configuration?',
         default: config.isDefault ?? false,
-      },
-    ])
+      }
+    )
+
+    const answers = await inquirer.prompt(questions)
 
     const updatedConfig: ClaudeConfig = {
       ...config,
-      baseUrl: answers.baseUrl?.trim() || undefined,
-      apiKey: answers.apiKey?.trim() || undefined,
+      profileType: profileTypeAnswer.profileType,
+      baseUrl: profileTypeAnswer.profileType === 'default' ? (answers.baseUrl?.trim() || undefined) : undefined,
+      apiKey: profileTypeAnswer.profileType === 'default' ? (answers.apiKey?.trim() || undefined) : undefined,
+      httpProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpProxy?.trim() || undefined) : undefined,
+      httpsProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpsProxy?.trim() || undefined) : undefined,
       model: answers.model?.trim() || undefined,
       permissionMode: answers.permissionMode || undefined,
       isDefault: answers.isDefault,
     }
 
-    if (updatedConfig.isDefault && !config.isDefault) {
-      const configs = configManager.listConfigs()
-      configs.forEach(c => c.isDefault = false)
-    }
-
     configManager.addConfig(updatedConfig)
+    
+    if (updatedConfig.isDefault && !config.isDefault) {
+      configManager.setDefaultConfig(updatedConfig.name)
+    }
+    
     displaySuccess(`Configuration "${name}" updated successfully!`)
   })
 

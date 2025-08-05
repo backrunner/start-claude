@@ -197,6 +197,9 @@ function parseConfigFromFile(filePath: string): ClaudeConfig | null {
     // Clean and validate the config
     const config: ClaudeConfig = {
       name: parsed.name.trim(),
+      profileType: parsed.profileType && ['default', 'official'].includes(parsed.profileType)
+        ? parsed.profileType
+        : undefined,
       baseUrl: parsed.baseUrl?.trim() || undefined,
       apiKey: parsed.apiKey?.trim() || undefined,
       model: parsed.model?.trim() || undefined,
