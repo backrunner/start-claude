@@ -8,7 +8,7 @@ import { name, version } from '../../package.json'
 import { ConfigManager } from '../core/config'
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
-import { createConfigInEditor, editConfigInEditor } from '../utils/editor'
+import { createConfigInEditor, editConfigFileInEditor, editConfigInEditor } from '../utils/editor'
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/ui'
 import { checkForUpdates, performAutoUpdate } from '../utils/update-checker'
 import { handleBalanceMode } from './balance'
@@ -733,6 +733,36 @@ program
   .action(() => {
     displayWelcome()
     displayInfo(`S3 Sync Status: ${s3SyncManager.getS3Status()}`)
+  })
+
+program
+  .command('edit-config')
+  .description('Edit the configuration file directly in your editor')
+  .action(async () => {
+    displayWelcome()
+
+    // Get the config file path
+    const path = await import('node:path')
+    const os = await import('node:os')
+    const configFilePath = path.default.join(os.default.homedir(), '.start-claude', 'config.json')
+
+    // Check if config file exists
+    const fs = await import('node:fs')
+    if (!fs.existsSync(configFilePath)) {
+      displayError('Configuration file does not exist. Create a configuration first using "start-claude add".')
+      return
+    }
+
+    displayInfo('Opening configuration file in editor with live reload...')
+    displayInfo('Any changes you save will be automatically reloaded.')
+
+    // Set up the config reload handler
+    const onConfigReload = (_config: any): void => {
+      // Just notify that the config was reloaded - the actual config management is handled by ConfigManager
+      displayInfo('Configuration changes detected and available for next session.')
+    }
+
+    await editConfigFileInEditor(configFilePath, onConfigReload)
   })
 
 program.parse()

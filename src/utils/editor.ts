@@ -1,6 +1,6 @@
 import type { ClaudeConfig } from '../core/types'
-import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { exec, execSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, statSync, unlinkSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -47,6 +47,7 @@ function detectEditor(): string | null {
         'cursor', // Cursor
         'windsurf', // Windsurf
         'trae', // Trae
+        'notepad.exe', // Notepad with .exe extension
         'notepad', // Notepad
       ]
     : process.platform === 'darwin'
@@ -76,15 +77,92 @@ function detectEditor(): string | null {
     }
   }
 
+  // Final fallback - these should always work on their respective platforms
+  if (process.platform === 'win32') {
+    // On Windows, notepad should always be available
+    return 'notepad'
+  }
+  else if (process.platform === 'darwin') {
+    return 'open'
+  }
+
+  return null
+}
+
+function getWindowsEditorPath(editorName: string): string | null {
+  if (process.platform !== 'win32') {
+    return editorName
+  }
+
+  // Try to get the full path using 'where' command
+  try {
+    const result = execSync(`where "${editorName}"`, { encoding: 'utf8', stdio: 'pipe' })
+    const paths = result.trim().split('\n').filter(Boolean)
+    if (paths.length > 0) {
+      return paths[0].trim() // Return the first found path
+    }
+  }
+  catch {
+    // If 'where' fails, try common installation paths
+    const commonPaths: Record<string, string[]> = {
+      code: [
+        `${process.env.LOCALAPPDATA}\\Programs\\Microsoft VS Code\\Code.exe`,
+        `${process.env.PROGRAMFILES}\\Microsoft VS Code\\Code.exe`,
+        `${process.env['PROGRAMFILES(X86)']}\\Microsoft VS Code\\Code.exe`,
+      ],
+      cursor: [
+        `${process.env.LOCALAPPDATA}\\Programs\\cursor\\Cursor.exe`,
+        `${process.env.PROGRAMFILES}\\Cursor\\Cursor.exe`,
+        `${process.env['PROGRAMFILES(X86)']}\\Cursor\\Cursor.exe`,
+      ],
+      windsurf: [
+        `${process.env.LOCALAPPDATA}\\Programs\\Windsurf\\Windsurf.exe`,
+        `${process.env.PROGRAMFILES}\\Windsurf\\Windsurf.exe`,
+        `${process.env['PROGRAMFILES(X86)']}\\Windsurf\\Windsurf.exe`,
+      ],
+    }
+
+    const paths = commonPaths[editorName.toLowerCase()]
+    if (paths) {
+      for (const path of paths) {
+        if (path && existsSync(path)) {
+          return path
+        }
+      }
+    }
+  }
+
   return null
 }
 
 function isCommandAvailable(command: string): boolean {
   try {
-    const result = spawn(process.platform === 'win32' ? 'where' : 'which', [command], {
-      stdio: 'ignore',
-    })
-    return result.pid !== undefined
+    if (process.platform === 'win32') {
+      // On Windows, try to get the full path first
+      const fullPath = getWindowsEditorPath(command)
+      if (fullPath && fullPath !== command && existsSync(fullPath)) {
+        return true
+      }
+
+      // Fallback to 'where' command
+      try {
+        execSync(`where "${command}"`, { stdio: 'ignore' })
+        return true
+      }
+      catch {
+        return false
+      }
+    }
+    else {
+      // On Unix-like systems, use execSync with 'which' command
+      try {
+        execSync(`which "${command}"`, { stdio: 'ignore' })
+        return true
+      }
+      catch {
+        return false
+      }
+    }
   }
   catch {
     return false
@@ -105,6 +183,7 @@ function createTempConfigFile(config: Partial<ClaudeConfig>, prefix = 'start-cla
     model: config.model || '',
     permissionMode: config.permissionMode || null,
     isDefault: config.isDefault || false,
+    order: config.order ?? null, // Lower numbers are prioritized first (0 = highest priority)
 
     // Environment variables for Claude Code (keep existing values or set to null/empty)
     authToken: config.authToken || '',
@@ -152,7 +231,7 @@ function createTempConfigFile(config: Partial<ClaudeConfig>, prefix = 'start-cla
 
 async function openEditor(filePath: string, editor: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const editorArgs = []
+    const editorArgs: string[] = []
 
     // Special handling for certain editors
     if (editor === 'code' || editor === 'cursor' || editor === 'windsurf') {
@@ -162,25 +241,68 @@ async function openEditor(filePath: string, editor: string): Promise<void> {
       editorArgs.push('-W', '-t')
     }
 
-    editorArgs.push(filePath)
+    // On Windows, try to get the full path to the executable
+    let editorCommand = editor
+    if (process.platform === 'win32') {
+      const fullPath = getWindowsEditorPath(editor)
+      if (fullPath) {
+        editorCommand = fullPath
+      }
+    }
 
-    const child = spawn(editor, editorArgs, {
-      stdio: 'inherit',
-    })
+    // Build the command string - quote the editor path if it contains spaces
+    const quotedEditor = editorCommand.includes(' ') ? `"${editorCommand}"` : editorCommand
+    const commandArgs = [...editorArgs, `"${filePath}"`].join(' ')
+    const fullCommand = `${quotedEditor} ${commandArgs}`
 
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve()
+    // Use exec instead of spawn for better Windows compatibility
+    // exec uses the shell to resolve paths and handles Windows executables better
+    const child = exec(fullCommand, (error) => {
+      if (error) {
+        reject(error)
       }
       else {
-        reject(new Error(`Editor exited with code ${code}`))
+        resolve()
       }
     })
 
-    child.on('error', (error) => {
-      reject(error)
-    })
+    // Handle the case where the process exits before exec callback
+    if (child) {
+      child.on('error', (error) => {
+        reject(error)
+      })
+    }
   })
+}
+
+async function openEditorWithFallback(filePath: string, primaryEditor: string): Promise<void> {
+  try {
+    await openEditor(filePath, primaryEditor)
+  }
+  catch (error) {
+    displayWarning(`Failed to open ${primaryEditor}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+
+    // Try fallback editors based on platform
+    const fallbackEditors = process.platform === 'win32'
+      ? ['notepad.exe', 'notepad']
+      : process.platform === 'darwin'
+        ? ['open']
+        : ['nano', 'vim', 'vi']
+
+    for (const fallbackEditor of fallbackEditors) {
+      try {
+        displayInfo(`Trying fallback editor: ${fallbackEditor}`)
+        await openEditor(filePath, fallbackEditor)
+        return // Success, exit the function
+      }
+      catch (fallbackError) {
+        displayWarning(`Fallback editor ${fallbackEditor} also failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`)
+      }
+    }
+
+    // If all fallbacks fail, throw the original error
+    throw new Error(`All editors failed. Last error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
 }
 
 function parseConfigFromFile(filePath: string): ClaudeConfig | null {
@@ -266,7 +388,7 @@ export async function editConfigInEditor(config: ClaudeConfig): Promise<ClaudeCo
   const tempFile = createTempConfigFile(config)
 
   try {
-    await openEditor(tempFile, editor)
+    await openEditorWithFallback(tempFile, editor)
 
     const updatedConfig = parseConfigFromFile(tempFile)
     if (updatedConfig) {
@@ -307,7 +429,7 @@ export async function createConfigInEditor(): Promise<ClaudeConfig | null> {
   const tempFile = createTempConfigFile({})
 
   try {
-    await openEditor(tempFile, editor)
+    await openEditorWithFallback(tempFile, editor)
 
     const newConfig = parseConfigFromFile(tempFile)
     if (newConfig) {
@@ -332,5 +454,76 @@ export async function createConfigInEditor(): Promise<ClaudeConfig | null> {
         // Ignore cleanup errors
       }
     }
+  }
+}
+
+export async function editConfigFileInEditor(configFilePath: string, onConfigReload: (config: any) => void): Promise<void> {
+  const editor = detectEditor()
+  if (!editor) {
+    displayError('No suitable editor found. Please set EDITOR environment variable or install VS Code, Cursor, Windsurf, or another supported editor.')
+    return
+  }
+
+  displayInfo(`Opening configuration file in ${editor}...`)
+  displayInfo(`Config file: ${configFilePath}`)
+  displayInfo('💡 Save the file to reload the configuration automatically. Press Ctrl+C to stop watching.')
+
+  // Start watching the file for changes
+  let isWatching = true
+  let lastModified = 0
+
+  const watchCallback = (): void => {
+    try {
+      const stats = existsSync(configFilePath) ? statSync(configFilePath) : null
+      if (stats && stats.mtime.getTime() !== lastModified) {
+        lastModified = stats.mtime.getTime()
+
+        displayInfo('🔄 Configuration file changed, reloading...')
+
+        try {
+          const content = readFileSync(configFilePath, 'utf8')
+          const config = JSON.parse(content)
+          onConfigReload(config)
+          displaySuccess('✅ Configuration reloaded successfully!')
+        }
+        catch (error) {
+          displayError(`❌ Failed to reload configuration: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
+      }
+    }
+    catch (error) {
+      displayError(`❌ Error watching config file: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  // Initial modification time
+  if (existsSync(configFilePath)) {
+    const stats = statSync(configFilePath)
+    lastModified = stats.mtime.getTime()
+  }
+
+  // Start watching
+  watchFile(configFilePath, { interval: 1000 }, watchCallback)
+
+  // Handle process interruption
+  const cleanup = (): void => {
+    if (isWatching) {
+      unwatchFile(configFilePath, watchCallback)
+      isWatching = false
+      displayInfo('🛑 Stopped watching configuration file.')
+    }
+  }
+
+  process.on('SIGINT', cleanup)
+  process.on('SIGTERM', cleanup)
+
+  try {
+    await openEditorWithFallback(configFilePath, editor)
+  }
+  catch (error) {
+    displayError(`Failed to open editor: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+  finally {
+    cleanup()
   }
 }
