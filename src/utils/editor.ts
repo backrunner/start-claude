@@ -329,6 +329,7 @@ function parseConfigFromFile(filePath: string): ClaudeConfig | null {
         ? parsed.permissionMode
         : undefined,
       isDefault: Boolean(parsed.isDefault),
+      order: typeof parsed.order === 'number' ? parsed.order : undefined,
 
       // Environment variables for Claude Code
       authToken: parsed.authToken?.trim() || undefined,

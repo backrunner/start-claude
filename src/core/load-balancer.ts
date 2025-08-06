@@ -29,6 +29,13 @@ export class LoadBalancer {
       throw new Error('No configurations with baseUrl and apiKey found for load balancing')
     }
 
+    // Sort configs by order (lower numbers first), with undefined order treated as highest priority (0)
+    validConfigs.sort((a, b) => {
+      const orderA = a.order ?? 0
+      const orderB = b.order ?? 0
+      return orderA - orderB
+    })
+
     this.endpoints = validConfigs.map(config => ({
       config,
       isHealthy: true,

@@ -6,6 +6,7 @@ export interface ClaudeConfig {
   model?: string
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
   isDefault?: boolean
+  order?: number // Lower numbers are prioritized first (0 = highest priority)
 
   // Environment variables for Claude Code
   authToken?: string

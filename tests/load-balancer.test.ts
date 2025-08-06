@@ -263,6 +263,76 @@ describe('loadBalancer', () => {
     })
   })
 
+  describe('config ordering', () => {
+    it('should sort configs by order field with lower numbers first', () => {
+      const configsWithOrder: ClaudeConfig[] = [
+        {
+          name: 'config-high-priority',
+          profileType: 'default',
+          baseUrl: 'https://high.example.com',
+          apiKey: 'sk-high-priority',
+          order: 0, // Highest priority
+          isDefault: false,
+        },
+        {
+          name: 'config-low-priority',
+          profileType: 'default',
+          baseUrl: 'https://low.example.com',
+          apiKey: 'sk-low-priority', 
+          order: 10, // Lower priority
+          isDefault: false,
+        },
+        {
+          name: 'config-medium-priority',
+          profileType: 'default',
+          baseUrl: 'https://medium.example.com',
+          apiKey: 'sk-medium-priority',
+          order: 5, // Medium priority
+          isDefault: false,
+        },
+      ]
+
+      const lb = new LoadBalancer(configsWithOrder)
+      const status = lb.getStatus()
+
+      // Should be sorted by order: 0, 5, 10
+      expect(status.endpoints[0].config.name).toBe('config-high-priority')
+      expect(status.endpoints[1].config.name).toBe('config-medium-priority') 
+      expect(status.endpoints[2].config.name).toBe('config-low-priority')
+      expect(status.endpoints[0].config.order).toBe(0)
+      expect(status.endpoints[1].config.order).toBe(5)
+      expect(status.endpoints[2].config.order).toBe(10)
+    })
+
+    it('should treat undefined order as highest priority (0)', () => {
+      const configsWithMixedOrder: ClaudeConfig[] = [
+        {
+          name: 'config-with-order',
+          profileType: 'default',
+          baseUrl: 'https://ordered.example.com',
+          apiKey: 'sk-ordered',
+          order: 5,
+          isDefault: false,
+        },
+        {
+          name: 'config-without-order',
+          profileType: 'default',
+          baseUrl: 'https://unordered.example.com',
+          apiKey: 'sk-unordered',
+          // no order field - should be treated as 0
+          isDefault: false,
+        },
+      ]
+
+      const lb = new LoadBalancer(configsWithMixedOrder)
+      const status = lb.getStatus()
+
+      // Config without order should come first (treated as 0)
+      expect(status.endpoints[0].config.name).toBe('config-without-order')
+      expect(status.endpoints[1].config.name).toBe('config-with-order')
+    })
+  })
+
   describe('server lifecycle', () => {
     it('should start server on specified port', async () => {
       await loadBalancer.startServer(3000)
