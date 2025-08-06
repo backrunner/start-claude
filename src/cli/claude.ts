@@ -1,17 +1,11 @@
 import type { ClaudeConfig } from '../core/types'
+import type { CliOverrides } from './common'
 import { spawn } from 'node:child_process'
 import { accessSync, constants } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import inquirer from 'inquirer'
 import { displayError, displayInfo, displaySuccess } from '../utils/ui'
-
-interface CliOverrides {
-  env?: string[]
-  apiKey?: string
-  baseUrl?: string
-  model?: string
-}
 
 export async function startClaude(config: ClaudeConfig | undefined, args: string[] = [], cliOverrides?: CliOverrides): Promise<number> {
   const env = { ...process.env }
