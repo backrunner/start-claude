@@ -15,6 +15,7 @@ import { handleBalanceMode } from './balance'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveConfig } from './common'
 import { OverrideManager } from './override'
+import { ManagerServer } from '../core/manager-server'
 
 const program = new Command()
 const configManager = new ConfigManager()
@@ -763,6 +764,35 @@ program
     }
 
     await editConfigFileInEditor(configFilePath, onConfigReload)
+  })
+
+program
+  .command('manage')
+  .description('Open the Claude Configuration Manager web interface')
+  .option('-p, --port <number>', 'Port to run the manager on', '3001')
+  .action(async (options: { port?: string }) => {
+    displayWelcome()
+    
+    const port = options.port ? parseInt(options.port) : 3001
+    const managerServer = new ManagerServer(port)
+    
+    try {
+      await managerServer.start()
+      
+      // Keep the process running until user terminates
+      process.stdin.resume()
+      
+      const cleanup = () => {
+        managerServer.stop()
+        process.exit(0)
+      }
+      
+      process.on('SIGINT', cleanup)
+      process.on('SIGTERM', cleanup)
+    } catch (error) {
+      displayError(`Failed to start manager: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      process.exit(1)
+    }
   })
 
 program.parse()

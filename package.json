@@ -38,7 +38,8 @@
     "boxen": "^8.0.1",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
-    "inquirer": "^12.7.0"
+    "inquirer": "^12.7.0",
+    "open": "^10.2.0"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.17.0",
