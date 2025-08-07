@@ -7,13 +7,17 @@ Each configuration supports all Claude Code environment variables and custom set
 ## Profile Types
 
 ### Default Profile (`profileType: "default"`)
+
 Traditional custom API configuration:
+
 - Requires manual API key and base URL configuration
 - Full control over API endpoints and authentication
 - Suitable for custom Claude API setups
 
 ### Official Profile (`profileType: "official"`)
+
 Official Claude login with proxy support:
+
 - Uses official Claude authentication (no manual API key needed)
 - Supports HTTP/HTTPS proxy configuration for network restrictions
 - Ideal for users who want to use official Claude with proxy support
@@ -31,31 +35,37 @@ Official Claude login with proxy support:
 ## Advanced Configuration Options
 
 ### Authentication & API
+
 - **Auth Token**: Custom authorization token (`ANTHROPIC_AUTH_TOKEN`)
 - **Custom Headers**: Custom HTTP headers (`ANTHROPIC_CUSTOM_HEADERS`)
 
 ### AWS/Bedrock Configuration
+
 - **AWS Bearer Token**: Bedrock API authentication (`AWS_BEARER_TOKEN_BEDROCK`)
 - **Use Bedrock**: Enable Bedrock integration (`CLAUDE_CODE_USE_BEDROCK`)
 - **Skip Bedrock Auth**: Skip AWS authentication (`CLAUDE_CODE_SKIP_BEDROCK_AUTH`)
 
 ### Google Vertex AI
+
 - **Use Vertex**: Enable Vertex AI integration (`CLAUDE_CODE_USE_VERTEX`)
 - **Skip Vertex Auth**: Skip Google authentication (`CLAUDE_CODE_SKIP_VERTEX_AUTH`)
 - **Vertex Regions**: Custom regions for different Claude models
 
 ### Performance & Limits
+
 - **Bash Timeouts**: Configure command execution timeouts
 - **Max Output Tokens**: Set token limits for responses
 - **Max Thinking Tokens**: Configure reasoning token budget
 - **MCP Settings**: Configure Model Context Protocol timeouts
 
 ### Behavior Controls
+
 - **Disable Features**: Turn off autoupdate, telemetry, error reporting, etc.
 - **Terminal Settings**: Configure terminal title updates
 - **Project Directory**: Maintain working directory for bash commands
 
 ### Network Configuration
+
 - **HTTP/HTTPS Proxy**: Configure proxy servers
 
 ## Configuration Examples

@@ -74,6 +74,7 @@ docs/                     # Documentation
 ### Configuration Management
 
 The `ConfigManager` class handles:
+
 - Reading/writing configuration files
 - Validation and type checking
 - Default configuration management
@@ -82,6 +83,7 @@ The `ConfigManager` class handles:
 ### Load Balancer
 
 The `LoadBalancer` class provides:
+
 - Health monitoring of multiple endpoints
 - Round-robin request distribution
 - Automatic failover and recovery
@@ -90,6 +92,7 @@ The `LoadBalancer` class provides:
 ### CLI Interface
 
 Built with Commander.js:
+
 - Command parsing and validation
 - Interactive prompts with Inquirer.js
 - Colorful output with custom UI utilities
@@ -98,6 +101,7 @@ Built with Commander.js:
 ### Storage Sync
 
 S3-compatible synchronization:
+
 - Multi-provider support (AWS S3, Cloudflare R2, Backblaze B2)
 - Conflict resolution strategies
 - Secure credential management
@@ -115,6 +119,7 @@ npm run lint:fix
 ```
 
 Key style guidelines:
+
 - TypeScript strict mode enabled
 - Explicit function return types required
 - No unused variables allowed
@@ -126,6 +131,7 @@ Key style guidelines:
 ### Unit Tests
 
 Each major component has comprehensive unit tests:
+
 - Configuration management (`config.test.ts`)
 - Load balancer functionality (`load-balancer.test.ts`)
 - CLI commands (`claude.test.ts`)
@@ -135,6 +141,7 @@ Each major component has comprehensive unit tests:
 ### Mocking Strategy
 
 Tests use Vitest mocking for:
+
 - File system operations
 - HTTP requests
 - Child process execution
@@ -155,12 +162,14 @@ npm run build
 ```
 
 This creates:
+
 - `bin/cli.cjs` - CommonJS bundle
 - `bin/cli.mjs` - ES modules bundle
 
 ### Package Configuration
 
 The `package.json` includes:
+
 - Dual module support (CJS + ESM)
 - Executable binary configuration
 - Comprehensive dependency management
@@ -183,6 +192,7 @@ The `package.json` includes:
 ### Commit Message Guidelines
 
 Use conventional commits:
+
 - `feat:` - New features
 - `fix:` - Bug fixes
 - `docs:` - Documentation changes
@@ -193,6 +203,7 @@ Use conventional commits:
 ### Code Review Process
 
 Pull requests require:
+
 - All tests passing
 - Linting checks passing
 - Code review approval
@@ -218,7 +229,7 @@ The project includes VS Code debug configuration:
 ```json
 {
   "type": "node",
-  "request": "launch", 
+  "request": "launch",
   "name": "Debug CLI",
   "program": "${workspaceFolder}/bin/cli.mjs",
   "args": ["--help"],
@@ -270,6 +281,7 @@ The project includes VS Code debug configuration:
 ### Dependency Security
 
 Regular security audits:
+
 ```bash
 npm audit
 npm audit fix
@@ -280,6 +292,7 @@ npm audit fix
 ### Version Management
 
 The project follows semantic versioning:
+
 - Major: Breaking changes
 - Minor: New features, backwards compatible
 - Patch: Bug fixes, backwards compatible

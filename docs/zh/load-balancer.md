@@ -5,6 +5,7 @@
 ## 概述
 
 负载均衡器：
+
 - **分发请求** - 使用轮询算法在多个健康端点之间分发请求
 - **健康监控** - 自动检测和处理不健康的端点
 - **故障转移支持** - 主端点失败时切换到备用端点
@@ -26,6 +27,7 @@ start-claude --balance config1 config2 config3
 ### 1. 配置优先级
 
 配置按其 `order` 字段排序：
+
 - **数字越小 = 优先级越高**（0 = 最高优先级）
 - **未定义的顺序** 被视为 0（最高优先级）
 - 负载均衡器优先尝试高优先级端点
@@ -35,13 +37,13 @@ start-claude --balance config1 config2 config3
   "configs": [
     {
       "name": "primary-api",
-      "order": 0,  // 最高优先级
+      "order": 0, // 最高优先级
       "baseUrl": "https://primary.api.com",
       "apiKey": "sk-primary"
     },
     {
-      "name": "backup-api", 
-      "order": 10,  // 较低优先级
+      "name": "backup-api",
+      "order": 10, // 较低优先级
       "baseUrl": "https://backup.api.com",
       "apiKey": "sk-backup"
     }
@@ -52,6 +54,7 @@ start-claude --balance config1 config2 config3
 ### 2. 健康监控
 
 负载均衡器持续监控端点健康状态：
+
 - **初始健康检查** 启动时进行
 - **定期健康检查** 每 30 秒检查不健康端点
 - **实时监控** 在请求处理期间进行
@@ -84,7 +87,7 @@ start-claude --balance prod1 prod2 backup
 # 添加主端点
 start-claude add
 # 名称：primary
-# 基础 URL：https://api1.anthropic.com  
+# 基础 URL：https://api1.anthropic.com
 # API 密钥：sk-primary-key
 # 顺序：0
 
@@ -92,7 +95,7 @@ start-claude add
 start-claude add
 # 名称：backup
 # 基础 URL：https://api2.anthropic.com
-# API 密钥：sk-backup-key  
+# API 密钥：sk-backup-key
 # 顺序：10
 
 # 启动负载均衡器
@@ -130,7 +133,7 @@ claude --base-url http://localhost:2333 --api-key sk-claude-load-balancer-proxy-
   "max_tokens": 10,
   "messages": [
     {
-      "role": "user", 
+      "role": "user",
       "content": "ping"
     }
   ]
@@ -148,6 +151,7 @@ start-claude --balance
 ```
 
 示例状态输出：
+
 ```
 🔍 测试端点...
 ✅ primary - HTTP 200: OK
@@ -208,7 +212,7 @@ start-claude --balance --port 3000
   "apiKey": "sk-tier1"
 },
 {
-  "name": "tier2-endpoint", 
+  "name": "tier2-endpoint",
   "order": 5,     // 中等优先级
   "baseUrl": "https://tier2.api.com",
   "apiKey": "sk-tier2"
@@ -216,7 +220,7 @@ start-claude --balance --port 3000
 {
   "name": "fallback-endpoint",
   "order": 10,    // 最低优先级
-  "baseUrl": "https://fallback.api.com", 
+  "baseUrl": "https://fallback.api.com",
   "apiKey": "sk-fallback"
 }
 ```
@@ -252,6 +256,7 @@ start-claude --balance --verbose
 ### 负载均衡器无法启动
 
 常见问题：
+
 - **端口冲突**：另一个服务正在使用端口 2333
 - **没有有效配置**：没有配置同时具有 `baseUrl` 和 `apiKey`
 - **配置无效**：检查配置语法和必需字段
@@ -259,6 +264,7 @@ start-claude --balance --verbose
 ### 性能问题
 
 提高性能：
+
 - **减少健康检查频率**（需要修改代码）
 - **使用更快的端点** 进行健康检查
 - **根据响应时间优化端点优先级** 顺序
@@ -295,6 +301,6 @@ Restart=always
 User=claude
 Environment=NODE_ENV=production
 
-[Install]  
+[Install]
 WantedBy=multi-user.target
 ```

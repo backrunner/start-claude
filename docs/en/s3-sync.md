@@ -151,8 +151,9 @@ start-claude s3-setup
 ### Permission Errors
 
 Ensure your S3 credentials have the following permissions:
+
 - `s3:GetObject`
-- `s3:PutObject` 
+- `s3:PutObject`
 - `s3:ListBucket` (optional, for better error messages)
 
 ### Sync Conflicts

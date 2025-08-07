@@ -1,9 +1,11 @@
 import type { ClaudeConfig } from '@/core/types'
+import type { ProxyMode } from '@/types/transformer'
 import { Buffer } from 'node:buffer'
 import http from 'node:http'
 import https from 'node:https'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LoadBalancer } from '@/core/load-balancer'
+import { ProxyServer } from '@/core/proxy'
+import { ConfigService } from '@/services/config'
 
 // Mock the UI functions
 vi.mock('@/utils/ui', () => ({
@@ -11,6 +13,24 @@ vi.mock('@/utils/ui', () => ({
   displayGrey: vi.fn(),
   displaySuccess: vi.fn(),
   displayWarning: vi.fn(),
+  displayVerbose: vi.fn(),
+}))
+
+// Mock services
+vi.mock('@/services/config')
+vi.mock('@/services/transformer', () => ({
+  TransformerService: vi.fn().mockImplementation(() => ({
+    registerTransformer: vi.fn(),
+    hasTransformer: vi.fn().mockReturnValue(true),
+    removeTransformer: vi.fn().mockReturnValue(true),
+    getAllTransformers: vi.fn().mockReturnValue(new Map([
+      ['openai', { name: 'openai', endPoint: '/v1/chat/completions' }],
+    ])),
+    getTransformersWithEndpoint: vi.fn().mockReturnValue([]),
+    getTransformersWithoutEndpoint: vi.fn().mockReturnValue([]),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    findTransformerByPath: vi.fn().mockReturnValue(null),
+  })),
 }))
 
 // Mock HTTP modules
@@ -19,12 +39,14 @@ vi.mock('node:https')
 
 const mockHttp = vi.mocked(http)
 const mockHttps = vi.mocked(https)
+const MockConfigService = vi.mocked(ConfigService)
 
-describe('loadBalancer', () => {
+describe('proxyServer', () => {
   let testConfigs: ClaudeConfig[]
-  let loadBalancer: LoadBalancer
+  let proxyServer: ProxyServer
   let mockServer: any
   let mockRequest: any
+  let mockConfigService: any
 
   beforeEach(() => {
     testConfigs = [
@@ -54,6 +76,12 @@ describe('loadBalancer', () => {
       },
     ]
 
+    // Mock ConfigService
+    mockConfigService = {
+      get: vi.fn().mockReturnValue([]),
+    }
+    MockConfigService.mockImplementation(() => mockConfigService)
+
     // Mock server
     mockServer = {
       listen: vi.fn((port, callback) => callback()),
@@ -72,17 +100,20 @@ describe('loadBalancer', () => {
     mockHttp.createServer.mockReturnValue(mockServer)
     mockHttp.request.mockReturnValue(mockRequest)
     mockHttps.request.mockReturnValue(mockRequest)
-
-    loadBalancer = new LoadBalancer(testConfigs)
   })
 
   afterEach(() => {
     vi.clearAllMocks()
   })
 
-  describe('constructor', () => {
+  describe('constructor - load balancer mode', () => {
+    beforeEach(() => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      proxyServer = new ProxyServer(testConfigs, proxyMode)
+    })
+
     it('should initialize with valid configurations', () => {
-      expect(loadBalancer.getProxyApiKey()).toBe('sk-claude-load-balancer-proxy-key')
+      expect(proxyServer.getProxyApiKey()).toBe('sk-claude-proxy-server')
     })
 
     it('should filter out configs without baseUrl or apiKey', () => {
@@ -110,8 +141,9 @@ describe('loadBalancer', () => {
         },
       ]
 
-      const lb = new LoadBalancer(invalidConfigs)
-      const status = lb.getStatus()
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      const ps = new ProxyServer(invalidConfigs, proxyMode)
+      const status = ps.getStatus()
       expect(status.total).toBe(1)
     })
 
@@ -125,15 +157,41 @@ describe('loadBalancer', () => {
         },
       ]
 
-      expect(() => new LoadBalancer(invalidConfigs)).toThrow(
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      expect(() => new ProxyServer(invalidConfigs, proxyMode)).toThrow(
         'No configurations with baseUrl and apiKey found for load balancing',
       )
     })
   })
 
+  describe('constructor - transformer mode', () => {
+    it('should initialize in transformer mode', () => {
+      const proxyMode: ProxyMode = { enableTransform: true }
+      const ps = new ProxyServer([], proxyMode)
+      const status = ps.getStatus()
+      expect(status.transform).toBe(true)
+    })
+
+    it('should initialize in combined mode', () => {
+      const proxyMode: ProxyMode = {
+        enableLoadBalance: true,
+        enableTransform: true,
+      }
+      const ps = new ProxyServer(testConfigs, proxyMode)
+      const status = ps.getStatus()
+      expect(status.loadBalance).toBe(true)
+      expect(status.transform).toBe(true)
+    })
+  })
+
   describe('getStatus', () => {
+    beforeEach(() => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      proxyServer = new ProxyServer(testConfigs, proxyMode)
+    })
+
     it('should return correct status information', () => {
-      const status = loadBalancer.getStatus()
+      const status = proxyServer.getStatus()
 
       expect(status.total).toBe(3)
       expect(status.healthy).toBe(3)
@@ -142,13 +200,19 @@ describe('loadBalancer', () => {
       expect(status.endpoints[0].config.name).toBe('config1')
       expect(status.endpoints[1].config.name).toBe('config2')
       expect(status.endpoints[2].config.name).toBe('config3')
+      expect(status.loadBalance).toBe(true)
     })
   })
 
   describe('endpoint selection', () => {
+    beforeEach(() => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      proxyServer = new ProxyServer(testConfigs, proxyMode)
+    })
+
     it('should round-robin through healthy endpoints', () => {
       // Access the private method via reflection for testing
-      const getNextHealthyEndpoint = (loadBalancer as any).getNextHealthyEndpoint.bind(loadBalancer)
+      const getNextHealthyEndpoint = (proxyServer as any).getNextHealthyEndpoint.bind(proxyServer)
 
       const endpoint1 = getNextHealthyEndpoint()
       const endpoint2 = getNextHealthyEndpoint()
@@ -162,11 +226,11 @@ describe('loadBalancer', () => {
     })
 
     it('should skip unhealthy endpoints', () => {
-      const getNextHealthyEndpoint = (loadBalancer as any).getNextHealthyEndpoint.bind(loadBalancer)
-      const markEndpointUnhealthy = (loadBalancer as any).markEndpointUnhealthy.bind(loadBalancer)
+      const getNextHealthyEndpoint = (proxyServer as any).getNextHealthyEndpoint.bind(proxyServer)
+      const markEndpointUnhealthy = (proxyServer as any).markEndpointUnhealthy.bind(proxyServer)
 
       // Mark second endpoint as unhealthy
-      const status = loadBalancer.getStatus()
+      const status = proxyServer.getStatus()
       markEndpointUnhealthy(status.endpoints[1], 'Test error')
 
       const endpoint1 = getNextHealthyEndpoint()
@@ -180,11 +244,11 @@ describe('loadBalancer', () => {
     })
 
     it('should return null when all endpoints are unhealthy', () => {
-      const getNextHealthyEndpoint = (loadBalancer as any).getNextHealthyEndpoint.bind(loadBalancer)
-      const markEndpointUnhealthy = (loadBalancer as any).markEndpointUnhealthy.bind(loadBalancer)
+      const getNextHealthyEndpoint = (proxyServer as any).getNextHealthyEndpoint.bind(proxyServer)
+      const markEndpointUnhealthy = (proxyServer as any).markEndpointUnhealthy.bind(proxyServer)
 
       // Mark all endpoints as unhealthy
-      const status = loadBalancer.getStatus()
+      const status = proxyServer.getStatus()
       status.endpoints.forEach((endpoint, index) => {
         markEndpointUnhealthy(endpoint, `Test error ${index}`)
       })
@@ -195,16 +259,21 @@ describe('loadBalancer', () => {
   })
 
   describe('proxy request headers', () => {
+    beforeEach(() => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      proxyServer = new ProxyServer(testConfigs, proxyMode)
+    })
+
     it('should use correct x-api-key header for different endpoints', () => {
       // Test the header preparation logic directly
-      const status = loadBalancer.getStatus()
+      const status = proxyServer.getStatus()
       const endpoint1 = status.endpoints[0]
       const endpoint2 = status.endpoints[1]
 
       // Mock incoming headers
       const incomingHeaders: Record<string, string> = {
         'content-type': 'application/json',
-        'authorization': 'Bearer sk-claude-load-balancer-proxy-key',
+        'authorization': 'Bearer sk-claude-proxy-server',
         'host': 'localhost:2333',
       }
 
@@ -225,7 +294,7 @@ describe('loadBalancer', () => {
     })
 
     it('should use correct base URLs for different endpoints', () => {
-      const status = loadBalancer.getStatus()
+      const status = proxyServer.getStatus()
 
       const url1 = new URL('/v1/messages', status.endpoints[0].config.baseUrl)
       const url2 = new URL('/v1/messages', status.endpoints[1].config.baseUrl)
@@ -238,12 +307,17 @@ describe('loadBalancer', () => {
   })
 
   describe('health check headers', () => {
+    beforeEach(() => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      proxyServer = new ProxyServer(testConfigs, proxyMode)
+    })
+
     it('should prepare correct headers for health checks', () => {
-      const status = loadBalancer.getStatus()
+      const status = proxyServer.getStatus()
       const endpoint = status.endpoints[0]
 
       const healthCheckBody = JSON.stringify({
-        model: endpoint.config.model || 'claude-3-haiku-20240307',
+        model: endpoint.config.model || 'claude-3-haiku-20241022',
         max_tokens: 10,
         messages: [{
           role: 'user',
@@ -278,7 +352,7 @@ describe('loadBalancer', () => {
           name: 'config-low-priority',
           profileType: 'default',
           baseUrl: 'https://low.example.com',
-          apiKey: 'sk-low-priority', 
+          apiKey: 'sk-low-priority',
           order: 10, // Lower priority
           isDefault: false,
         },
@@ -292,12 +366,13 @@ describe('loadBalancer', () => {
         },
       ]
 
-      const lb = new LoadBalancer(configsWithOrder)
-      const status = lb.getStatus()
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      const ps = new ProxyServer(configsWithOrder, proxyMode)
+      const status = ps.getStatus()
 
       // Should be sorted by order: 0, 5, 10
       expect(status.endpoints[0].config.name).toBe('config-high-priority')
-      expect(status.endpoints[1].config.name).toBe('config-medium-priority') 
+      expect(status.endpoints[1].config.name).toBe('config-medium-priority')
       expect(status.endpoints[2].config.name).toBe('config-low-priority')
       expect(status.endpoints[0].config.order).toBe(0)
       expect(status.endpoints[1].config.order).toBe(5)
@@ -324,8 +399,9 @@ describe('loadBalancer', () => {
         },
       ]
 
-      const lb = new LoadBalancer(configsWithMixedOrder)
-      const status = lb.getStatus()
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      const ps = new ProxyServer(configsWithMixedOrder, proxyMode)
+      const status = ps.getStatus()
 
       // Config without order should come first (treated as 0)
       expect(status.endpoints[0].config.name).toBe('config-without-order')
@@ -333,19 +409,121 @@ describe('loadBalancer', () => {
     })
   })
 
+  describe('transformer management', () => {
+    beforeEach(() => {
+      const proxyMode: ProxyMode = { enableTransform: true }
+      proxyServer = new ProxyServer([], proxyMode)
+    })
+
+    it('should add and remove transformers', async () => {
+      const mockTransformer = {
+        name: 'test-transformer',
+        endPoint: '/test',
+        transformRequestOut: vi.fn(),
+      }
+
+      // Test adding transformer
+      await proxyServer.addTransformer('test', mockTransformer)
+
+      // Test removing transformer
+      const removed = proxyServer.removeTransformer('test')
+      expect(removed).toBe(true)
+
+      // Verify transformer service methods are available
+      expect(proxyServer.getTransformerService()).toBeDefined()
+      expect(typeof proxyServer.getTransformerService().hasTransformer).toBe('function')
+    })
+
+    it('should list transformers', async () => {
+      await proxyServer.initialize()
+      const transformers = proxyServer.listTransformers()
+
+      // Should have at least the default OpenAI transformer
+      expect(transformers.length).toBeGreaterThanOrEqual(1)
+      expect(transformers.some(t => t.name === 'openai')).toBe(true)
+    })
+
+    it('should return transformer status', () => {
+      const status = proxyServer.getStatus()
+      expect(status.transform).toBe(true)
+      expect(status.transformers).toBeDefined()
+    })
+  })
+
   describe('server lifecycle', () => {
+    beforeEach(() => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      proxyServer = new ProxyServer(testConfigs, proxyMode)
+    })
+
     it('should start server on specified port', async () => {
-      await loadBalancer.startServer(3000)
+      await proxyServer.startServer(3000)
 
       expect(mockServer.listen).toHaveBeenCalledWith(3000, expect.any(Function))
       expect(mockHttp.createServer).toHaveBeenCalled()
     })
 
     it('should stop server and clear intervals', async () => {
-      await loadBalancer.startServer()
-      await loadBalancer.stop()
+      await proxyServer.startServer()
+      await proxyServer.stop()
 
       expect(mockServer.close).toHaveBeenCalled()
+    })
+  })
+
+  describe('request handling', () => {
+    let mockIncomingMessage: any
+    let mockServerResponse: any
+
+    beforeEach(() => {
+      mockIncomingMessage = {
+        method: 'POST',
+        url: '/v1/chat/completions',
+        headers: {
+          'content-type': 'application/json',
+          'authorization': 'Bearer sk-claude-proxy-server',
+        },
+        on: vi.fn(),
+      }
+
+      mockServerResponse = {
+        writeHead: vi.fn(),
+        end: vi.fn(),
+      }
+    })
+
+    it('should handle CORS preflight requests', async () => {
+      const proxyMode: ProxyMode = { enableTransform: true }
+      const ps = new ProxyServer([], proxyMode)
+
+      mockIncomingMessage.method = 'OPTIONS'
+
+      const handleRequest = (ps as any).handleRequest.bind(ps)
+      await handleRequest(mockIncomingMessage, mockServerResponse)
+
+      expect(mockServerResponse.writeHead).toHaveBeenCalledWith(200, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key',
+        'Access-Control-Max-Age': '86400',
+      })
+      expect(mockServerResponse.end).toHaveBeenCalled()
+    })
+
+    it('should return 404 when no handler is found', async () => {
+      const proxyMode: ProxyMode = {} // No modes enabled
+      const ps = new ProxyServer([], proxyMode)
+
+      const handleRequest = (ps as any).handleRequest.bind(ps)
+      await handleRequest(mockIncomingMessage, mockServerResponse)
+
+      expect(mockServerResponse.writeHead).toHaveBeenCalledWith(404, { 'Content-Type': 'application/json' })
+      expect(mockServerResponse.end).toHaveBeenCalledWith(JSON.stringify({
+        error: {
+          message: 'No handler found for this request',
+          type: 'not_found',
+        },
+      }))
     })
   })
 })

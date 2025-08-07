@@ -5,6 +5,7 @@ The load balancer feature allows you to distribute requests across multiple Clau
 ## Overview
 
 The load balancer:
+
 - **Distributes requests** across multiple healthy endpoints using round-robin
 - **Health monitoring** - automatically detects and handles unhealthy endpoints
 - **Failover support** - switches to backup endpoints when primary ones fail
@@ -26,7 +27,8 @@ start-claude --balance config1 config2 config3
 ### 1. Configuration Priority
 
 Configurations are sorted by their `order` field:
-- **Lower numbers = Higher priority** (0 = highest priority)  
+
+- **Lower numbers = Higher priority** (0 = highest priority)
 - **Undefined order** is treated as 0 (highest priority)
 - Load balancer tries higher priority endpoints first
 
@@ -35,13 +37,13 @@ Configurations are sorted by their `order` field:
   "configs": [
     {
       "name": "primary-api",
-      "order": 0,  // Highest priority
+      "order": 0, // Highest priority
       "baseUrl": "https://primary.api.com",
       "apiKey": "sk-primary"
     },
     {
-      "name": "backup-api", 
-      "order": 10,  // Lower priority
+      "name": "backup-api",
+      "order": 10, // Lower priority
       "baseUrl": "https://backup.api.com",
       "apiKey": "sk-backup"
     }
@@ -52,6 +54,7 @@ Configurations are sorted by their `order` field:
 ### 2. Health Monitoring
 
 The load balancer continuously monitors endpoint health:
+
 - **Initial health check** on startup
 - **Periodic health checks** every 30 seconds for unhealthy endpoints
 - **Real-time monitoring** during request handling
@@ -84,7 +87,7 @@ Create multiple configurations for load balancing:
 # Add primary endpoint
 start-claude add
 # Name: primary
-# Base URL: https://api1.anthropic.com  
+# Base URL: https://api1.anthropic.com
 # API Key: sk-primary-key
 # Order: 0
 
@@ -92,7 +95,7 @@ start-claude add
 start-claude add
 # Name: backup
 # Base URL: https://api2.anthropic.com
-# API Key: sk-backup-key  
+# API Key: sk-backup-key
 # Order: 10
 
 # Start load balancer
@@ -130,7 +133,7 @@ claude --base-url http://localhost:2333 --api-key sk-claude-load-balancer-proxy-
   "max_tokens": 10,
   "messages": [
     {
-      "role": "user", 
+      "role": "user",
       "content": "ping"
     }
   ]
@@ -148,6 +151,7 @@ start-claude --balance
 ```
 
 Example status output:
+
 ```
 🔍 Testing endpoints...
 ✅ primary - HTTP 200: OK
@@ -181,7 +185,7 @@ The load balancer returns appropriate HTTP status codes:
 ### Common Error Messages
 
 - **401 Unauthorized**: Invalid API key in configuration
-- **403 Forbidden**: API key doesn't have required permissions  
+- **403 Forbidden**: API key doesn't have required permissions
 - **404 Not Found**: Incorrect base URL or endpoint path
 - **429 Rate Limited**: API rate limits exceeded
 - **502 Bad Gateway**: Network connectivity issues
@@ -208,7 +212,7 @@ Configure endpoint priority using the `order` field:
   "apiKey": "sk-tier1"
 },
 {
-  "name": "tier2-endpoint", 
+  "name": "tier2-endpoint",
   "order": 5,     // Medium priority
   "baseUrl": "https://tier2.api.com",
   "apiKey": "sk-tier2"
@@ -216,7 +220,7 @@ Configure endpoint priority using the `order` field:
 {
   "name": "fallback-endpoint",
   "order": 10,    // Lowest priority
-  "baseUrl": "https://fallback.api.com", 
+  "baseUrl": "https://fallback.api.com",
   "apiKey": "sk-fallback"
 }
 ```
@@ -252,6 +256,7 @@ If all endpoints are unhealthy:
 ### Load Balancer Won't Start
 
 Common issues:
+
 - **Port conflict**: Another service is using port 2333
 - **No valid configs**: No configurations have both `baseUrl` and `apiKey`
 - **Invalid configurations**: Check configuration syntax and required fields
@@ -259,8 +264,9 @@ Common issues:
 ### Performance Issues
 
 To improve performance:
+
 - **Reduce health check frequency** (code modification required)
-- **Use faster endpoints** for health checks  
+- **Use faster endpoints** for health checks
 - **Optimize endpoint priority** order based on response times
 - **Monitor endpoint latency** and adjust configuration accordingly
 
@@ -283,7 +289,7 @@ CMD ["start-claude", "--balance"]
 # PM2 configuration
 pm2 start "start-claude --balance" --name claude-loadbalancer
 
-# systemd service  
+# systemd service
 [Unit]
 Description=Claude Load Balancer
 After=network.target
@@ -295,6 +301,6 @@ Restart=always
 User=claude
 Environment=NODE_ENV=production
 
-[Install]  
+[Install]
 WantedBy=multi-user.target
 ```

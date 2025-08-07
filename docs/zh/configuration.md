@@ -7,13 +7,17 @@
 ## 配置文件类型
 
 ### 默认配置文件 (`profileType: "default"`)
+
 传统的自定义 API 配置：
+
 - 需要手动配置 API 密钥和基础 URL
 - 完全控制 API 端点和身份验证
 - 适用于自定义 Claude API 设置
 
 ### 官方配置文件 (`profileType: "official"`)
+
 带有代理支持的官方 Claude 登录：
+
 - 使用官方 Claude 身份验证（无需手动 API 密钥）
 - 支持 HTTP/HTTPS 代理配置以应对网络限制
 - 适合想要使用带代理支持的官方 Claude 的用户
@@ -31,31 +35,37 @@
 ## 高级配置选项
 
 ### 身份验证和 API
+
 - **身份验证令牌**: 自定义授权令牌（`ANTHROPIC_AUTH_TOKEN`）
 - **自定义标头**: 自定义 HTTP 标头（`ANTHROPIC_CUSTOM_HEADERS`）
 
 ### AWS/Bedrock 配置
+
 - **AWS Bearer 令牌**: Bedrock API 身份验证（`AWS_BEARER_TOKEN_BEDROCK`）
 - **使用 Bedrock**: 启用 Bedrock 集成（`CLAUDE_CODE_USE_BEDROCK`）
 - **跳过 Bedrock 身份验证**: 跳过 AWS 身份验证（`CLAUDE_CODE_SKIP_BEDROCK_AUTH`）
 
 ### Google Vertex AI
+
 - **使用 Vertex**: 启用 Vertex AI 集成（`CLAUDE_CODE_USE_VERTEX`）
 - **跳过 Vertex 身份验证**: 跳过 Google 身份验证（`CLAUDE_CODE_SKIP_VERTEX_AUTH`）
 - **Vertex 区域**: 不同 Claude 模型的自定义区域
 
 ### 性能和限制
+
 - **Bash 超时**: 配置命令执行超时
 - **最大输出令牌**: 设置响应的令牌限制
 - **最大思考令牌**: 配置推理令牌预算
 - **MCP 设置**: 配置模型上下文协议超时
 
 ### 行为控制
+
 - **禁用功能**: 关闭自动更新、遥测、错误报告等
 - **终端设置**: 配置终端标题更新
 - **项目目录**: 为 bash 命令维护工作目录
 
 ### 网络配置
+
 - **HTTP/HTTPS 代理**: 配置代理服务器
 
 ## 配置示例

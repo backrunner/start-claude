@@ -68,6 +68,13 @@ export function displayGrey(message: string): void {
   log(chalk.gray(message))
 }
 
+// Verbose logging - only shows when verbose mode is enabled
+export function displayVerbose(message: string, verbose: boolean = false): void {
+  if (verbose) {
+    log(chalk.gray(`[Verbose] ${message}`))
+  }
+}
+
 export function displayBoxedConfig(config: ClaudeConfig): void {
   const configDetails = []
 

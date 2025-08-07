@@ -74,6 +74,7 @@ docs/                     # 文档
 ### 配置管理
 
 `ConfigManager` 类处理：
+
 - 读取/写入配置文件
 - 验证和类型检查
 - 默认配置管理
@@ -82,6 +83,7 @@ docs/                     # 文档
 ### 负载均衡器
 
 `LoadBalancer` 类提供：
+
 - 多端点健康监控
 - 轮询请求分发
 - 自动故障转移和恢复
@@ -90,6 +92,7 @@ docs/                     # 文档
 ### CLI 接口
 
 使用 Commander.js 构建：
+
 - 命令解析和验证
 - 使用 Inquirer.js 的交互式提示
 - 使用自定义 UI 工具的彩色输出
@@ -98,6 +101,7 @@ docs/                     # 文档
 ### 存储同步
 
 S3 兼容同步：
+
 - 多提供商支持（AWS S3、Cloudflare R2、Backblaze B2）
 - 冲突解决策略
 - 安全凭据管理
@@ -115,6 +119,7 @@ npm run lint:fix
 ```
 
 主要风格指导原则：
+
 - 启用 TypeScript 严格模式
 - 需要明确的函数返回类型
 - 不允许未使用的变量
@@ -126,6 +131,7 @@ npm run lint:fix
 ### 单元测试
 
 每个主要组件都有全面的单元测试：
+
 - 配置管理（`config.test.ts`）
 - 负载均衡器功能（`load-balancer.test.ts`）
 - CLI 命令（`claude.test.ts`）
@@ -135,6 +141,7 @@ npm run lint:fix
 ### Mock 策略
 
 测试使用 Vitest mock：
+
 - 文件系统操作
 - HTTP 请求
 - 子进程执行
@@ -155,12 +162,14 @@ npm run build
 ```
 
 这会创建：
+
 - `bin/cli.cjs` - CommonJS 包
 - `bin/cli.mjs` - ES 模块包
 
 ### 包配置
 
 `package.json` 包括：
+
 - 双模块支持（CJS + ESM）
 - 可执行二进制配置
 - 全面的依赖管理
@@ -183,6 +192,7 @@ npm run build
 ### 提交消息指导原则
 
 使用约定式提交：
+
 - `feat:` - 新功能
 - `fix:` - 错误修复
 - `docs:` - 文档更改
@@ -193,6 +203,7 @@ npm run build
 ### 代码审查流程
 
 Pull Request 需要：
+
 - 所有测试通过
 - Linting 检查通过
 - 代码审查批准
@@ -218,7 +229,7 @@ start-claude --help
 ```json
 {
   "type": "node",
-  "request": "launch", 
+  "request": "launch",
   "name": "Debug CLI",
   "program": "${workspaceFolder}/bin/cli.mjs",
   "args": ["--help"],
@@ -270,6 +281,7 @@ start-claude --help
 ### 依赖安全
 
 定期安全审计：
+
 ```bash
 npm audit
 npm audit fix
@@ -280,6 +292,7 @@ npm audit fix
 ### 版本管理
 
 项目遵循语义版本控制：
+
 - Major：破坏性更改
 - Minor：新功能，向后兼容
 - Patch：错误修复，向后兼容

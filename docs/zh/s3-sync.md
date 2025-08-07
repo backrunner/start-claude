@@ -151,8 +151,9 @@ start-claude s3-setup
 ### 权限错误
 
 确保您的 S3 凭据具有以下权限：
+
 - `s3:GetObject`
-- `s3:PutObject` 
+- `s3:PutObject`
 - `s3:ListBucket`（可选，用于更好的错误消息）
 
 ### 同步冲突
