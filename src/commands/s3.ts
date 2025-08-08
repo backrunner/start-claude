@@ -132,7 +132,7 @@ export async function handleS3SyncCommand(): Promise<void> {
   await s3SyncManager.syncConfigs()
 }
 
-export async function handleS3UploadCommand(): Promise<void> {
+export async function handleS3UploadCommand(options: { force?: boolean } = {}): Promise<void> {
   displayWelcome()
 
   const s3SyncManager = new S3SyncManager()
@@ -141,7 +141,7 @@ export async function handleS3UploadCommand(): Promise<void> {
     return
   }
 
-  await s3SyncManager.uploadConfigs()
+  await s3SyncManager.uploadConfigs(options.force)
 }
 
 export async function handleS3DownloadCommand(options: { force?: boolean }): Promise<void> {

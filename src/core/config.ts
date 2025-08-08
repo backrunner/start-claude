@@ -7,6 +7,15 @@ const CONFIG_DIR = path.join(os.homedir(), '.start-claude')
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
 
 export class ConfigManager {
+  private autoSyncCallback?: () => Promise<void>
+
+  constructor() {
+    // Auto-sync callback will be set by S3SyncManager when needed
+  }
+
+  setAutoSyncCallback(callback: () => Promise<void>): void {
+    this.autoSyncCallback = callback
+  }
   private ensureConfigDir(): void {
     if (!fs.existsSync(CONFIG_DIR)) {
       fs.mkdirSync(CONFIG_DIR, { recursive: true })
@@ -51,6 +60,14 @@ export class ConfigManager {
   save(config: ConfigFile): void {
     this.ensureConfigDir()
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2))
+    
+    // Trigger auto-sync if callback is set
+    if (this.autoSyncCallback) {
+      // Run async without blocking
+      this.autoSyncCallback().catch(error => {
+        console.error('Auto-sync failed:', error)
+      })
+    }
   }
 
   addConfig(config: ClaudeConfig): void {

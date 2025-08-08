@@ -194,6 +194,7 @@ program
 program
   .command('s3-upload')
   .description('Upload local configurations to S3')
+  .option('-f, --force', 'Force overwrite remote configurations')
   .action(handleS3UploadCommand)
 
 program

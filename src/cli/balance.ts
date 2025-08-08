@@ -2,6 +2,7 @@ import type { ConfigManager } from '../core/config'
 import type { ProgramOptions } from './common'
 import process from 'node:process'
 import { ProxyServer } from '../core/proxy'
+import { S3SyncManager } from '../storage/s3-sync'
 import { displayError, displayInfo, displaySuccess } from '../utils/ui'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveBaseConfig } from './common'
@@ -15,6 +16,16 @@ export async function handleBalanceMode(
   configArg?: string,
   systemSettings?: any,
 ): Promise<void> {
+  // Check for S3 sync updates at startup
+  const s3SyncManager = new S3SyncManager()
+  if (s3SyncManager.isS3Configured()) {
+    const updated = await s3SyncManager.checkRemoteUpdates()
+    if (updated) {
+      // Reload configs after potential update
+      displayInfo('Configuration updated from S3, reloading...')
+    }
+  }
+  
   // Get all configurations for load balancing
   const configs = configManager.listConfigs()
   const balanceableConfigs = configs.filter(c => c.baseUrl && c.apiKey)

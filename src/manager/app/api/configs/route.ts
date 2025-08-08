@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import type { ClaudeConfig } from '@/types/config'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { NextResponse } from 'next/server'
@@ -70,8 +70,36 @@ function saveConfigs(configs: ClaudeConfig[], settings?: any): void {
   }
 }
 
+// Simple S3 sync check function for the manager
+async function checkS3Sync(): Promise<void> {
+  try {
+    const settings = getSettings()
+    if (!settings.s3Sync) {
+      return // No S3 config, skip sync check
+    }
+
+    // Check if local file was recently modified (within last 30 seconds)
+    // If so, skip sync check to avoid conflicts during rapid changes
+    const localStats = statSync(CONFIG_PATH)
+    const timeSinceModified = Date.now() - localStats.mtime.getTime()
+    if (timeSinceModified < 30000) {
+      return // File was recently modified, skip sync
+    }
+
+    // Basic check completed - in a full implementation, we'd check S3 here
+    // For now, we'll let the CLI handle the heavy S3 operations
+  }
+  catch (error) {
+    // Silent fail for sync checks
+    console.error('S3 sync check failed:', error)
+  }
+}
+
 export async function GET(): Promise<NextResponse> {
   try {
+    // Perform basic sync check when manager opens
+    await checkS3Sync()
+    
     const configs = getConfigs()
     const settings = getSettings()
     return NextResponse.json({ configs, settings })
