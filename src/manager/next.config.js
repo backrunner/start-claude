@@ -6,6 +6,7 @@ const nextConfig = {
   generateEtags: false,
   compress: false,
   outputFileTracingRoot: __dirname,
+  trailingSlash: false,
 }
 
 module.exports = nextConfig

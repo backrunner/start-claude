@@ -4,7 +4,6 @@ import './globals.css'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
 export const metadata: Metadata = {
   title: 'Claude Configuration Manager',

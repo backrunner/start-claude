@@ -13,10 +13,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
-// Force dynamic rendering
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
 export default function HomePage(): ReactNode {
   const [configs, setConfigs] = useState<ClaudeConfig[]>([])
   const [loading, setLoading] = useState(true)
