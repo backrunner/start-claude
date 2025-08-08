@@ -353,7 +353,7 @@ export class ConfigFileManager {
       const rawConfig = JSON.parse(content)
       return rawConfig.version || 0
     }
-    catch (error) {
+    catch {
       return 0
     }
   }
@@ -372,4 +372,3 @@ export class ConfigFileManager {
     return CONFIG_DIR
   }
 }
-

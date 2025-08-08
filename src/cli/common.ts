@@ -22,6 +22,7 @@ export interface ProgramOptions {
   permissionPromptTool?: boolean
   resume?: boolean
   continue?: boolean
+  checkUpdates?: boolean
   dangerouslySkipPermissions?: boolean
   env?: string[]
   apiKey?: string

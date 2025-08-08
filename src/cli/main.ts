@@ -17,7 +17,7 @@ import { ConfigFileManager } from '../config/file-manager'
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/ui'
-import { checkForUpdates, performAutoUpdate } from '../utils/update-checker'
+import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/update-checker'
 import { handleBalanceMode } from './balance'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveConfig } from './common'
@@ -49,6 +49,7 @@ program
   .option('--permission-prompt-tool', 'Enable permission prompt tool')
   .option('--resume', 'Resume previous session')
   .option('--continue', 'Continue previous session')
+  .option('--check-updates', 'Force check for updates')
   .option('--dangerously-skip-permissions', 'Skip permission checks (dangerous)')
   .option('-e, --env <key=value>', 'Set environment variable', (value, previous: string[] = []) => [...previous, value])
   .option('--api-key <key>', 'Override API key for this session')
@@ -109,8 +110,8 @@ program
       return
     }
 
-    // Check for updates (non-blocking)
-    const updateInfo = await checkForUpdates()
+    // Check for updates (rate limited to once per day, unless forced)
+    const updateInfo = await checkForUpdates(options.checkUpdates)
     if (updateInfo?.hasUpdate) {
       displayWarning(`🔔 Update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}`)
 
@@ -129,8 +130,13 @@ program
 
         if (updateSuccess) {
           displaySuccess(`✅ Successfully updated to version ${updateInfo.latestVersion}!`)
-          displayInfo('🔄 Please restart the command to use the new version.')
-          process.exit(0)
+          displayInfo('🔄 Relaunching with new version...')
+          
+          // Small delay to ensure the message is displayed
+          setTimeout(() => {
+            relaunchCLI()
+          }, 1000)
+          return
         }
         else {
           displayError('❌ Failed to auto-update. Please run manually:')
