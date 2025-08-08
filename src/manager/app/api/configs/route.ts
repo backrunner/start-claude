@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server'
-import type { ClaudeConfig } from '@/types/config'
+import type { ClaudeConfig } from '@/config/types'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'

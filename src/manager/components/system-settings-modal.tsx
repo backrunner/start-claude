@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { SystemSettings } from '@/types/config'
+import type { SystemSettings } from '@/config/types'
 import { Activity, AlertCircle, Cloud, Database, Globe, Key, Lock, Settings2, Shield, Timer, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'

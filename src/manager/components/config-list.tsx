@@ -103,7 +103,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                     <div className="flex items-center gap-2">
                       <Shield className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                       <span className="text-xs text-muted-foreground capitalize">
-                        {config.permissionMode.replace(/([A-Z])/g, ' $1').trim()}
+                        {config.permissionMode?.replace(/([A-Z])/g, ' $1').trim() || 'Default'}
                       </span>
                     </div>
                   )}
