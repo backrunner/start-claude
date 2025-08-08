@@ -2,8 +2,9 @@ import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import * as http from 'node:http'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import open from 'open'
 import { displayError, displayInfo, displaySuccess } from '../utils/ui'
 
@@ -18,51 +19,49 @@ export class ManagerServer {
   }
 
   async start(): Promise<void> {
-    // In development, use the source path; in production, use the bundled path
-    const isDev = process.env.NODE_ENV === 'development' || existsSync(join(process.cwd(), 'src'))
+    // When bundled as ./bin/cli.mjs, manager is in ./bin/manager
+    const currentDir = dirname(fileURLToPath(import.meta.url))
+    const managerPath = join(currentDir, './manager')
 
-    let standalonePath: string
-    let serverPath: string
-
-    if (isDev) {
-      const managerPath = join(process.cwd(), 'src/manager')
-      standalonePath = join(managerPath, '.next/standalone')
-      serverPath = join(standalonePath, 'server.js')
-    }
-    else {
-      // In production, the manager is bundled alongside the CLI
-      const binPath = join(__dirname, '../manager')
-      standalonePath = binPath
-      serverPath = join(binPath, 'server.js')
-    }
-
-    // Check if standalone build exists
-    if (!existsSync(serverPath)) {
-      throw new Error('Manager standalone build not found. Please build the manager first with: cd src/manager && pnpm run build')
+    // Check if manager build exists (look for server.js from standalone build)
+    if (!existsSync(join(managerPath, './server.js'))) {
+      throw new Error('Manager build not found. Please build the manager first with: cd src/manager && pnpm run build')
     }
 
     displayInfo('Starting Claude Configuration Manager...')
 
     try {
-      // Start the standalone server as a child process
-      this.childProcess = spawn('node', [serverPath], {
-        cwd: standalonePath,
+      // For standalone build, we spawn the server.js file directly
+      this.childProcess = spawn('node', ['./server.js'], {
+        cwd: managerPath,
         env: {
           ...process.env,
           PORT: this.port.toString(),
           HOSTNAME: 'localhost',
         },
-        stdio: ['ignore', 'ignore', 'ignore'], // Suppress all output
+        stdio: ['ignore', 'ignore', 'pipe'], // Suppress stdout, capture stderr for errors
       })
+
+      // Handle stderr for actual errors (but suppress normal Next.js output)
+      if (this.childProcess.stderr) {
+        this.childProcess.stderr.on('data', (data) => {
+          const output = data.toString().trim()
+          // Only show actual errors, not Next.js info/warnings
+          if (output.includes('Error') || output.includes('EADDRINUSE') || output.includes('Cannot')) {
+            console.error('Manager error:', output)
+          }
+        })
+      }
 
       // Handle process events
       this.childProcess.on('error', (error) => {
         displayError(`Failed to start manager: ${error.message}`)
       })
 
-      this.childProcess.on('exit', (code, _signal) => {
-        if (code !== 0 && code !== null) {
-          displayError(`Manager process exited with code ${code}`)
+      this.childProcess.on('exit', (code, signal) => {
+        // Only show error for unexpected exits (not SIGTERM which is normal shutdown)
+        if (code !== 0 && code !== null && signal !== 'SIGTERM') {
+          displayError(`Manager process exited unexpectedly with code ${code}`)
         }
         this.childProcess = null
       })
@@ -73,7 +72,12 @@ export class ManagerServer {
           reject(new Error('Server startup timeout'))
         }, 15000)
 
+        let resolved = false
+
         const checkServer = (): void => {
+          if (resolved)
+            return
+
           const req = http.request({
             hostname: 'localhost',
             port: this.port,
@@ -81,6 +85,9 @@ export class ManagerServer {
             path: '/',
             timeout: 1000,
           }, (_res) => {
+            if (resolved)
+              return
+            resolved = true
             clearTimeout(timeout)
             displaySuccess(`✨ Claude Configuration Manager is running on port ${this.port}!`)
             displayInfo(`Opening manager at http://localhost:${this.port}`)
@@ -89,13 +96,17 @@ export class ManagerServer {
           })
 
           req.on('error', () => {
-            // Server not ready yet, try again
-            setTimeout(checkServer, 1000)
+            if (!resolved) {
+              // Server not ready yet, try again
+              setTimeout(checkServer, 1000)
+            }
           })
 
           req.on('timeout', () => {
             req.destroy()
-            setTimeout(checkServer, 1000)
+            if (!resolved) {
+              setTimeout(checkServer, 1000)
+            }
           })
 
           req.end()
@@ -122,13 +133,14 @@ export class ManagerServer {
     if (this.childProcess) {
       displayInfo('Stopping Configuration Manager...')
 
+      // Send SIGTERM for graceful shutdown
       this.childProcess.kill('SIGTERM')
 
       // Wait for graceful shutdown
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           // Force kill if graceful shutdown takes too long
-          if (this.childProcess) {
+          if (this.childProcess && !this.childProcess.killed) {
             this.childProcess.kill('SIGKILL')
           }
           resolve()

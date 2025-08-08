@@ -24,6 +24,7 @@
   },
   "include": [
     "src/cli/**/*",
+    "src/commands/**/*",
     "src/core/**/*",
     "src/services/**/*",
     "src/types/**/*",
@@ -32,6 +33,7 @@
   "exclude": [
     "node_modules/**/*",
     "tests/**/*",
+    "scripts/**/*",
     "**/*.test.ts",
     "**/*.spec.ts",
     "bin",

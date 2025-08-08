@@ -5,6 +5,10 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { NextResponse } from 'next/server'
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const CONFIG_DIR = join(homedir(), '.start-claude')
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json')
 

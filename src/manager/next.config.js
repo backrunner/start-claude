@@ -5,6 +5,7 @@ const nextConfig = {
   distDir: '.next',
   generateEtags: false,
   compress: false,
+  outputFileTracingRoot: __dirname,
 }
 
 module.exports = nextConfig

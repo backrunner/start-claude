@@ -2,7 +2,6 @@ import commonjs from '@rollup/plugin-commonjs'
 import json from '@rollup/plugin-json'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
 import typescript from '@rollup/plugin-typescript'
-import copy from 'rollup-plugin-copy'
 
 // Bundle most dependencies except for Node.js builtins and AWS SDK
 const external = [
@@ -50,16 +49,6 @@ const config = {
     }),
     commonjs(),
     json(),
-    copy({
-      targets: [
-        {
-          src: 'src/manager/.next/standalone',
-          dest: 'bin/manager',
-        },
-      ],
-      hook: 'writeBundle',
-      overwrite: true,
-    }),
   ],
 }
 
