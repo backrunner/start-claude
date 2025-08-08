@@ -13,6 +13,7 @@ export async function handleBalanceMode(
   configManager: ConfigManager,
   options: ProgramOptions,
   configArg?: string,
+  systemSettings?: any,
 ): Promise<void> {
   // Get all configurations for load balancing
   const configs = configManager.listConfigs()
@@ -30,7 +31,7 @@ export async function handleBalanceMode(
   })
 
   try {
-    const proxyServer = new ProxyServer(balanceableConfigs, { enableLoadBalance: true })
+    const proxyServer = new ProxyServer(balanceableConfigs, { enableLoadBalance: true }, systemSettings)
 
     // Perform initial health checks
     await proxyServer.performInitialHealthChecks()

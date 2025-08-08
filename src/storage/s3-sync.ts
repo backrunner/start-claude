@@ -26,6 +26,10 @@ export class S3SyncManager {
     return settings.s3Sync || null
   }
 
+  public getSystemSettings(): any {
+    return this.configManager.getSettings()
+  }
+
   private normalizeS3Key(key: string): string {
     // Remove leading slash if present
     return key.startsWith('/') ? key.slice(1) : key

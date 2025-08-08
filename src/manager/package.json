@@ -22,7 +22,8 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.292.0",
     "tailwind-merge": "^2.6.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^4.0.15"
   },
   "devDependencies": {
     "@types/node": "^20.19.9",

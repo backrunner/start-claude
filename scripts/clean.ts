@@ -14,11 +14,13 @@ async function cleanDirectories(): Promise<void> {
     try {
       await rm(dir, { recursive: true, force: true })
       console.log(`✅ Cleaned: ${dir}`)
-    } catch (error) {
+    }
+    catch (error) {
       // Ignore errors if directory doesn't exist
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
         console.log(`ℹ️  Directory not found (already clean): ${dir}`)
-      } else {
+      }
+      else {
         console.error(`❌ Failed to clean ${dir}:`, error)
         process.exit(1)
       }

@@ -47,17 +47,29 @@ export interface ClaudeConfig {
   vertexRegion40Sonnet?: string
 }
 
-export interface ConfigFile {
-  configs: ClaudeConfig[]
-  settings: {
-    overrideClaudeCommand: boolean
-    s3Sync?: {
-      bucket: string
-      region: string
-      accessKeyId: string
-      secretAccessKey: string
-      key: string
-      endpointUrl?: string
+export interface SystemSettings {
+  overrideClaudeCommand: boolean
+  balanceMode?: {
+    enableByDefault: boolean
+    healthCheck: {
+      enabled: boolean
+      intervalMs: number
+    }
+    failedEndpoint: {
+      banDurationSeconds: number
     }
   }
+  s3Sync?: {
+    bucket: string
+    region: string
+    accessKeyId: string
+    secretAccessKey: string
+    key: string
+    endpointUrl?: string
+  }
+}
+
+export interface ConfigFile {
+  configs: ClaudeConfig[]
+  settings: SystemSettings
 }

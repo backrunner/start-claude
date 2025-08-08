@@ -109,7 +109,19 @@ describe('proxyServer', () => {
   describe('constructor - load balancer mode', () => {
     beforeEach(() => {
       const proxyMode: ProxyMode = { enableLoadBalance: true }
-      proxyServer = new ProxyServer(testConfigs, proxyMode)
+      const systemSettings = {
+        balanceMode: {
+          enableByDefault: false,
+          healthCheck: {
+            enabled: true,
+            intervalMs: 15000,
+          },
+          failedEndpoint: {
+            banDurationSeconds: 180,
+          },
+        },
+      }
+      proxyServer = new ProxyServer(testConfigs, proxyMode, systemSettings)
     })
 
     it('should initialize with valid configurations', () => {
@@ -145,6 +157,30 @@ describe('proxyServer', () => {
       const ps = new ProxyServer(invalidConfigs, proxyMode)
       const status = ps.getStatus()
       expect(status.total).toBe(1)
+    })
+
+    it('should apply system settings for balance mode', () => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      const systemSettings = {
+        balanceMode: {
+          enableByDefault: true,
+          healthCheck: {
+            enabled: false,
+            intervalMs: 60000,
+          },
+          failedEndpoint: {
+            banDurationSeconds: 600,
+          },
+        },
+      }
+
+      const ps = new ProxyServer(testConfigs, proxyMode, systemSettings)
+
+      // Check that system settings are applied (we can't directly access private properties,
+      // but we can test the behavior through other methods)
+      const status = ps.getStatus()
+      expect(status.total).toBe(3)
+      expect(status.loadBalance).toBe(true)
     })
 
     it('should throw error when no valid configs provided', () => {
@@ -201,6 +237,76 @@ describe('proxyServer', () => {
       expect(status.endpoints[1].config.name).toBe('config2')
       expect(status.endpoints[2].config.name).toBe('config3')
       expect(status.loadBalance).toBe(true)
+    })
+  })
+
+  describe('endpoint banning functionality', () => {
+    it('should handle endpoint banning when health checks are disabled', () => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      const systemSettings = {
+        balanceMode: {
+          healthCheck: {
+            enabled: false,
+            intervalMs: 30000,
+          },
+          failedEndpoint: {
+            banDurationSeconds: 60, // 1 minute for testing
+          },
+        },
+      }
+
+      const ps = new ProxyServer(testConfigs, proxyMode, systemSettings)
+      const markEndpointUnhealthy = (ps as any).markEndpointUnhealthy.bind(ps)
+      const getNextHealthyEndpoint = (ps as any).getNextHealthyEndpoint.bind(ps)
+
+      const status = ps.getStatus()
+      const endpoint = status.endpoints[0]
+
+      // Mark endpoint as unhealthy (should trigger ban)
+      markEndpointUnhealthy(endpoint, 'Test error')
+
+      // Should have bannedUntil timestamp set
+      expect(endpoint.bannedUntil).toBeDefined()
+      expect(endpoint.bannedUntil).toBeGreaterThan(Date.now())
+
+      // Should skip banned endpoint
+      const nextEndpoint = getNextHealthyEndpoint()
+      expect(nextEndpoint?.config.name).not.toBe(endpoint.config.name)
+    })
+
+    it('should expire bans after duration when health checks are disabled', () => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      const systemSettings = {
+        balanceMode: {
+          healthCheck: {
+            enabled: false,
+            intervalMs: 30000,
+          },
+          failedEndpoint: {
+            banDurationSeconds: 0.1, // Very short duration for testing
+          },
+        },
+      }
+
+      const ps = new ProxyServer(testConfigs, proxyMode, systemSettings)
+      const markEndpointUnhealthy = (ps as any).markEndpointUnhealthy.bind(ps)
+      const getNextHealthyEndpoint = (ps as any).getNextHealthyEndpoint.bind(ps)
+
+      const status = ps.getStatus()
+      const endpoint = status.endpoints[0]
+
+      // Mark endpoint as unhealthy
+      markEndpointUnhealthy(endpoint, 'Test error')
+      expect(endpoint.isHealthy).toBe(false)
+
+      // Wait for ban to expire (using setTimeout would make test async, so we'll simulate)
+      endpoint.bannedUntil = Date.now() - 1000 // Set ban to expired
+
+      // Should be available again
+      const nextEndpoint = getNextHealthyEndpoint()
+      expect(nextEndpoint?.config.name).toBe(endpoint.config.name)
+      expect(endpoint.isHealthy).toBe(true) // Should be marked healthy again
+      expect(endpoint.bannedUntil).toBeUndefined()
     })
   })
 

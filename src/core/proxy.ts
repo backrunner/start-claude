@@ -15,6 +15,7 @@ interface EndpointStatus {
   lastCheck: number
   failureCount: number
   lastError?: string
+  bannedUntil?: number // Timestamp when ban expires
 }
 
 export class ProxyServer {
@@ -22,6 +23,9 @@ export class ProxyServer {
   private currentIndex = 0
   private server?: http.Server
   private healthCheckInterval?: NodeJS.Timeout
+  private healthCheckIntervalMs: number = 30000 // Default 30 seconds
+  private healthCheckEnabled: boolean = true
+  private failedEndpointBanDurationSeconds: number = 300 // Default 5 minutes
   private proxyApiKey: string = 'sk-claude-proxy-server'
   private transformerService: TransformerService
   private configService: ConfigService
@@ -30,9 +34,16 @@ export class ProxyServer {
   private enableTransform: boolean = false
   private verbose: boolean = false
 
-  constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode) {
+  constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode, systemSettings?: any) {
     this.proxyMode = proxyMode || {}
     this.verbose = this.proxyMode.verbose || false
+
+    // Apply system settings for balance mode
+    if (systemSettings?.balanceMode) {
+      this.healthCheckIntervalMs = systemSettings.balanceMode.healthCheck?.intervalMs || 30000
+      this.healthCheckEnabled = systemSettings.balanceMode.healthCheck?.enabled !== false
+      this.failedEndpointBanDurationSeconds = systemSettings.balanceMode.failedEndpoint?.banDurationSeconds || 300
+    }
 
     // Initialize services
     this.configService = new ConfigService()
@@ -116,8 +127,8 @@ export class ProxyServer {
         const featureText = features.length > 0 ? ` (${features.join(' + ')})` : ''
         displaySuccess(`🚀 Proxy server started on port ${port}${featureText}`)
 
-        // Start health checks only if load balancing is enabled
-        if (this.enableLoadBalance) {
+        // Start health checks only if load balancing is enabled and health checks are enabled
+        if (this.enableLoadBalance && this.healthCheckEnabled) {
           this.startHealthChecks()
         }
         resolve()
@@ -309,15 +320,32 @@ export class ProxyServer {
   }
 
   private getNextHealthyEndpoint(): EndpointStatus | null {
-    const healthyEndpoints = this.endpoints.filter(e => e.isHealthy)
+    const now = Date.now()
 
-    if (healthyEndpoints.length === 0) {
+    // Filter out banned endpoints and unhealthy endpoints
+    const availableEndpoints = this.endpoints.filter((e) => {
+      // If health checks are disabled, check if ban has expired
+      if (!this.healthCheckEnabled && e.bannedUntil) {
+        if (now < e.bannedUntil) {
+          return false // Still banned
+        }
+        else {
+          // Ban expired, mark as healthy
+          e.isHealthy = true
+          e.bannedUntil = undefined
+        }
+      }
+
+      return e.isHealthy
+    })
+
+    if (availableEndpoints.length === 0) {
       return null
     }
 
-    // Simple round-robin selection among healthy endpoints
-    const endpoint = healthyEndpoints[this.currentIndex % healthyEndpoints.length]
-    this.currentIndex = (this.currentIndex + 1) % healthyEndpoints.length
+    // Simple round-robin selection among available endpoints
+    const endpoint = availableEndpoints[this.currentIndex % availableEndpoints.length]
+    this.currentIndex = (this.currentIndex + 1) % availableEndpoints.length
 
     return endpoint
   }
@@ -529,21 +557,39 @@ export class ProxyServer {
     endpoint.failureCount++
     endpoint.lastError = error
     endpoint.lastCheck = Date.now()
+
+    // If health checks are disabled, ban the endpoint for a duration
+    if (!this.healthCheckEnabled) {
+      endpoint.bannedUntil = Date.now() + (this.failedEndpointBanDurationSeconds * 1000)
+      displayVerbose(`Endpoint ${endpoint.config.name} banned until ${new Date(endpoint.bannedUntil).toLocaleTimeString()}`, this.verbose)
+    }
   }
 
   private startHealthChecks(): void {
-    // Check unhealthy endpoints every 30 seconds
+    // Only start if health checks are enabled
+    if (!this.healthCheckEnabled) {
+      displayVerbose('Health checks disabled', this.verbose)
+      return
+    }
+
+    // Check unhealthy endpoints at configured interval
     this.healthCheckInterval = setInterval(() => {
       void this.performHealthChecks()
-    }, 30000)
+    }, this.healthCheckIntervalMs)
+
+    displayVerbose(`Health checks started with ${this.healthCheckIntervalMs}ms interval`, this.verbose)
   }
 
   private async performHealthChecks(): Promise<void> {
+    if (!this.healthCheckEnabled) {
+      return
+    }
+
     const unhealthyEndpoints = this.endpoints.filter(e => !e.isHealthy)
 
     for (const endpoint of unhealthyEndpoints) {
-      // Only check if it's been at least 30 seconds since last check
-      if (Date.now() - endpoint.lastCheck < 30000) {
+      // Only check if it's been at least the configured interval since last check
+      if (Date.now() - endpoint.lastCheck < this.healthCheckIntervalMs) {
         continue
       }
 
@@ -650,6 +696,12 @@ export class ProxyServer {
     // Skip health checks if load balancing is disabled
     if (!this.enableLoadBalance) {
       displaySuccess('🔧 Proxy ready - health checks skipped (load balancing disabled)')
+      return
+    }
+
+    // Skip initial health checks if health checking is disabled
+    if (!this.healthCheckEnabled) {
+      displaySuccess('🔧 Proxy ready - health checks disabled, using ban system for failures')
       return
     }
 

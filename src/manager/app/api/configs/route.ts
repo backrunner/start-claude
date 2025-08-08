@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { NextResponse } from 'next/server'
+import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -31,17 +32,35 @@ function getConfigs(): ClaudeConfig[] {
   }
 }
 
-function saveConfigs(configs: ClaudeConfig[]): void {
+function getSettings(): any {
   try {
     if (!existsSync(CONFIG_DIR)) {
       mkdirSync(CONFIG_DIR, { recursive: true })
     }
 
+    if (!existsSync(CONFIG_PATH)) {
+      return { overrideClaudeCommand: false }
+    }
+    const data = readFileSync(CONFIG_PATH, 'utf8')
+    const parsed = JSON.parse(data)
+    return parsed.settings || { overrideClaudeCommand: false }
+  }
+  catch (error) {
+    console.error('Error reading settings:', error)
+    return { overrideClaudeCommand: false }
+  }
+}
+
+function saveConfigs(configs: ClaudeConfig[], settings?: any): void {
+  try {
+    if (!existsSync(CONFIG_DIR)) {
+      mkdirSync(CONFIG_DIR, { recursive: true })
+    }
+
+    const currentSettings = settings || getSettings()
     const data = {
       configs,
-      settings: {
-        overrideClaudeCommand: false,
-      },
+      settings: currentSettings,
     }
     writeFileSync(CONFIG_PATH, JSON.stringify(data, null, 2))
   }
@@ -54,7 +73,8 @@ function saveConfigs(configs: ClaudeConfig[]): void {
 export async function GET(): Promise<NextResponse> {
   try {
     const configs = getConfigs()
-    return NextResponse.json({ configs })
+    const settings = getSettings()
+    return NextResponse.json({ configs, settings })
   }
   catch (error) {
     console.error('GET /api/configs error:', error)
@@ -65,24 +85,57 @@ export async function GET(): Promise<NextResponse> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json()
-    const { config } = body
 
-    if (!config || !config.name) {
-      return NextResponse.json({ error: 'Invalid config data' }, { status: 400 })
+    // Validate the request body
+    const validationResult = configCreateRequestSchema.safeParse(body)
+    if (!validationResult.success) {
+      return NextResponse.json({
+        error: 'Validation failed',
+        details: validationResult.error.issues,
+      }, { status: 400 })
+    }
+
+    const { config } = validationResult.data
+
+    if (!config.name) {
+      return NextResponse.json({ error: 'Configuration name is required' }, { status: 400 })
     }
 
     const configs = getConfigs()
     const existingIndex = configs.findIndex(c => c.name === config.name)
 
     if (existingIndex >= 0) {
-      configs[existingIndex] = { ...configs[existingIndex], ...config }
+      // Validate the updated config before saving
+      const updatedConfigResult = claudeConfigSchema.safeParse({
+        ...configs[existingIndex],
+        ...config,
+      })
+
+      if (!updatedConfigResult.success) {
+        return NextResponse.json({
+          error: 'Invalid configuration data',
+          details: updatedConfigResult.error.issues,
+        }, { status: 400 })
+      }
+
+      configs[existingIndex] = updatedConfigResult.data
     }
     else {
-      configs.push({
+      // Validate new config
+      const newConfigResult = claudeConfigSchema.safeParse({
         ...config,
         order: config.order ?? configs.length,
         enabled: config.enabled ?? true,
       })
+
+      if (!newConfigResult.success) {
+        return NextResponse.json({
+          error: 'Invalid configuration data',
+          details: newConfigResult.error.issues,
+        }, { status: 400 })
+      }
+
+      configs.push(newConfigResult.data)
     }
 
     saveConfigs(configs)
@@ -90,6 +143,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   catch (error) {
     console.error('POST /api/configs error:', error)
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
+    }
     return NextResponse.json({ error: 'Failed to save config' }, { status: 500 })
   }
 }
@@ -97,17 +153,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 export async function PUT(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json()
-    const { configs } = body
 
-    if (!Array.isArray(configs)) {
-      return NextResponse.json({ error: 'Invalid configs data' }, { status: 400 })
+    // Validate the request body
+    const validationResult = configUpdateRequestSchema.safeParse(body)
+    if (!validationResult.success) {
+      return NextResponse.json({
+        error: 'Validation failed',
+        details: validationResult.error.issues,
+      }, { status: 400 })
     }
 
-    saveConfigs(configs)
-    return NextResponse.json({ success: true, configs })
+    const { configs } = validationResult.data
+
+    // Validate each config individually
+    const validatedConfigs: ClaudeConfig[] = []
+    for (const config of configs) {
+      const configValidation = claudeConfigSchema.safeParse(config)
+      if (!configValidation.success) {
+        return NextResponse.json({
+          error: `Invalid configuration "${config.name}": ${configValidation.error.issues.map(i => i.message).join(', ')}`,
+        }, { status: 400 })
+      }
+      validatedConfigs.push(configValidation.data)
+    }
+
+    saveConfigs(validatedConfigs)
+    return NextResponse.json({ success: true, configs: validatedConfigs })
   }
   catch (error) {
     console.error('PUT /api/configs error:', error)
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
+    }
     return NextResponse.json({ error: 'Failed to update configs' }, { status: 500 })
   }
 }

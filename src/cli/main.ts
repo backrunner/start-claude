@@ -60,14 +60,36 @@ program
       return
     }
 
-    if (options.balance === true) {
-      displayWelcome()
-      await handleBalanceMode(configManager, options, configArg)
-      return
-    }
-
     // Always show welcome at the start
     displayWelcome()
+
+    // Check if balance mode should be enabled by default (unless explicitly disabled)
+    let shouldUseBalance = options.balance === true
+    let systemSettings: any = null
+
+    if (!shouldUseBalance && options.balance !== false) {
+      try {
+        systemSettings = s3SyncManager.getSystemSettings()
+        shouldUseBalance = systemSettings?.balanceMode?.enableByDefault === true
+      }
+      catch {
+        // Ignore errors getting system settings, just use default behavior
+      }
+    }
+
+    if (shouldUseBalance) {
+      // Get fresh system settings if we haven't already
+      if (!systemSettings) {
+        try {
+          systemSettings = s3SyncManager.getSystemSettings()
+        }
+        catch {
+          // Use null if we can't get settings
+        }
+      }
+      await handleBalanceMode(configManager, options, configArg, systemSettings)
+      return
+    }
 
     // Check for updates (non-blocking)
     const updateInfo = await checkForUpdates()
