@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import type { ClaudeConfig } from '@/types/config'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { NextResponse } from 'next/server'
@@ -83,7 +83,7 @@ async function checkS3Sync(): Promise<void> {
     const localStats = statSync(CONFIG_PATH)
     const timeSinceModified = Date.now() - localStats.mtime.getTime()
     if (timeSinceModified < 30000) {
-      return // File was recently modified, skip sync
+      // File was recently modified, skip sync
     }
 
     // Basic check completed - in a full implementation, we'd check S3 here
@@ -99,7 +99,7 @@ export async function GET(): Promise<NextResponse> {
   try {
     // Perform basic sync check when manager opens
     await checkS3Sync()
-    
+
     const configs = getConfigs()
     const settings = getSettings()
     return NextResponse.json({ configs, settings })

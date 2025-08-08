@@ -1,10 +1,10 @@
-import type { ConfigFile } from '../core/types'
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import type { ConfigFile } from '../config/types'
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import inquirer from 'inquirer'
-import { ConfigManager } from '../core/config'
+import { ConfigManager } from '../config/manager'
 import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/ui'
 
 export interface S3Config {
@@ -34,9 +34,9 @@ export class S3SyncManager {
 
   constructor() {
     this.configManager = new ConfigManager()
-    
+
     // Set up auto-sync callback when config changes
-    this.configManager.setAutoSyncCallback(() => this.autoUploadAfterChange())
+    this.configManager.setAutoSyncCallback(async () => this.autoUploadAfterChange())
   }
 
   private getS3Config(): S3Config | null {
@@ -232,7 +232,7 @@ export class S3SyncManager {
         displayWarning('⚠️  Remote file is newer than local file!')
         displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
         displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
-        
+
         const overwriteAnswer = await inquirer.prompt([
           {
             type: 'confirm',
@@ -292,7 +292,7 @@ export class S3SyncManager {
       // Get local file info for comparison
       const localFile = this.getLocalFileInfo()
       const localConfigs = this.configManager.listConfigs()
-      
+
       // Check if local configs exist and we're not forcing
       if (localConfigs.length > 0 && !force) {
         // Check timestamps and warn if local is newer
@@ -300,7 +300,7 @@ export class S3SyncManager {
           displayWarning('⚠️  Local file is newer than remote file!')
           displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
           displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
-          
+
           const overwriteAnswer = await inquirer.prompt([
             {
               type: 'confirm',
@@ -314,11 +314,12 @@ export class S3SyncManager {
             displayInfo('Download cancelled.')
             return false
           }
-        } else {
+        }
+        else {
           // Remote is newer or same, show timestamps
           displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
           displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
-          
+
           const overwriteAnswer = await inquirer.prompt([
             {
               type: 'confirm',
@@ -364,30 +365,32 @@ export class S3SyncManager {
 
     try {
       this.initializeS3Client(s3Config)
-      
+
       const localFile = this.getLocalFileInfo()
       const remoteInfo = await this.getS3ObjectInfo(s3Config)
-      
+
       if (!remoteInfo.exists) {
         // No remote file, upload local
         displayInfo('No remote configuration found, uploading local configs...')
         return await this.uploadConfigs(true)
       }
-      
+
       if (localFile.lastModified.getTime() === 0) {
         // No local file, download remote
         displayInfo('No local configuration found, downloading from S3...')
         return await this.downloadConfigs(true)
       }
-      
+
       // Both files exist, compare timestamps
       if (localFile.lastModified > remoteInfo.lastModified) {
         displayInfo('Local file is newer, uploading to S3...')
         return await this.uploadConfigs(true)
-      } else if (remoteInfo.lastModified > localFile.lastModified) {
+      }
+      else if (remoteInfo.lastModified > localFile.lastModified) {
         displayInfo('Remote file is newer, downloading from S3...')
         return await this.downloadConfigs(true)
-      } else {
+      }
+      else {
         displayInfo('Files are in sync.')
         return true
       }
@@ -409,10 +412,10 @@ export class S3SyncManager {
 
     try {
       this.initializeS3Client(this.getS3Config()!)
-      
+
       const localFile = this.getLocalFileInfo()
       const remoteInfo = await this.getS3ObjectInfo(this.getS3Config()!)
-      
+
       if (!remoteInfo.exists) {
         // No remote file, upload local if it exists
         if (localFile.lastModified.getTime() > 0) {
@@ -420,24 +423,25 @@ export class S3SyncManager {
         }
         return true
       }
-      
+
       if (localFile.lastModified.getTime() === 0) {
         // No local file, download remote
         return await this.downloadConfigs(true)
       }
-      
+
       // Both files exist, auto-sync only if one is clearly newer
       const timeDiffMs = Math.abs(localFile.lastModified.getTime() - remoteInfo.lastModified.getTime())
       const fiveMinutesMs = 5 * 60 * 1000
-      
+
       if (timeDiffMs < fiveMinutesMs) {
         // Files are very close in time, don't auto-sync
         return true
       }
-      
+
       if (localFile.lastModified > remoteInfo.lastModified) {
         return await this.uploadConfigs(true)
-      } else {
+      }
+      else {
         return await this.downloadConfigs(true)
       }
     }
@@ -457,27 +461,27 @@ export class S3SyncManager {
 
     try {
       this.initializeS3Client(this.getS3Config()!)
-      
+
       const localFile = this.getLocalFileInfo()
       const remoteInfo = await this.getS3ObjectInfo(this.getS3Config()!)
-      
+
       if (!remoteInfo.exists) {
         return false
       }
-      
+
       if (localFile.lastModified.getTime() === 0) {
         // No local file, download remote
         displayInfo('Remote configuration found, downloading...')
         return await this.downloadConfigs(true)
       }
-      
+
       // Check if remote is newer
       if (remoteInfo.lastModified > localFile.lastModified) {
         const timeDiff = Math.round((remoteInfo.lastModified.getTime() - localFile.lastModified.getTime()) / 1000)
         displayWarning(`🔄 Newer configuration available on S3 (${timeDiff} seconds newer)`)
         displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
         displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
-        
+
         const updateAnswer = await inquirer.prompt([
           {
             type: 'confirm',
@@ -491,7 +495,7 @@ export class S3SyncManager {
           return await this.downloadConfigs(true)
         }
       }
-      
+
       return false
     }
     catch (error) {
@@ -511,7 +515,7 @@ export class S3SyncManager {
     try {
       // Small delay to ensure file is written completely
       await new Promise(resolve => setTimeout(resolve, 1000))
-      
+
       await this.uploadConfigs(true)
     }
     catch (error) {

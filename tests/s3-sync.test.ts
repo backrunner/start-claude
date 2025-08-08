@@ -1,6 +1,31 @@
-import type { ConfigFile } from '@/core/types'
+import type { ConfigFile } from '@/config/types'
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Mock inquirer
+vi.mock('inquirer', () => ({
+  default: {
+    prompt: vi.fn().mockResolvedValue({ overwrite: true }),
+  },
+}))
+
+// Mock file system
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn().mockReturnValue(true),
+  statSync: vi.fn().mockReturnValue({
+    mtime: new Date('2023-01-01T00:00:00Z'),
+  }),
+}))
+
+// Mock path operations
+vi.mock('node:path', () => ({
+  join: vi.fn((...paths) => paths.join('/')),
+}))
+
+// Mock os operations
+vi.mock('node:os', () => ({
+  homedir: vi.fn().mockReturnValue('/home/test'),
+}))
 
 // Create mock instances
 const mockS3ClientInstance = {
@@ -17,16 +42,19 @@ const mockConfigManagerInstance = {
   getConfigFile: vi.fn(),
   saveConfigFile: vi.fn(),
   listConfigs: vi.fn(),
+  setAutoSyncCallback: vi.fn(),
 }
 
 // Mock the AWS S3 client
 vi.mock('@aws-sdk/client-s3', () => ({
   S3Client: vi.fn().mockImplementation(() => mockS3ClientInstance),
   PutObjectCommand: vi.fn(),
+  HeadObjectCommand: vi.fn(),
+  GetObjectCommand: vi.fn(),
 }))
 
 // Mock the dependencies
-vi.mock('@/core/config', () => ({
+vi.mock('@/config/manager', () => ({
   ConfigManager: vi.fn().mockImplementation(() => mockConfigManagerInstance),
 }))
 
@@ -131,7 +159,14 @@ describe('s3SyncManager', () => {
     it('should upload configurations to S3', async () => {
       mockConfigManagerInstance.getSettings.mockReturnValue({ s3Sync: mockS3Config })
       mockConfigManagerInstance.getConfigFile.mockReturnValue({ configs: [], settings: {} })
-      mockS3ClientInstance.send.mockResolvedValue({})
+      
+      // Mock the S3 client to handle HeadObject (file doesn't exist) and PutObject
+      mockS3ClientInstance.send
+        .mockRejectedValueOnce({ // HeadObject - file doesn't exist
+          name: 'NotFound',
+          $metadata: { httpStatusCode: 404 },
+        })
+        .mockResolvedValueOnce({}) // PutObject - successful upload
 
       const result = await s3SyncManager.uploadConfigs()
 
@@ -140,6 +175,7 @@ describe('s3SyncManager', () => {
         Key: 'test-config.json',
         Body: expect.any(String),
         ContentType: 'application/json',
+        Metadata: expect.any(Object),
       })
       expect(result).toBe(true)
     })
@@ -169,6 +205,7 @@ describe('s3SyncManager', () => {
       mockConfigManagerInstance.listConfigs.mockReturnValue([])
 
       const mockConfigData: ConfigFile = {
+        version: 1,
         configs: [{ name: 'test', isDefault: true }],
         settings: { overrideClaudeCommand: false },
       }
@@ -183,7 +220,7 @@ describe('s3SyncManager', () => {
 
       const result = await s3SyncManager.downloadConfigs(true)
 
-      expect(result).toBe(false)
+      expect(result).toBe(true)
     })
 
     it('should handle case when no remote config exists', async () => {
@@ -257,7 +294,14 @@ describe('s3SyncManager', () => {
     it('should sync configurations to S3', async () => {
       mockConfigManagerInstance.getSettings.mockReturnValue({ s3Sync: mockS3Config })
       mockConfigManagerInstance.getConfigFile.mockReturnValue({ configs: [], settings: {} })
-      mockS3ClientInstance.send.mockResolvedValue({})
+      
+      // Mock the S3 client calls for syncConfigs (HeadObject + PutObject)
+      mockS3ClientInstance.send
+        .mockRejectedValueOnce({ // HeadObject - file doesn't exist
+          name: 'NotFound',
+          $metadata: { httpStatusCode: 404 },
+        })
+        .mockResolvedValueOnce({}) // PutObject - successful upload
 
       const result = await s3SyncManager.syncConfigs()
 

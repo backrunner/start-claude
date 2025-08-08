@@ -1,6 +1,14 @@
 # Load Balancer Guide
 
-The load balancer feature allows you to distribute requests across multiple Claude API endpoints for improved reliability and performance.
+The enhanced load balancer distributes requests across multiple Claude API endpoints with intelligent health monitoring, automatic failover, and configurable system settings.
+
+## 🆕 Enhanced Features
+
+- **🏥 Smart Health Monitoring**: Configurable health check intervals (10s - 5min)
+- **🚫 Endpoint Banning**: Auto-ban failed endpoints with configurable duration (1min - 1hour)
+- **⚙️ System Integration**: Configure via modern web interface
+- **🔄 Auto-Enable**: Set balance mode as default behavior
+- **📊 Enhanced Logging**: Detailed health check and failover information
 
 ## Overview
 

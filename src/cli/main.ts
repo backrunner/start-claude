@@ -11,7 +11,8 @@ import { handleEditConfigCommand } from '../commands/edit-config'
 import { handleManagerCommand } from '../commands/manager'
 import { handleOverrideCommand } from '../commands/override'
 import { handleS3DownloadCommand, handleS3SetupCommand, handleS3StatusCommand, handleS3SyncCommand, handleS3UploadCommand } from '../commands/s3'
-import { ConfigManager } from '../core/config'
+import { ConfigManager } from '../config/manager'
+import { ConfigFileManager } from '../config/file-manager'
 
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
@@ -22,6 +23,7 @@ import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveConfig } from './common'
 
 const program = new Command()
+const configFileManager = ConfigFileManager.getInstance()
 const configManager = new ConfigManager()
 const s3SyncManager = new S3SyncManager()
 
@@ -62,6 +64,22 @@ program
 
     // Always show welcome at the start
     displayWelcome()
+
+    // Check and perform config migrations if needed
+    try {
+      if (configFileManager.needsMigration()) {
+        const currentVersion = configFileManager.getCurrentVersion()
+        displayInfo(`🔄 Configuration migration needed (current version: ${currentVersion})`)
+
+        // Load the config, which will automatically perform migration
+        configFileManager.load()
+        displaySuccess('✅ Configuration migration completed successfully')
+      }
+    }
+    catch (error) {
+      displayWarning(`⚠️  Config migration check failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      displayInfo('Continuing with current configuration...')
+    }
 
     // Check if balance mode should be enabled by default (unless explicitly disabled)
     let shouldUseBalance = options.balance === true

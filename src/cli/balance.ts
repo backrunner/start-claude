@@ -1,4 +1,4 @@
-import type { ConfigManager } from '../core/config'
+import type { ConfigManager } from '../config/manager'
 import type { ProgramOptions } from './common'
 import process from 'node:process'
 import { ProxyServer } from '../core/proxy'
@@ -25,7 +25,7 @@ export async function handleBalanceMode(
       displayInfo('Configuration updated from S3, reloading...')
     }
   }
-  
+
   // Get all configurations for load balancing
   const configs = configManager.listConfigs()
   const balanceableConfigs = configs.filter(c => c.baseUrl && c.apiKey)

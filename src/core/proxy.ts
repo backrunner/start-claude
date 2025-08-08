@@ -1,5 +1,5 @@
 import type { ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
-import type { ClaudeConfig } from './types'
+import type { ClaudeConfig } from '@/config/types'
 import { Buffer } from 'node:buffer'
 import * as http from 'node:http'
 import * as https from 'node:https'

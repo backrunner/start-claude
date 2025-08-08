@@ -1,5 +1,5 @@
-import type { ConfigManager } from '../core/config'
-import type { ClaudeConfig } from '../core/types'
+import type { ConfigManager } from '../config/manager'
+import type { ClaudeConfig } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
 import inquirer from 'inquirer'

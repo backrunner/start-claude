@@ -1,6 +1,13 @@
 # S3 Sync Guide
 
-Synchronize your configurations across multiple devices using Amazon S3 or any S3-compatible storage service.
+Synchronize your configurations across multiple devices using Amazon S3 or any S3-compatible storage service with intelligent timestamp-based conflict resolution.
+
+## 🆕 New Features
+
+- **⏰ Timestamp Tracking**: Smart conflict detection with file modification timestamps
+- **⚠️ Conflict Warnings**: Visual warnings when overwriting newer files
+- **🔄 Automatic Sync**: Auto-upload when configs change, auto-download when manager opens
+- **⚙️ System Integration**: Configure sync preferences via web interface
 
 ## Supported Storage Services
 
@@ -12,17 +19,25 @@ Synchronize your configurations across multiple devices using Amazon S3 or any S
 ## Quick Setup
 
 ```bash
-# Setup S3/S3-compatible sync (interactive)
+# Setup S3/S3-compatible sync with timestamp tracking
 start-claude s3-setup
 
-# Upload local configs to storage
+# Smart sync with conflict detection
+start-claude s3-sync
+
+# Upload local configs (with timestamp warnings)
 start-claude s3-upload
+start-claude s3-upload --force  # Skip timestamp warnings
 
-# Download configs from storage
+# Download configs with timestamp comparison
 start-claude s3-download
+start-claude s3-download --force # Skip conflict prompts
 
-# Check sync status
+# Check sync status and timestamps
 start-claude s3-status
+
+# Configure sync preferences via web interface
+start-claude manager  # Go to System Settings
 ```
 
 ## Setup Flow
@@ -102,26 +117,69 @@ start-claude s3-setup
 
 ## How It Works
 
+### Timestamp-Based Sync
+
+1. **Upload Process**:
+   - Reads local configurations with modification timestamp
+   - Compares with remote file timestamp (if exists)
+   - Warns if remote file is newer than local
+   - Uploads with timestamp metadata to S3
+
+2. **Download Process**:
+   - Retrieves remote file with timestamp information
+   - Compares with local file modification time
+   - Warns if local file is newer than remote
+   - Shows both timestamps for informed decision-making
+
+3. **Smart Conflict Resolution**:
+   - **Auto-sync**: Only when time difference > 5 minutes (clear winner)
+   - **Manual prompts**: Shows timestamps for user decision
+   - **Default choices**: Favor downloading newer remote files
+
 ### Upload Process
 
 1. Reads local configurations from `~/.start-claude/config.json`
-2. Uploads the entire configuration file to your specified S3 bucket
-3. Preserves all settings including configurations and sync settings
+2. **Checks file modification timestamp**
+3. **Compares with remote timestamp** (if remote file exists)
+4. **Warns user** if attempting to overwrite newer remote file
+5. Uploads with **timestamp metadata** to S3 object headers
 
 ### Download Process
 
-1. Connects to your S3 bucket using stored credentials
-2. Downloads the remote configuration file
-3. Merges or replaces local configurations based on your choice
-4. Preserves local S3 sync settings
+1. Connects to S3 bucket and **retrieves file with timestamp**
+2. **Compares timestamps** between local and remote files
+3. **Shows modification times** for both files
+4. **Prompts for confirmation** if overwriting newer local file
+5. Downloads and merges configurations with **timestamp awareness**
+
+### Auto-Sync Process
+
+**When configs change locally:**
+
+- Automatically triggers upload after 1-second delay
+- Silent operation (no prompts for auto-sync)
+- Only occurs when S3 sync is configured
+
+**When manager opens:**
+
+- Checks for remote updates automatically
+- Downloads if remote is clearly newer (>30 second difference)
+- Skips sync if files were recently modified
+
+**In balance mode:**
+
+- Checks for remote updates with user prompts
+- Shows timestamp differences for manual decision
+- Allows immediate config reload after sync
 
 ### Sync Process
 
-The sync command intelligently handles conflicts:
+The sync command intelligently handles conflicts with **timestamp awareness**:
 
 - **No local configs**: Automatically downloads remote configurations
 - **No remote configs**: Uploads local configurations
-- **Both exist**: Prompts for conflict resolution (upload, download, or cancel)
+- **Both exist**: **Compares timestamps** and prompts with time information
+- **Auto-sync mode**: Only syncs when time difference > 5 minutes (clear winner)
 
 ## Security Considerations
 

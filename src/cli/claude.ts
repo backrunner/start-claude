@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
-import type { ClaudeConfig } from '../core/types'
+import type { ClaudeConfig } from '../config/types'
 import type { CliOverrides } from './common'
 import { spawn } from 'node:child_process'
 import { accessSync, constants } from 'node:fs'

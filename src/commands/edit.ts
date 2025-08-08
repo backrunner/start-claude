@@ -1,7 +1,7 @@
-import type { ClaudeConfig } from '../core/types'
+import type { ClaudeConfig } from '../config/types'
 import process from 'node:process'
 import inquirer from 'inquirer'
-import { ConfigManager } from '../core/config'
+import { ConfigManager } from '../config/manager'
 import { editConfigInEditor } from '../utils/editor'
 import { displayError, displaySuccess, displayWelcome } from '../utils/ui'
 

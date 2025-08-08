@@ -1,6 +1,6 @@
 import inquirer from 'inquirer'
 import { OverrideManager } from '../cli/override'
-import { ConfigManager } from '../core/config'
+import { ConfigManager } from '../config/manager'
 import { displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/ui'
 
 export async function handleOverrideCommand(): Promise<void> {

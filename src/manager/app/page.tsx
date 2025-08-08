@@ -2,17 +2,18 @@
 
 import type { DragEndEvent } from '@dnd-kit/core'
 import type { ReactNode } from 'react'
-import type { ClaudeConfig, SystemSettings } from '@/types/config'
+import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { AlertCircle, Filter, Loader2, Plus, Search, Settings } from 'lucide-react'
+import { AlertCircle, Filter, Loader2, Plus, Search, Settings, Sparkles, Command } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ConfigForm } from '@/components/config-form'
 import { ConfigList } from '@/components/config-list'
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal'
 import { SystemSettingsModal } from '@/components/system-settings-modal'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -229,13 +230,18 @@ export default function HomePage(): ReactNode {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+      <div className="min-h-screen bg-background">
         <div className="container mx-auto p-6">
           <div className="flex items-center justify-center h-64">
-            <div className="flex items-center space-x-3 text-muted-foreground">
-              <Loader2 className="w-6 h-6 animate-spin" />
-              <span className="text-lg">Loading configurations...</span>
-            </div>
+            <Card className="p-6">
+              <CardContent className="flex items-center gap-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <div>
+                  <p className="text-lg font-medium">Loading configurations...</p>
+                  <p className="text-sm text-muted-foreground">Please wait while we fetch your Claude settings</p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
@@ -243,48 +249,54 @@ export default function HomePage(): ReactNode {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="container mx-auto p-6 max-w-6xl">
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto p-6 max-w-7xl">
         {/* Header Section */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
-            <div className="space-y-2">
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-900 to-slate-600 dark:from-slate-100 dark:to-slate-400 bg-clip-text text-transparent">
-                Start Claude
-              </h1>
-              <p className="text-muted-foreground text-lg">
-                Manage your Claude configurations with ease. Press ESC to close.
-              </p>
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                <Sparkles className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-foreground">
+                  Start Claude Manager
+                </h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-muted-foreground">
+                    Manage your Claude configurations with ease
+                  </p>
+                  <Badge variant="outline" className="text-xs">
+                    <Command className="h-3 w-3 mr-1" />
+                    ESC to close
+                  </Badge>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center space-x-3">
+            
+            <div className="flex items-center gap-3">
               <Button
                 variant="outline"
-                size="lg"
                 onClick={() => setIsSystemSettingsOpen(true)}
-                className="shadow-sm hover:shadow-md transition-shadow"
+                className="hover:bg-muted/50"
               >
                 <Settings className="w-4 h-4 mr-2" />
-                Settings
+                System Settings
               </Button>
               <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
                 <DialogTrigger asChild>
                   <Button
-                    size="lg"
                     onClick={() => setEditingConfig(null)}
-                    className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600"
+                    className="bg-primary hover:bg-primary/90"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Add Configuration
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>
-                      {editingConfig ? 'Edit Configuration' : 'Add Configuration'}
-                    </DialogTitle>
-                    <DialogDescription>
-                      {editingConfig ? 'Update the configuration details.' : 'Create a new Claude configuration.'}
-                    </DialogDescription>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+                  <DialogHeader className="sr-only">
+                    <DialogTitle>Configuration</DialogTitle>
+                    <DialogDescription>Manage Claude configuration</DialogDescription>
                   </DialogHeader>
                   <ConfigForm
                     config={editingConfig}
@@ -308,16 +320,16 @@ export default function HomePage(): ReactNode {
           )}
 
           {/* Search and Filter Section */}
-          <Card className="shadow-sm border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+          <Card>
             <CardContent className="p-4">
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center gap-4">
                 <div className="relative flex-1 max-w-sm">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                   <Input
                     placeholder="Search configurations..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
-                    className="pl-10 border-0 bg-slate-50 dark:bg-slate-700 focus:ring-2 focus:ring-blue-500"
+                    className="pl-10"
                   />
                 </div>
                 <Button
@@ -327,80 +339,78 @@ export default function HomePage(): ReactNode {
                   className="shrink-0"
                 >
                   <Filter className="w-4 h-4 mr-2" />
-                  {showEnabledOnly ? 'Enabled Only' : 'Show All'}
+                  {showEnabledOnly ? 'Active Only' : 'Show All'}
                 </Button>
-                <div className="text-sm text-muted-foreground shrink-0">
-                  {finalConfigs.length}
-                  {' '}
-                  of
-                  {configs.length}
-                  {' '}
-                  configs
-                </div>
+                <Badge variant="secondary" className="shrink-0 text-xs">
+                  {finalConfigs.length} of {configs.length}
+                </Badge>
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Main Content */}
-        {finalConfigs.length === 0 && searchTerm
-          ? (
-              <Card className="shadow-sm border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-                <CardContent className="text-center py-12">
-                  <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-muted-foreground mb-2">
-                    No configurations found
-                  </h3>
-                  <p className="text-muted-foreground">
-                    Try adjusting your search terms or filters
-                  </p>
-                </CardContent>
-              </Card>
-            )
-          : finalConfigs.length === 0
-            ? (
-                <Card className="shadow-sm border-0 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-                  <CardHeader className="text-center pb-4">
-                    <div className="w-16 h-16 bg-gradient-to-r from-blue-100 to-blue-50 dark:from-blue-900 dark:to-blue-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Plus className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <CardTitle className="text-xl">No Configurations Yet</CardTitle>
-                    <CardDescription className="text-base">
-                      Get started by creating your first Claude configuration
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="text-center pb-8">
-                    <Button
-                      onClick={() => setIsFormOpen(true)}
-                      size="lg"
-                      className="shadow-sm hover:shadow-md transition-shadow bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Your First Configuration
-                    </Button>
-                  </CardContent>
-                </Card>
-              )
-            : (
-                <div className="space-y-4">
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                    modifiers={[restrictToVerticalAxis]}
-                  >
-                    <SortableContext items={finalConfigs.map(c => c.name)} strategy={verticalListSortingStrategy}>
-                      <ConfigList
-                        configs={finalConfigs}
-                        onEdit={handleEdit}
-                        onDelete={handleDeleteClick}
-                        onToggleEnabled={handleToggleEnabled}
-                        onSetDefault={handleSetDefault}
-                      />
-                    </SortableContext>
-                  </DndContext>
-                </div>
-              )}
+        {finalConfigs.length === 0 && searchTerm ? (
+          <Card className="border-dashed border-2">
+            <CardContent className="text-center py-12">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted mx-auto mb-4">
+                <Search className="w-6 h-6 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold text-muted-foreground mb-2">
+                No configurations found
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Try adjusting your search terms or clear the filter
+              </p>
+              <Button 
+                variant="outline" 
+                onClick={() => setSearchTerm('')}
+                className="mt-4"
+              >
+                Clear Search
+              </Button>
+            </CardContent>
+          </Card>
+        ) : finalConfigs.length === 0 ? (
+          <Card className="border-dashed border-2">
+            <CardContent className="text-center py-12">
+              <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10 mx-auto mb-6">
+                <Plus className="w-8 h-8 text-primary" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">No Configurations Yet</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                Get started by creating your first Claude configuration to manage your AI assistant settings
+              </p>
+              <Button
+                onClick={() => setIsFormOpen(true)}
+                size="lg"
+                className="bg-primary hover:bg-primary/90"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Your First Configuration
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+              modifiers={[restrictToVerticalAxis]}
+            >
+              <SortableContext items={finalConfigs.map(c => c.name)} strategy={verticalListSortingStrategy}>
+                <ConfigList
+                  configs={finalConfigs}
+                  onEdit={handleEdit}
+                  onDelete={handleDeleteClick}
+                  onToggleEnabled={handleToggleEnabled}
+                  onSetDefault={handleSetDefault}
+                />
+              </SortableContext>
+            </DndContext>
+          </div>
+        )}
 
         <SystemSettingsModal
           open={isSystemSettingsOpen}

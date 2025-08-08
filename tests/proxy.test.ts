@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '@/core/types'
+import type { ClaudeConfig } from '@/config/types'
 import type { ProxyMode } from '@/types/transformer'
 import { Buffer } from 'node:buffer'
 import http from 'node:http'

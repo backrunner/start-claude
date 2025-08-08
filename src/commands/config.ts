@@ -1,6 +1,6 @@
 import process from 'node:process'
 import inquirer from 'inquirer'
-import { ConfigManager } from '../core/config'
+import { ConfigManager } from '../config/manager'
 import { displayError, displayInfo, displaySuccess } from '../utils/ui'
 
 export async function handleRemoveCommand(name: string): Promise<void> {

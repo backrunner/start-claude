@@ -1,12 +1,16 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { ClaudeConfig } from '@/types/config'
+import type { ClaudeConfig } from '@/config/types'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
+import { AlertCircle, Settings, Key, Globe, Brain, Shield } from 'lucide-react'
 
 interface ConfigFormProps {
   config?: ClaudeConfig | null
@@ -72,114 +76,230 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps): React
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="name">Configuration Name *</Label>
-        <Input
-          id="name"
-          value={formData.name}
-          onChange={e => handleChange('name', e.target.value)}
-          placeholder="e.g., My Claude Config"
-          className={errors.name ? 'border-destructive' : ''}
-        />
-        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+          <Settings className="h-5 w-5 text-primary" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-semibold text-foreground">
+            {config ? 'Edit Configuration' : 'Create Configuration'}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {config ? 'Update your Claude configuration settings' : 'Set up a new Claude configuration'}
+          </p>
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="profileType">Profile Type</Label>
-        <select
-          id="profileType"
-          value={formData.profileType}
-          onChange={e => handleChange('profileType', e.target.value as 'default' | 'official')}
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <option value="default">Default (Custom)</option>
-          <option value="official">Official Claude</option>
-        </select>
-      </div>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Basic Information */}
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <Settings className="h-4 w-4 text-primary" />
+              <CardTitle className="text-lg">Basic Information</CardTitle>
+            </div>
+            <CardDescription>Configure the basic details for your Claude instance</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name" className="font-medium">Configuration Name *</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={e => handleChange('name', e.target.value)}
+                placeholder="e.g., My Claude Config"
+                className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
+              />
+              {errors.name && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.name}
+                </div>
+              )}
+            </div>
 
-      {formData.profileType !== 'official' && (
-        <>
-          <div className="space-y-2">
-            <Label htmlFor="baseUrl">Base URL *</Label>
-            <Input
-              id="baseUrl"
-              value={formData.baseUrl}
-              onChange={e => handleChange('baseUrl', e.target.value)}
-              placeholder="https://api.anthropic.com"
-              className={errors.baseUrl ? 'border-destructive' : ''}
-            />
-            {errors.baseUrl && <p className="text-sm text-destructive">{errors.baseUrl}</p>}
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="profileType" className="font-medium">Profile Type</Label>
+              <Select
+                value={formData.profileType}
+                onValueChange={value => handleChange('profileType', value as 'default' | 'official')}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select profile type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4" />
+                      Default (Custom)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="official">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Official Claude
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
 
-          <div className="space-y-2">
-            <Label htmlFor="apiKey">API Key *</Label>
-            <Input
-              id="apiKey"
-              type="password"
-              value={formData.apiKey}
-              onChange={e => handleChange('apiKey', e.target.value)}
-              placeholder="sk-ant-..."
-              className={errors.apiKey ? 'border-destructive' : ''}
-            />
-            {errors.apiKey && <p className="text-sm text-destructive">{errors.apiKey}</p>}
-          </div>
-        </>
-      )}
+        {/* API Configuration */}
+        {formData.profileType !== 'official' && (
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <Key className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <CardTitle className="text-lg">API Configuration</CardTitle>
+              </div>
+              <CardDescription>Configure the API endpoint and authentication</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="baseUrl" className="font-medium flex items-center gap-2">
+                  <Globe className="h-3 w-3" />
+                  Base URL *
+                </Label>
+                <Input
+                  id="baseUrl"
+                  value={formData.baseUrl}
+                  onChange={e => handleChange('baseUrl', e.target.value)}
+                  placeholder="https://api.anthropic.com"
+                  className={errors.baseUrl ? 'border-destructive focus-visible:ring-destructive' : ''}
+                />
+                {errors.baseUrl && (
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.baseUrl}
+                  </div>
+                )}
+              </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="model">Model</Label>
-        <Input
-          id="model"
-          value={formData.model}
-          onChange={e => handleChange('model', e.target.value)}
-          placeholder="claude-3-sonnet-20240229"
-        />
-      </div>
+              <div className="space-y-2">
+                <Label htmlFor="apiKey" className="font-medium flex items-center gap-2">
+                  <Key className="h-3 w-3" />
+                  API Key *
+                </Label>
+                <Input
+                  id="apiKey"
+                  type="password"
+                  value={formData.apiKey}
+                  onChange={e => handleChange('apiKey', e.target.value)}
+                  placeholder="sk-ant-..."
+                  className={errors.apiKey ? 'border-destructive focus-visible:ring-destructive font-mono' : 'font-mono'}
+                />
+                {errors.apiKey && (
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.apiKey}
+                  </div>
+                )}
+                <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm">
+                      <p className="font-medium text-blue-900 dark:text-blue-100">Security Note</p>
+                      <p className="text-blue-700 dark:text-blue-300 mt-1">
+                        API keys are stored securely and encrypted locally.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-      <div className="space-y-2">
-        <Label htmlFor="permissionMode">Permission Mode</Label>
-        <select
-          id="permissionMode"
-          value={formData.permissionMode}
-          onChange={e => handleChange('permissionMode', e.target.value as ClaudeConfig['permissionMode'])}
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <option value="default">Default</option>
-          <option value="acceptEdits">Accept Edits</option>
-          <option value="plan">Plan Mode</option>
-          <option value="bypassPermissions">Bypass Permissions</option>
-        </select>
-      </div>
+        {/* Model & Permissions */}
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <Brain className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <CardTitle className="text-lg">Model & Permissions</CardTitle>
+            </div>
+            <CardDescription>Configure the model and permission settings</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="model" className="font-medium flex items-center gap-2">
+                <Brain className="h-3 w-3" />
+                Model
+                <Badge variant="outline" className="text-xs">Optional</Badge>
+              </Label>
+              <Input
+                id="model"
+                value={formData.model}
+                onChange={e => handleChange('model', e.target.value)}
+                placeholder="claude-3-sonnet-20240229"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty to use the default model for this configuration
+              </p>
+            </div>
 
-      <div className="flex items-center space-x-2">
-        <Switch
-          id="isDefault"
-          checked={formData.isDefault}
-          onCheckedChange={checked => handleChange('isDefault', checked)}
-        />
-        <Label htmlFor="isDefault">Set as default configuration</Label>
-      </div>
+            <div className="space-y-2">
+              <Label htmlFor="permissionMode" className="font-medium">Permission Mode</Label>
+              <Select
+                value={formData.permissionMode}
+                onValueChange={value => handleChange('permissionMode', value as ClaudeConfig['permissionMode'])}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select permission mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default</SelectItem>
+                  <SelectItem value="acceptEdits">Accept Edits</SelectItem>
+                  <SelectItem value="plan">Plan Mode</SelectItem>
+                  <SelectItem value="bypassPermissions">Bypass Permissions</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-      <div className="flex items-center space-x-2">
-        <Switch
-          id="enabled"
-          checked={formData.enabled}
-          onCheckedChange={checked => handleChange('enabled', checked)}
-        />
-        <Label htmlFor="enabled">Enabled</Label>
-      </div>
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                <div className="flex-1">
+                  <Label htmlFor="isDefault" className="font-medium">Default Configuration</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Use this as the default configuration when starting Claude
+                  </p>
+                </div>
+                <Switch
+                  id="isDefault"
+                  checked={formData.isDefault}
+                  onCheckedChange={checked => handleChange('isDefault', checked)}
+                />
+              </div>
 
-      <div className="flex justify-end space-x-2 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit">
-          {config ? 'Update' : 'Create'}
-          {' '}
-          Configuration
-        </Button>
-      </div>
-    </form>
+              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                <div className="flex-1">
+                  <Label htmlFor="enabled" className="font-medium">Enabled</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Configuration is active and can be used
+                  </p>
+                </div>
+                <Switch
+                  id="enabled"
+                  checked={formData.enabled}
+                  onCheckedChange={checked => handleChange('enabled', checked)}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-end gap-3 pt-6 border-t">
+          <Button type="button" variant="outline" onClick={onCancel} className="min-w-[80px]">
+            Cancel
+          </Button>
+          <Button type="submit" className="min-w-[120px]">
+            {config ? 'Update' : 'Create'} Configuration
+          </Button>
+        </div>
+      </form>
+    </div>
   )
 }

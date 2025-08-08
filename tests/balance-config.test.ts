@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '@/core/types'
+import type { ClaudeConfig } from '@/config/types'
 import { describe, expect, it } from 'vitest'
 
 // Simple test to validate the balance mode configuration passing

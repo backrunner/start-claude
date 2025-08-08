@@ -1,6 +1,6 @@
-import type { ClaudeConfig } from '../core/types'
+import type { ClaudeConfig } from '../config/types'
 import inquirer from 'inquirer'
-import { ConfigManager } from '../core/config'
+import { ConfigManager } from '../config/manager'
 import { createConfigInEditor } from '../utils/editor'
 import { displayError, displaySuccess, displayWelcome } from '../utils/ui'
 

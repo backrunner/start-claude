@@ -38,8 +38,25 @@ After installation, verify that start-claude is working:
 
 ```bash
 start-claude --help
-# or use the short alias
-sc --help
+
+# Note: The short alias 'sc' may not work on Windows
+# Use override feature for Windows compatibility:
+start-claude override --enable
+```
+
+## Windows Users - Important
+
+**The `sc` command may conflict with Windows system commands.** For the best Windows experience:
+
+```bash
+# Enable override feature (Recommended)
+start-claude override --enable
+
+# Alternative: Use full command name
+start-claude --api-key sk-your-key
+
+# Create custom alias (PowerShell)
+Set-Alias sc start-claude
 ```
 
 ## Troubleshooting

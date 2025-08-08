@@ -1,5 +1,5 @@
 import inquirer from 'inquirer'
-import { ConfigManager } from '../core/config'
+import { ConfigManager } from '../config/manager'
 import { S3SyncManager } from '../storage/s3-sync'
 import { displayError, displayInfo, displayWelcome } from '../utils/ui'
 
