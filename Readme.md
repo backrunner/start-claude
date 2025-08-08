@@ -23,7 +23,7 @@ A powerful CLI tool to manage and start Claude Code with different configuration
 
 ```bash
 # Install globally
-npm install -g start-claude
+pnpm add -g start-claude
 
 # Start Claude Code directly with CLI overrides (no config needed)
 start-claude --api-key sk-your-key --model claude-3-sonnet

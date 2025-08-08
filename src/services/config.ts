@@ -1,5 +1,3 @@
-import { Transformer, TransformerConfig, TransformerConstructor } from '../types/transformer'
-
 export class ConfigService {
   private config: Record<string, any> = {}
 

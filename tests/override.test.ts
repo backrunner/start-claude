@@ -1,23 +1,19 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import process from 'node:process'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
+import * as process from 'node:process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the file system operations
 vi.mock('node:fs')
 vi.mock('node:os', () => ({
-  default: {
-    homedir: vi.fn().mockReturnValue('/home/user'),
-  },
+  homedir: vi.fn().mockReturnValue('/home/user'),
 }))
 vi.mock('node:process', () => ({
-  default: {
-    env: {
-      SHELL: '/bin/zsh',
-    },
-    platform: 'linux',
+  env: {
+    SHELL: '/bin/zsh',
   },
+  platform: 'linux',
 }))
 
 const mockFs = vi.mocked(fs)
@@ -25,8 +21,8 @@ const mockOs = vi.mocked(os)
 const mockProcess = vi.mocked(process)
 
 describe('overrideManager', () => {
-  let OverrideManager: any
-  let overrideManager: any
+  let OverrideManager: typeof import('../src/cli/override').OverrideManager
+  let overrideManager: import('../src/cli/override').OverrideManager
   let expectedZshPath: string
 
   beforeEach(async () => {
@@ -34,8 +30,8 @@ describe('overrideManager', () => {
     expectedZshPath = path.join(homeDir, '.zshrc')
 
     mockOs.homedir.mockReturnValue(homeDir)
-    mockProcess.env = { SHELL: '/bin/zsh' };
-    (mockProcess as any).platform = 'linux'
+    mockProcess.env = { SHELL: '/bin/zsh', NODE_ENV: 'test' }
+    ;(mockProcess as any).platform = 'linux'
     mockFs.existsSync.mockReturnValue(true)
     mockFs.readFileSync.mockReturnValue('')
     mockFs.writeFileSync.mockImplementation(() => undefined)
@@ -43,7 +39,7 @@ describe('overrideManager', () => {
     mockFs.unlinkSync.mockImplementation(() => undefined)
 
     // Import OverrideManager after mocks are set up
-    const overrideModule = await import('@/cli/override')
+    const overrideModule = await import('../src/cli/override')
     OverrideManager = overrideModule.OverrideManager
     overrideManager = new OverrideManager()
   })
@@ -54,7 +50,7 @@ describe('overrideManager', () => {
 
   describe('unix systems', () => {
     beforeEach(() => {
-      (mockProcess as any).platform = 'linux'
+      ;(mockProcess as any).platform = 'linux'
     })
 
     describe('isOverrideActive', () => {
@@ -83,7 +79,7 @@ describe('overrideManager', () => {
       })
 
       it('should return false when shell is not supported', () => {
-        mockProcess.env = { SHELL: '/bin/unknown' }
+        mockProcess.env = { SHELL: '/bin/unknown', NODE_ENV: 'test' }
 
         const result = overrideManager.isOverrideActive()
 
@@ -133,7 +129,7 @@ describe('overrideManager', () => {
       })
 
       it('should return false when shell is not supported', () => {
-        mockProcess.env = { SHELL: '/bin/unknown' }
+        mockProcess.env = { SHELL: '/bin/unknown', NODE_ENV: 'test' }
 
         const result = overrideManager.enableOverride()
 
@@ -176,7 +172,7 @@ alias claude="start-claude"
       })
 
       it('should return false when shell is not supported', () => {
-        mockProcess.env = { SHELL: '/bin/unknown' }
+        mockProcess.env = { SHELL: '/bin/unknown', NODE_ENV: 'test' }
 
         const result = overrideManager.disableOverride()
 
@@ -206,7 +202,7 @@ alias claude="start-claude"
       })
 
       it('should handle missing SHELL environment variable', () => {
-        mockProcess.env = {}
+        mockProcess.env = { NODE_ENV: 'test' }
 
         const result = overrideManager.getShellInfo()
 
@@ -215,7 +211,7 @@ alias claude="start-claude"
       })
 
       it('should prefer zsh config if available', () => {
-        mockProcess.env = { SHELL: '/bin/zsh' }
+        mockProcess.env = { SHELL: '/bin/zsh', NODE_ENV: 'test' }
 
         const result = overrideManager.getShellInfo()
 
@@ -224,7 +220,7 @@ alias claude="start-claude"
       })
 
       it('should fall back to bash if zsh config does not exist', () => {
-        mockProcess.env = { SHELL: '/bin/bash' }
+        mockProcess.env = { SHELL: '/bin/bash', NODE_ENV: 'test' }
 
         const result = overrideManager.getShellInfo()
 
@@ -241,7 +237,7 @@ alias claude="start-claude"
 
     describe('powerShell', () => {
       beforeEach(() => {
-        mockProcess.env = { PSModulePath: 'C:\\Program Files\\PowerShell\\Modules' }
+        mockProcess.env = { PSModulePath: 'C:\\Program Files\\PowerShell\\Modules', NODE_ENV: 'test' }
       })
 
       it('should detect PowerShell correctly', () => {
@@ -277,7 +273,7 @@ alias claude="start-claude"
 
     describe('command Prompt', () => {
       beforeEach(() => {
-        mockProcess.env = { COMSPEC: 'C:\\Windows\\System32\\cmd.exe' }
+        mockProcess.env = { COMSPEC: 'C:\\Windows\\System32\\cmd.exe', NODE_ENV: 'test' }
       })
 
       it('should detect CMD correctly', () => {
@@ -310,7 +306,7 @@ alias claude="start-claude"
 
     describe('git Bash', () => {
       beforeEach(() => {
-        mockProcess.env = { SHELL: '/usr/bin/bash' }
+        mockProcess.env = { SHELL: '/usr/bin/bash', NODE_ENV: 'test' }
       })
 
       it('should detect Git Bash correctly', () => {

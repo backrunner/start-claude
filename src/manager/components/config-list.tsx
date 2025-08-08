@@ -1,14 +1,15 @@
 'use client'
 
+import type { ReactNode } from 'react'
+import type { ClaudeConfig } from '@/types/config'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Edit, Trash2, GripVertical, Star } from 'lucide-react'
-import { ClaudeConfig } from '@/types/config'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Edit, GripVertical, Star, Trash2 } from 'lucide-react'
 
 interface ConfigItemProps {
   config: ClaudeConfig
@@ -18,7 +19,7 @@ interface ConfigItemProps {
   onSetDefault: (name: string) => void
 }
 
-export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDefault }: ConfigItemProps) {
+export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDefault }: ConfigItemProps): ReactNode {
   const {
     attributes,
     listeners,
@@ -51,8 +52,8 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                       <span>Default</span>
                     </Badge>
                   )}
-                  <Badge variant={config.enabled ? "default" : "secondary"}>
-                    {config.enabled ? "Enabled" : "Disabled"}
+                  <Badge variant={config.enabled ? 'default' : 'secondary'}>
+                    {config.enabled ? 'Enabled' : 'Disabled'}
                   </Badge>
                 </div>
                 <CardDescription>
@@ -60,7 +61,11 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                     <span className="block">{config.baseUrl}</span>
                   )}
                   {config.model && (
-                    <span className="block text-xs">Model: {config.model}</span>
+                    <span className="block text-xs">
+                      Model:
+                      {' '}
+                      {config.model}
+                    </span>
                   )}
                 </CardDescription>
               </div>
@@ -90,7 +95,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                 <Switch
                   id={`enabled-${config.name}`}
                   checked={config.enabled}
-                  onCheckedChange={(checked) => onToggleEnabled(config.name, checked)}
+                  onCheckedChange={checked => onToggleEnabled(config.name, checked)}
                 />
                 <Label htmlFor={`enabled-${config.name}`}>Enabled</Label>
               </div>
@@ -106,7 +111,9 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
               )}
             </div>
             <div className="text-sm text-muted-foreground">
-              Order: {config.order ?? 0}
+              Order:
+              {' '}
+              {config.order ?? 0}
             </div>
           </div>
         </CardContent>
@@ -123,12 +130,12 @@ interface ConfigListProps {
   onSetDefault: (name: string) => void
 }
 
-export function ConfigList({ configs, onEdit, onDelete, onToggleEnabled, onSetDefault }: ConfigListProps) {
+export function ConfigList({ configs, onEdit, onDelete, onToggleEnabled, onSetDefault }: ConfigListProps): ReactNode {
   const sortedConfigs = [...configs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   return (
     <div>
-      {sortedConfigs.map((config) => (
+      {sortedConfigs.map(config => (
         <ConfigItem
           key={config.name}
           config={config}

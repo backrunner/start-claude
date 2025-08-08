@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process'
 import type { ClaudeConfig } from '../core/types'
 import type { CliOverrides } from './common'
 import { spawn } from 'node:child_process'
@@ -8,7 +9,7 @@ import inquirer from 'inquirer'
 import { displayError, displayInfo, displaySuccess } from '../utils/ui'
 
 export async function startClaude(config: ClaudeConfig | undefined, args: string[] = [], cliOverrides?: CliOverrides): Promise<number> {
-  const env = { ...process.env }
+  const env: NodeJS.ProcessEnv = { ...process.env }
 
   // Set environment variables from config (if config exists)
   if (config) {
@@ -45,7 +46,7 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
     }
     else {
       displayError('Claude Code is required to run start-claude.')
-      displayInfo('You can install it manually with: npm install -g @anthropic-ai/claude-code')
+      displayInfo('You can install it manually with: pnpm add -g @anthropic-ai/claude-code')
       return 1
     }
   }
@@ -65,7 +66,7 @@ async function promptForInstallation(): Promise<boolean> {
     },
   ])
 
-  return answer.install
+  return answer.install as boolean
 }
 
 async function installClaudeCode(): Promise<boolean> {
@@ -73,19 +74,19 @@ async function installClaudeCode(): Promise<boolean> {
     displayInfo('Installing Claude Code CLI...')
 
     // Find npm executable in PATH
-    const npmPath = findExecutable('npm', process.env as Record<string, string | undefined>)
+    const npmPath = findExecutable('npm', process.env)
     if (!npmPath) {
       displayError('npm is not found in PATH. Please install Node.js and npm first.')
       resolve(false)
       return
     }
 
-    const npm = spawn(npmPath, ['install', '-g', '@anthropic-ai/claude-code'], {
+    const npm: ChildProcess = spawn(npmPath, ['install', '-g', '@anthropic-ai/claude-code'], {
       stdio: 'inherit',
       shell: process.platform === 'win32',
     })
 
-    npm.on('close', (code) => {
+    npm.on('close', (code: number | null) => {
       if (code === 0) {
         displaySuccess('Claude Code CLI installed successfully!')
         resolve(true)
@@ -96,7 +97,7 @@ async function installClaudeCode(): Promise<boolean> {
       }
     })
 
-    npm.on('error', (error) => {
+    npm.on('error', (error: Error) => {
       displayError(`Installation failed: ${error.message}`)
       resolve(false)
     })
@@ -106,27 +107,27 @@ async function installClaudeCode(): Promise<boolean> {
 async function startClaudeProcess(
   executablePath: string,
   args: string[],
-  env: Record<string, string | undefined>,
+  env: NodeJS.ProcessEnv,
 ): Promise<number> {
   return new Promise((resolve) => {
-    const claude = spawn(executablePath, args, {
+    const claude: ChildProcess = spawn(executablePath, args, {
       stdio: 'inherit',
       env,
       shell: process.platform === 'win32',
     })
 
-    claude.on('close', (code) => {
+    claude.on('close', (code: number | null) => {
       resolve(code ?? 0)
     })
 
-    claude.on('error', (error) => {
+    claude.on('error', (error: Error) => {
       displayError(`Failed to start Claude: ${error.message}`)
       resolve(1)
     })
   })
 }
 
-function setEnvFromConfig(env: Record<string, string | undefined>, config: ClaudeConfig): void {
+function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
   // Basic configuration
   const basicEnvMap: Array<[keyof ClaudeConfig, string]> = [
     ['baseUrl', 'ANTHROPIC_BASE_URL'],
@@ -206,7 +207,7 @@ function setEnvFromConfig(env: Record<string, string | undefined>, config: Claud
   })
 }
 
-function applyCliOverrides(env: Record<string, string | undefined>, overrides: CliOverrides): void {
+function applyCliOverrides(env: NodeJS.ProcessEnv, overrides: CliOverrides): void {
   // Apply environment variables from -e/--env flags
   if (overrides.env) {
     overrides.env.forEach((envVar) => {
@@ -233,7 +234,7 @@ function applyCliOverrides(env: Record<string, string | undefined>, overrides: C
 }
 
 // Function to find executable in PATH
-function findExecutable(command: string, env: Record<string, string | undefined>): string | null {
+function findExecutable(command: string, env: NodeJS.ProcessEnv): string | null {
   const pathEnv = env.PATH || env.Path || ''
   let pathDirs = pathEnv.split(path.delimiter)
 

@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import type { ReactNode } from 'react'
+import type { ClaudeConfig } from '@/types/config'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { ClaudeConfig } from '@/types/config'
 
 interface ConfigFormProps {
   config?: ClaudeConfig | null
@@ -13,7 +14,7 @@ interface ConfigFormProps {
   onCancel: () => void
 }
 
-export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
+export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps): ReactNode {
   const [formData, setFormData] = useState<ClaudeConfig>({
     name: '',
     profileType: 'default',
@@ -34,7 +35,7 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
     }
   }, [config])
 
-  const handleChange = (field: keyof ClaudeConfig, value: any) => {
+  const handleChange = (field: keyof ClaudeConfig, value: any): void => {
     setFormData(prev => ({ ...prev, [field]: value }))
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
@@ -60,9 +61,9 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
-    
+
     if (!validate()) {
       return
     }
@@ -77,7 +78,7 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
         <Input
           id="name"
           value={formData.name}
-          onChange={(e) => handleChange('name', e.target.value)}
+          onChange={e => handleChange('name', e.target.value)}
           placeholder="e.g., My Claude Config"
           className={errors.name ? 'border-destructive' : ''}
         />
@@ -89,7 +90,7 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
         <select
           id="profileType"
           value={formData.profileType}
-          onChange={(e) => handleChange('profileType', e.target.value as 'default' | 'official')}
+          onChange={e => handleChange('profileType', e.target.value as 'default' | 'official')}
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value="default">Default (Custom)</option>
@@ -104,7 +105,7 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
             <Input
               id="baseUrl"
               value={formData.baseUrl}
-              onChange={(e) => handleChange('baseUrl', e.target.value)}
+              onChange={e => handleChange('baseUrl', e.target.value)}
               placeholder="https://api.anthropic.com"
               className={errors.baseUrl ? 'border-destructive' : ''}
             />
@@ -117,7 +118,7 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
               id="apiKey"
               type="password"
               value={formData.apiKey}
-              onChange={(e) => handleChange('apiKey', e.target.value)}
+              onChange={e => handleChange('apiKey', e.target.value)}
               placeholder="sk-ant-..."
               className={errors.apiKey ? 'border-destructive' : ''}
             />
@@ -131,7 +132,7 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
         <Input
           id="model"
           value={formData.model}
-          onChange={(e) => handleChange('model', e.target.value)}
+          onChange={e => handleChange('model', e.target.value)}
           placeholder="claude-3-sonnet-20240229"
         />
       </div>
@@ -141,7 +142,7 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
         <select
           id="permissionMode"
           value={formData.permissionMode}
-          onChange={(e) => handleChange('permissionMode', e.target.value as ClaudeConfig['permissionMode'])}
+          onChange={e => handleChange('permissionMode', e.target.value as ClaudeConfig['permissionMode'])}
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value="default">Default</option>
@@ -155,7 +156,7 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
         <Switch
           id="isDefault"
           checked={formData.isDefault}
-          onCheckedChange={(checked) => handleChange('isDefault', checked)}
+          onCheckedChange={checked => handleChange('isDefault', checked)}
         />
         <Label htmlFor="isDefault">Set as default configuration</Label>
       </div>
@@ -164,7 +165,7 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
         <Switch
           id="enabled"
           checked={formData.enabled}
-          onCheckedChange={(checked) => handleChange('enabled', checked)}
+          onCheckedChange={checked => handleChange('enabled', checked)}
         />
         <Label htmlFor="enabled">Enabled</Label>
       </div>
@@ -174,7 +175,9 @@ export function ConfigForm({ config, onSave, onCancel }: ConfigFormProps) {
           Cancel
         </Button>
         <Button type="submit">
-          {config ? 'Update' : 'Create'} Configuration
+          {config ? 'Update' : 'Create'}
+          {' '}
+          Configuration
         </Button>
       </div>
     </form>

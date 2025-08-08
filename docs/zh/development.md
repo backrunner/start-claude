@@ -3,25 +3,25 @@
 ## 前提条件
 
 - Node.js 18+
-- npm（用于安装和 Claude Code CLI）
+- pnpm（用于安装和 Claude Code CLI）
 
 ## 设置
 
 ```bash
 git clone https://github.com/your-username/start-claude.git
 cd start-claude
-npm install
+pnpm install
 ```
 
 ## 可用脚本
 
-- `npm run build` - 构建项目
-- `npm run watch` - 构建并监视文件变化
-- `npm run lint` - 运行 ESLint
-- `npm run lint:fix` - 修复 linting 问题
-- `npm test` - 运行测试
-- `npm run test:run` - 运行一次测试
-- `npm run test:coverage` - 运行测试并生成覆盖率报告
+- `pnpm run build` - 构建项目
+- `pnpm run watch` - 构建并监视文件变化
+- `pnpm run lint` - 运行 ESLint
+- `pnpm run lint:fix` - 修复 linting 问题
+- `pnpm test` - 运行测试
+- `pnpm run test:run` - 运行一次测试
+- `pnpm run test:coverage` - 运行测试并生成覆盖率报告
 
 ## 测试
 
@@ -29,16 +29,16 @@ npm install
 
 ```bash
 # 运行测试
-npm test
+pnpm test
 
 # 运行测试并生成覆盖率报告
-npm run test:coverage
+pnpm run test:coverage
 
 # 运行特定测试文件
-npm test -- tests/config.test.ts
+pnpm test -- tests/config.test.ts
 
 # 监视模式
-npm run test:watch
+pnpm run test:watch
 ```
 
 ## 项目结构
@@ -112,10 +112,10 @@ S3 兼容同步：
 
 ```bash
 # 检查代码风格
-npm run lint
+pnpm run lint
 
 # 自动修复风格问题
-npm run lint:fix
+pnpm run lint:fix
 ```
 
 主要风格指导原则：
@@ -158,7 +158,7 @@ npm run lint:fix
 项目使用 Rollup 进行构建：
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 这会创建：
@@ -183,8 +183,8 @@ npm run build
 2. 创建功能分支：`git checkout -b feature/amazing-feature`
 3. 进行更改
 4. 为您的更改添加测试
-5. 运行测试：`npm test`
-6. 运行 linting：`npm run lint:fix`
+5. 运行测试：`pnpm test`
+6. 运行 linting：`pnpm run lint:fix`
 7. 提交更改：`git commit -m 'Add amazing feature'`
 8. 推送到分支：`git push origin feature/amazing-feature`
 9. 打开 Pull Request
@@ -215,7 +215,7 @@ Pull Request 需要：
 
 ```bash
 # 构建并链接以进行本地测试
-npm run build
+pnpm run build
 npm link
 
 # 测试 CLI 命令
@@ -314,28 +314,28 @@ npm audit fix
 ```bash
 # 清除 node_modules 并重新安装
 rm -rf node_modules package-lock.json
-npm install
+pnpm install
 
 # 清除 TypeScript 缓存
-npm run build -- --clean
+pnpm run build -- --clean
 ```
 
 ### 测试问题
 
 ```bash
 # 运行带详细输出的测试
-npm test -- --reporter=verbose
+pnpm test -- --reporter=verbose
 
 # 运行特定测试模式
-npm test -- --grep "configuration"
+pnpm test -- --grep "configuration"
 ```
 
 ### Linting 问题
 
 ```bash
 # 查看详细的 linting 错误
-npm run lint -- --format=codeframe
+pnpm run lint -- --format=codeframe
 
 # 修复可自动修复的问题
-npm run lint:fix
+pnpm run lint:fix
 ```

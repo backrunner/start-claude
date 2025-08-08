@@ -277,7 +277,7 @@ To improve performance:
 ```dockerfile
 # Dockerfile
 FROM node:18-alpine
-RUN npm install -g start-claude
+RUN pnpm add -g start-claude
 COPY config.json /root/.start-claude/config.json
 EXPOSE 2333
 CMD ["start-claude", "--balance"]

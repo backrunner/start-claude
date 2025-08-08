@@ -1,8 +1,8 @@
 import type { NextRequest } from 'next/server'
 import type { ClaudeConfig } from '@/types/config'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { NextResponse } from 'next/server'
 
 const CONFIG_DIR = join(homedir(), '.start-claude')
@@ -13,7 +13,7 @@ function getConfigs(): ClaudeConfig[] {
     if (!existsSync(CONFIG_DIR)) {
       mkdirSync(CONFIG_DIR, { recursive: true })
     }
-    
+
     if (!existsSync(CONFIG_PATH)) {
       return []
     }
@@ -27,14 +27,14 @@ function getConfigs(): ClaudeConfig[] {
   }
 }
 
-function saveConfigs(configs: ClaudeConfig[]) {
+function saveConfigs(configs: ClaudeConfig[]): void {
   try {
     if (!existsSync(CONFIG_DIR)) {
       mkdirSync(CONFIG_DIR, { recursive: true })
     }
-    
+
     const data = {
-      configs: configs,
+      configs,
       settings: {
         overrideClaudeCommand: false,
       },
@@ -47,7 +47,7 @@ function saveConfigs(configs: ClaudeConfig[]) {
   }
 }
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   try {
     const configs = getConfigs()
     return NextResponse.json({ configs })
@@ -58,7 +58,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json()
     const { config } = body
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+export async function PUT(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json()
     const { configs } = body
@@ -108,7 +108,7 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url)
     const name = searchParams.get('name')

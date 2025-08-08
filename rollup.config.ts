@@ -2,6 +2,7 @@ import commonjs from '@rollup/plugin-commonjs'
 import json from '@rollup/plugin-json'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
 import typescript from '@rollup/plugin-typescript'
+import copy from 'rollup-plugin-copy'
 
 // Bundle most dependencies except for Node.js builtins and AWS SDK
 const external = [
@@ -12,7 +13,11 @@ const external = [
   'node:process',
   'node:child_process',
   'node:util',
+  'node:http',
+  'node:https',
   '@aws-sdk/client-s3',
+  'next/server',
+  'next',
 ]
 
 const extensions = ['.js', '.ts']
@@ -38,11 +43,6 @@ const config = {
   plugins: [
     typescript({
       tsconfig: './tsconfig.build.json',
-      exclude: [
-        'src/**/*.test.ts',
-        'tests/**',
-        'node_modules/**',
-      ],
     }),
     nodeResolve({
       extensions,
@@ -50,6 +50,16 @@ const config = {
     }),
     commonjs(),
     json(),
+    copy({
+      targets: [
+        {
+          src: 'src/manager/.next/standalone',
+          dest: 'bin/manager',
+        },
+      ],
+      hook: 'writeBundle',
+      overwrite: true,
+    }),
   ],
 }
 

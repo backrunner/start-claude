@@ -1,7 +1,7 @@
 import type { ConfigManager } from '../core/config'
 import type { ProgramOptions } from './common'
 import process from 'node:process'
-import { LoadBalancer } from '../core/load-balancer'
+import { ProxyServer } from '../core/proxy'
 import { displayError, displayInfo, displaySuccess } from '../utils/ui'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveBaseConfig } from './common'
@@ -30,12 +30,12 @@ export async function handleBalanceMode(
   })
 
   try {
-    const loadBalancer = new LoadBalancer(balanceableConfigs)
+    const proxyServer = new ProxyServer(balanceableConfigs, { enableLoadBalance: true })
 
     // Perform initial health checks
-    await loadBalancer.performInitialHealthChecks()
+    await proxyServer.performInitialHealthChecks()
 
-    await loadBalancer.startServer(2333)
+    await proxyServer.startServer(2333)
 
     displayInfo('')
     displaySuccess('Load balancer is running!')
@@ -57,15 +57,15 @@ export async function handleBalanceMode(
     // Create CLI overrides with load balancer settings
     const cliOverrides = {
       ...buildCliOverrides(options),
-      apiKey: loadBalancer.getProxyApiKey(), // Use load balancer's random API key
-      baseUrl: 'http://localhost:2333', // Use load balancer's URL
+      apiKey: proxyServer.getProxyApiKey(), // Use proxy server's random API key
+      baseUrl: 'http://localhost:2333', // Use proxy server's URL
     }
 
     // Handle graceful shutdown
     const handleShutdown = (): void => {
       void (async () => {
-        displayInfo('\nShutting down load balancer...')
-        await loadBalancer.stop()
+        displayInfo('\nShutting down proxy server...')
+        await proxyServer.stop()
         process.exit(0)
       })()
     }
@@ -73,15 +73,15 @@ export async function handleBalanceMode(
     process.on('SIGINT', handleShutdown)
     process.on('SIGTERM', handleShutdown)
 
-    // Start Claude Code with the load balancer configuration
+    // Start Claude Code with the proxy server configuration
     const exitCode = await startClaude(baseConfig, allArgs, cliOverrides)
 
-    // When Claude Code exits, stop the load balancer
-    await loadBalancer.stop()
+    // When Claude Code exits, stop the proxy server
+    await proxyServer.stop()
     process.exit(exitCode)
   }
   catch (error) {
-    displayError(`Failed to start load balancer: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    displayError(`Failed to start proxy server: ${error instanceof Error ? error.message : 'Unknown error'}`)
     process.exit(1)
   }
 }

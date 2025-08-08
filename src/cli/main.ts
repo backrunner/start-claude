@@ -6,6 +6,7 @@ import { Command } from 'commander'
 import inquirer from 'inquirer'
 import { name, version } from '../../package.json'
 import { ConfigManager } from '../core/config'
+import { ManagerServer } from '../core/manager-server'
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
 import { createConfigInEditor, editConfigFileInEditor, editConfigInEditor } from '../utils/editor'
@@ -15,7 +16,33 @@ import { handleBalanceMode } from './balance'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveConfig } from './common'
 import { OverrideManager } from './override'
-import { ManagerServer } from '../core/manager-server'
+
+// Helper function for manager command logic
+async function handleManagerCommand(options: { port?: string }): Promise<void> {
+  displayWelcome()
+
+  const port = options.port ? Number.parseInt(options.port) : 3001
+  const managerServer = new ManagerServer(port)
+
+  try {
+    await managerServer.start()
+
+    // Keep the process running until user terminates
+    process.stdin.resume()
+
+    const cleanup = (): void => {
+      void managerServer.stop()
+      process.exit(0)
+    }
+
+    process.on('SIGINT', cleanup)
+    process.on('SIGTERM', cleanup)
+  }
+  catch (error) {
+    displayError(`Failed to start manager: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    process.exit(1)
+  }
+}
 
 const program = new Command()
 const configManager = new ConfigManager()
@@ -757,7 +784,6 @@ program
     displayInfo('Opening configuration file in editor with live reload...')
     displayInfo('Any changes you save will be automatically reloaded.')
 
-    // Set up the config reload handler
     const onConfigReload = (_config: any): void => {
       // Just notify that the config was reloaded - the actual config management is handled by ConfigManager
       displayInfo('Configuration changes detected and available for next session.')
@@ -770,29 +796,13 @@ program
   .command('manage')
   .description('Open the Claude Configuration Manager web interface')
   .option('-p, --port <number>', 'Port to run the manager on', '3001')
-  .action(async (options: { port?: string }) => {
-    displayWelcome()
-    
-    const port = options.port ? parseInt(options.port) : 3001
-    const managerServer = new ManagerServer(port)
-    
-    try {
-      await managerServer.start()
-      
-      // Keep the process running until user terminates
-      process.stdin.resume()
-      
-      const cleanup = () => {
-        managerServer.stop()
-        process.exit(0)
-      }
-      
-      process.on('SIGINT', cleanup)
-      process.on('SIGTERM', cleanup)
-    } catch (error) {
-      displayError(`Failed to start manager: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      process.exit(1)
-    }
-  })
+  .action(handleManagerCommand)
+
+// Add "manager" as an alias for "manage"
+program
+  .command('manager')
+  .description('Open the Claude Configuration Manager web interface')
+  .option('-p, --port <number>', 'Port to run the manager on', '3001')
+  .action(handleManagerCommand)
 
 program.parse()

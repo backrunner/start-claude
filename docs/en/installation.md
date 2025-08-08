@@ -1,9 +1,9 @@
 # Installation Guide
 
-## From npm (Recommended)
+## From pnpm (Recommended)
 
 ```bash
-npm install -g start-claude
+pnpm add -g start-claude
 ```
 
 ## From Source
@@ -11,15 +11,15 @@ npm install -g start-claude
 ```bash
 git clone https://github.com/your-username/start-claude.git
 cd start-claude
-npm install
-npm run build
+pnpm install
+pnpm run build
 npm link
 ```
 
 ## Prerequisites
 
 - Node.js 18+
-- npm (for installation and Claude Code CLI)
+- pnpm (for installation and Claude Code CLI)
 
 ## Auto-Installation Feature
 
@@ -27,7 +27,7 @@ If Claude Code CLI is not installed, `start-claude` will:
 
 1. Detect that Claude Code is missing
 2. Ask: "Claude Code CLI is not installed. Would you like to install it automatically?"
-3. Install via `npm install -g @anthropic-ai/claude-code`
+3. Install via `pnpm add -g @anthropic-ai/claude-code`
 4. Automatically start Claude with your configuration
 
 **No more manual installation steps!**
@@ -49,15 +49,15 @@ sc --help
 If you encounter permission errors during global installation:
 
 ```bash
-# Using npm with sudo (not recommended)
-sudo npm install -g start-claude
+# Using pnpm with sudo (not recommended)
+sudo pnpm add -g start-claude
 
-# Better: Configure npm to use a different directory
-mkdir ~/.npm-global
-npm config set prefix '~/.npm-global'
-echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
+# Better: Configure pnpm to use a different directory
+mkdir ~/.pnpm-global
+pnpm config set global-dir '~/.pnpm-global'
+echo 'export PATH=~/.pnpm-global/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
-npm install -g start-claude
+pnpm add -g start-claude
 ```
 
 ### Windows Path Issues
@@ -65,18 +65,18 @@ npm install -g start-claude
 If the command is not recognized after installation:
 
 1. Restart your terminal/command prompt
-2. Verify npm global directory is in your PATH
-3. Run `npm config get prefix` to see the global directory
+2. Verify pnpm global directory is in your PATH
+3. Run `pnpm config get global-dir` to see the global directory
 4. Add that directory to your Windows PATH if necessary
 
 ### Update to Latest Version
 
 ```bash
-npm update -g start-claude
+pnpm update -g start-claude
 ```
 
 ### Uninstallation
 
 ```bash
-npm uninstall -g start-claude
+pnpm remove -g start-claude
 ```

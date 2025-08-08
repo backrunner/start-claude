@@ -13,7 +13,7 @@ export interface UpdateInfo {
 
 export async function checkForUpdates(): Promise<UpdateInfo | null> {
   try {
-    const { stdout } = await execAsync('npm view start-claude version', { timeout: 5000 })
+    const { stdout } = await execAsync('pnpm view start-claude version', { timeout: 5000 })
     const latestVersion = stdout.trim()
 
     const hasUpdate = compareVersions(version, latestVersion) < 0
@@ -22,7 +22,7 @@ export async function checkForUpdates(): Promise<UpdateInfo | null> {
       currentVersion: version,
       latestVersion,
       hasUpdate,
-      updateCommand: 'npm install -g start-claude@latest',
+      updateCommand: 'pnpm add -g start-claude@latest',
     }
   }
   catch {
@@ -50,7 +50,7 @@ function compareVersions(current: string, latest: string): number {
 
 export async function performAutoUpdate(): Promise<boolean> {
   try {
-    const { stderr } = await execAsync('npm install -g start-claude@latest', { timeout: 30000 })
+    const { stderr } = await execAsync('pnpm add -g start-claude@latest', { timeout: 30000 })
 
     // Check if the update was successful
     if (stderr && (stderr.includes('error') || stderr.includes('failed'))) {

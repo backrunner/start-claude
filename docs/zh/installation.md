@@ -1,9 +1,9 @@
 # 安装指南
 
-## 从 npm 安装（推荐）
+## 从 pnpm 安装（推荐）
 
 ```bash
-npm install -g start-claude
+pnpm add -g start-claude
 ```
 
 ## 从源码安装
@@ -11,15 +11,15 @@ npm install -g start-claude
 ```bash
 git clone https://github.com/your-username/start-claude.git
 cd start-claude
-npm install
-npm run build
+pnpm install
+pnpm run build
 npm link
 ```
 
 ## 前提条件
 
 - Node.js 18+
-- npm（用于安装和 Claude Code CLI）
+- pnpm（用于安装和 Claude Code CLI）
 
 ## 自动安装功能
 
@@ -27,7 +27,7 @@ npm link
 
 1. 检测到 Claude Code 缺失
 2. 询问："未安装 Claude Code CLI。您想要自动安装吗？"
-3. 通过 `npm install -g @anthropic-ai/claude-code` 安装
+3. 通过 `pnpm add -g @anthropic-ai/claude-code` 安装
 4. 自动使用您的配置启动 Claude
 
 **无需手动安装步骤！**
@@ -49,15 +49,15 @@ sc --help
 如果在全局安装期间遇到权限错误：
 
 ```bash
-# 使用 sudo 运行 npm（不推荐）
-sudo npm install -g start-claude
+# 使用 sudo 运行 pnpm（不推荐）
+sudo pnpm add -g start-claude
 
-# 更好的方法：配置 npm 使用不同目录
-mkdir ~/.npm-global
-npm config set prefix '~/.npm-global'
-echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
+# 更好的方法：配置 pnpm 使用不同目录
+mkdir ~/.pnpm-global
+pnpm config set global-dir '~/.pnpm-global'
+echo 'export PATH=~/.pnpm-global/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
-npm install -g start-claude
+pnpm add -g start-claude
 ```
 
 ### Windows 路径问题
@@ -65,18 +65,18 @@ npm install -g start-claude
 如果安装后无法识别命令：
 
 1. 重启您的终端/命令提示符
-2. 验证 npm 全局目录在您的 PATH 中
-3. 运行 `npm config get prefix` 查看全局目录
+2. 验证 pnpm 全局目录在您的 PATH 中
+3. 运行 `pnpm config get global-dir` 查看全局目录
 4. 必要时将该目录添加到您的 Windows PATH
 
 ### 更新到最新版本
 
 ```bash
-npm update -g start-claude
+pnpm update -g start-claude
 ```
 
 ### 卸载
 
 ```bash
-npm uninstall -g start-claude
+pnpm remove -g start-claude
 ```

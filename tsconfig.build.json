@@ -23,7 +23,11 @@
     "skipLibCheck": true
   },
   "include": [
-    "src/**/*"
+    "src/cli/**/*",
+    "src/core/**/*",
+    "src/services/**/*",
+    "src/types/**/*",
+    "src/utils/**/*"
   ],
   "exclude": [
     "node_modules/**/*",
@@ -35,6 +39,7 @@
     "dist",
     "lib",
     "libs",
-    "coverage"
+    "coverage",
+    "src/manager/**/*"
   ]
 }

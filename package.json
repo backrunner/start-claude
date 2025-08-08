@@ -2,6 +2,7 @@
   "name": "start-claude",
   "type": "module",
   "version": "0.1.2",
+  "packageManager": "pnpm@10.14.0",
   "description": "Start your claude code with specified config friendly :D",
   "author": "BackRunner",
   "license": "MIT",
@@ -24,11 +25,12 @@
     "bin"
   ],
   "scripts": {
-    "build": "rollup -c rollup.config.ts --configPlugin typescript",
+    "build": "npm run build:manager && rimraf ./bin && rollup -c rollup.config.ts --configPlugin typescript",
+    "build:manager": "cd src/manager && npm run build",
     "watch": "rollup -c rollup.config.ts --configPlugin typescript --watch",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:inspect": "npx @eslint/config-inspector",
+    "lint:inspect": "pnpm dlx @eslint/config-inspector",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest --coverage"
@@ -39,7 +41,10 @@
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "inquirer": "^12.7.0",
-    "open": "^10.2.0"
+    "next": "^15.4.6",
+    "open": "^10.2.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.17.0",
@@ -55,7 +60,9 @@
     "eslint": "^9.31.0",
     "eslint-plugin-format": "^1.0.1",
     "prettier": "^3.6.2",
+    "rimraf": "^6.0.1",
     "rollup": "^4.45.0",
+    "rollup-plugin-copy": "^3.5.0",
     "tslib": "^2.8.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

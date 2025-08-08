@@ -52,7 +52,10 @@ describe('claude', () => {
 
   beforeEach(async () => {
     // Reset process.env
-    process.env = {}
+    process.env = {
+      ...process.env,
+      NODE_ENV: 'test',
+    }
 
     mockSpawn.mockReturnValue(mockClaudeProcess as any)
     mockAccessSync.mockImplementation(() => undefined) // File exists
