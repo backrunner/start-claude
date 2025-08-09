@@ -1,6 +1,7 @@
 import type { ConfigService } from '../services/config'
+
 import type { Transformer, TransformerConstructor } from '../types/transformer'
-import * as Module from 'node:module'
+import Module from 'node:module'
 import { displayVerbose } from '../utils/ui'
 
 interface TransformerConfig {
@@ -81,10 +82,8 @@ export class TransformerService {
     options?: any
   }): Promise<boolean> {
     try {
-      // @ts-expect-error - Monkey patching module loader for dynamic transformer loading
-      const originalLoad = Module._load
-      // @ts-expect-error - Monkey patching module loader for dynamic transformer loading
-      Module._load = function (request: string, _parent: any, _isMain: boolean) {
+      const originalLoad = (Module as any)._load
+      ;(Module as any)._load = function (request: string, _parent: any, _isMain: boolean) {
         if (request === 'claude-code-router') {
           return {
             displayVerbose: (msg: string) => displayVerbose(msg, true),
@@ -134,8 +133,13 @@ export class TransformerService {
         endPoint: '/v1/chat/completions',
         transformRequestOut: async (request: any) => {
           // Transform OpenAI format to unified format
+          // Throw error if no model is provided instead of using default
+          if (!request.model) {
+            throw new Error('Model parameter is required for OpenAI transformer')
+          }
+
           return {
-            model: request.model || 'gpt-3.5-turbo',
+            model: request.model,
             messages: request.messages || [],
             max_tokens: request.max_tokens,
             temperature: request.temperature,

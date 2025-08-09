@@ -6,9 +6,9 @@ import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { AlertCircle, Filter, Loader2, Plus, Search, Settings, Sparkles, Command } from 'lucide-react'
+import { AlertCircle, Loader2, Plus, Search, Settings, Sparkles, Command } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { ConfigForm } from '@/components/config-form'
+import { ConfigFormModal } from '@/components/config-form-modal'
 import { ConfigList } from '@/components/config-list'
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal'
 import { SystemSettingsModal } from '@/components/system-settings-modal'
@@ -16,7 +16,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 
 export default function HomePage(): ReactNode {
@@ -29,7 +28,6 @@ export default function HomePage(): ReactNode {
   const [deleteConfig, setDeleteConfig] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [showEnabledOnly, setShowEnabledOnly] = useState(true)
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -63,18 +61,194 @@ export default function HomePage(): ReactNode {
   useEffect(() => {
     void fetchConfigs()
 
-    // Add ESC key listener
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        // eslint-disable-next-line no-alert
-        if (confirm('Are you sure you want to close the manager?')) {
-          window.close()
+    // Function to call shutdown API
+    const callShutdownAPI = async (): Promise<void> => {
+      try {
+        // Try both methods to ensure shutdown
+        const response = await fetch('/api/shutdown', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          keepalive: true, // Ensure request completes even if page is closing
+          body: JSON.stringify({}),
+        })
+        
+        if (response.ok) {
+          console.log('Shutdown API called successfully')
+        } else {
+          console.warn('Shutdown API returned non-ok response')
+        }
+      } catch (error) {
+        console.error('Error calling shutdown API:', error)
+        // Try sendBeacon as fallback
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/api/shutdown', JSON.stringify({}))
         }
       }
     }
 
+    // Add ESC key listener
+    const handleKeyDown = async (event: KeyboardEvent): Promise<void> => {
+      if (event.key === 'Escape') {
+        console.log('ESC key pressed, initiating shutdown...')
+        await callShutdownAPI()
+        
+        // Give a moment for the shutdown to process
+        setTimeout(() => {
+          window.close()
+        }, 300)
+      }
+    }
+
+    // WebSocket connection for real-time shutdown
+    let ws: WebSocket | null = null
+    let wsReconnectTimeout: NodeJS.Timeout | null = null
+    let healthCheckInterval: NodeJS.Timeout | null = null
+    let useHealthCheck = false
+
+    const connectWebSocket = async (): Promise<void> => {
+      try {
+        // First check if WebSocket server is available
+        const wsInfoResponse = await fetch('/api/ws', { cache: 'no-cache' })
+        const wsInfo = await wsInfoResponse.json()
+        
+        if (!wsInfo.serverRunning || !wsInfo.websocketUrl) {
+          console.log('WebSocket server not available, using health check fallback')
+          useHealthCheck = true
+          startHealthCheck()
+          return
+        }
+
+        console.log('Connecting to WebSocket:', wsInfo.websocketUrl)
+        ws = new WebSocket(wsInfo.websocketUrl)
+
+        ws.onopen = () => {
+          console.log('WebSocket connected successfully')
+          useHealthCheck = false
+          // Stop health check if it was running
+          if (healthCheckInterval) {
+            clearInterval(healthCheckInterval)
+            healthCheckInterval = null
+          }
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data)
+            console.log('WebSocket message received:', message)
+            
+            if (message.type === 'shutdown') {
+              console.log('Shutdown message received via WebSocket, closing page...')
+              window.close()
+            }
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error)
+          }
+        }
+
+        ws.onclose = (event) => {
+          console.log('WebSocket connection closed:', event.code, event.reason)
+          ws = null
+          
+          // If close wasn't intentional, try to reconnect or fallback to health check
+          if (event.code !== 1000 && !useHealthCheck) {
+            console.log('WebSocket connection lost, starting health check fallback')
+            useHealthCheck = true
+            startHealthCheck()
+          }
+        }
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error)
+          ws = null
+          if (!useHealthCheck) {
+            console.log('WebSocket error, switching to health check fallback')
+            useHealthCheck = true
+            startHealthCheck()
+          }
+        }
+
+      } catch (error) {
+        console.error('Failed to connect WebSocket:', error)
+        useHealthCheck = true
+        startHealthCheck()
+      }
+    }
+
+    // Health check fallback when WebSocket is not available
+    const healthCheck = async (): Promise<boolean> => {
+      try {
+        const response = await fetch('/api/health', {
+          method: 'GET',
+          cache: 'no-cache',
+        })
+        return response.ok
+      } catch (error) {
+        return false
+      }
+    }
+
+    const startHealthCheck = (): void => {
+      if (healthCheckInterval) return // Already running
+      
+      console.log('Starting health check polling (WebSocket fallback)')
+      healthCheckInterval = setInterval(async () => {
+        if (!useHealthCheck) {
+          // WebSocket has reconnected, stop health check
+          if (healthCheckInterval) {
+            clearInterval(healthCheckInterval)
+            healthCheckInterval = null
+          }
+          return
+        }
+
+        const isHealthy = await healthCheck()
+        if (!isHealthy) {
+          console.log('Manager server is no longer responding, closing page...')
+          window.close()
+        }
+      }, 2000) // Check every 2 seconds
+    }
+
+    // Try to connect WebSocket first, fallback to health check if needed
+    void connectWebSocket()
+
+    // Add beforeunload listener to catch all page close scenarios
+    const handleBeforeUnload = (event: BeforeUnloadEvent): void => {
+      void callShutdownAPI()
+    }
+
+    // Add unload listener as backup for when beforeunload might not work
+    const handleUnload = (): void => {
+      // Send shutdown request with sendBeacon for reliability during unload
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/shutdown', JSON.stringify({}))
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('unload', handleUnload)
+    
+    return () => {
+      // Cleanup WebSocket
+      if (ws) {
+        ws.close(1000, 'Page unloading')
+        ws = null
+      }
+      
+      // Cleanup intervals and timeouts
+      if (healthCheckInterval) {
+        clearInterval(healthCheckInterval)
+      }
+      if (wsReconnectTimeout) {
+        clearTimeout(wsReconnectTimeout)
+      }
+      
+      // Cleanup event listeners
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('unload', handleUnload)
+    }
   }, [])
 
   const saveConfig = async (config: ClaudeConfig): Promise<void> => {
@@ -173,26 +347,20 @@ export default function HomePage(): ReactNode {
     }
   }
 
-  // Filter and search configs
-  const filteredBySearch = configs.filter(config =>
+  // Filter configs by search term only
+  const filteredConfigs = configs.filter(config =>
     config.name.toLowerCase().includes(searchTerm.toLowerCase())
     || (config.baseUrl && config.baseUrl.toLowerCase().includes(searchTerm.toLowerCase())),
   )
-
-  const enabledConfigs = showEnabledOnly
-    ? filteredBySearch.filter(config => config.enabled !== false)
-    : filteredBySearch
-
-  const finalConfigs = enabledConfigs.length > 0 ? enabledConfigs : filteredBySearch
 
   const handleDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event
 
     if (active.id !== over?.id && over?.id) {
-      const oldIndex = finalConfigs.findIndex(config => config.name === active.id)
-      const newIndex = finalConfigs.findIndex(config => config.name === over.id)
+      const oldIndex = filteredConfigs.findIndex(config => config.name === active.id)
+      const newIndex = filteredConfigs.findIndex(config => config.name === over.id)
 
-      const reorderedConfigs = arrayMove(finalConfigs, oldIndex, newIndex)
+      const reorderedConfigs = arrayMove(filteredConfigs, oldIndex, newIndex)
       const updatedFilteredConfigs = reorderedConfigs.map((config, index) => ({
         ...config,
         order: index,
@@ -262,18 +430,9 @@ export default function HomePage(): ReactNode {
                 <h1 className="text-3xl font-bold text-foreground">
                   Start Claude Manager
                 </h1>
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-muted-foreground">
-                    Manage your Claude configurations with ease
-                  </p>
-                  <Badge variant="outline" className="text-xs">
-                    <Command className="h-3 w-3 mr-1" />
-                    ESC to close
-                  </Badge>
-                </div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
@@ -283,31 +442,16 @@ export default function HomePage(): ReactNode {
                 <Settings className="w-4 h-4 mr-2" />
                 System Settings
               </Button>
-              <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    onClick={() => setEditingConfig(null)}
-                    className="bg-primary hover:bg-primary/90"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Configuration
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
-                  <DialogHeader className="sr-only">
-                    <DialogTitle>Configuration</DialogTitle>
-                    <DialogDescription>Manage Claude configuration</DialogDescription>
-                  </DialogHeader>
-                  <ConfigForm
-                    config={editingConfig}
-                    onSave={(config): void => { void saveConfig(config) }}
-                    onCancel={() => {
-                      setIsFormOpen(false)
-                      setEditingConfig(null)
-                    }}
-                  />
-                </DialogContent>
-              </Dialog>
+              <Button
+                onClick={() => {
+                  setEditingConfig(null)
+                  setIsFormOpen(true)
+                }}
+                className="bg-primary hover:bg-primary/90"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Configuration
+              </Button>
             </div>
           </div>
 
@@ -318,90 +462,79 @@ export default function HomePage(): ReactNode {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-
-          {/* Search and Filter Section */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                  <Input
-                    placeholder="Search configurations..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <Button
-                  variant={showEnabledOnly ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setShowEnabledOnly(!showEnabledOnly)}
-                  className="shrink-0"
-                >
-                  <Filter className="w-4 h-4 mr-2" />
-                  {showEnabledOnly ? 'Active Only' : 'Show All'}
-                </Button>
-                <Badge variant="secondary" className="shrink-0 text-xs">
-                  {finalConfigs.length} of {configs.length}
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Main Content */}
-        {finalConfigs.length === 0 && searchTerm ? (
-          <Card className="border-dashed border-2">
-            <CardContent className="text-center py-12">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted mx-auto mb-4">
-                <Search className="w-6 h-6 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold text-muted-foreground mb-2">
-                No configurations found
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Try adjusting your search terms or clear the filter
-              </p>
-              <Button 
-                variant="outline" 
-                onClick={() => setSearchTerm('')}
-                className="mt-4"
-              >
-                Clear Search
-              </Button>
-            </CardContent>
-          </Card>
-        ) : finalConfigs.length === 0 ? (
-          <Card className="border-dashed border-2">
-            <CardContent className="text-center py-12">
-              <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10 mx-auto mb-6">
-                <Plus className="w-8 h-8 text-primary" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">No Configurations Yet</h3>
-              <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-                Get started by creating your first Claude configuration to manage your AI assistant settings
-              </p>
-              <Button
-                onClick={() => setIsFormOpen(true)}
-                size="lg"
-                className="bg-primary hover:bg-primary/90"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Your First Configuration
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-6">
+        <div className="space-y-6">
+          {/* Search Bar */}
+          <div className="flex justify-between items-center">
+            <div className="relative w-72">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+              <Input
+                placeholder="Search configurations..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Badge variant="outline" className="text-xs px-2 py-1">
+              <Command className="h-3 w-3 mr-1" />
+              Press ESC to close manager
+            </Badge>
+          </div>
+
+          {/* Configuration List */}
+          {filteredConfigs.length === 0 && searchTerm ? (
+            <Card className="border-dashed border-2">
+              <CardContent className="text-center py-12">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted mx-auto mb-4">
+                  <Search className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold text-muted-foreground mb-2">
+                  No configurations found
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Try adjusting your search terms or clear the filter
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => setSearchTerm('')}
+                  className="mt-4"
+                >
+                  Clear Search
+                </Button>
+              </CardContent>
+            </Card>
+          ) : filteredConfigs.length === 0 ? (
+            <Card className="border-dashed border-2">
+              <CardContent className="text-center py-12">
+                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10 mx-auto mb-6">
+                  <Plus className="w-8 h-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">No Configurations Yet</h3>
+                <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                  Get started by creating your first Claude configuration to manage your AI assistant settings
+                </p>
+                <Button
+                  onClick={() => setIsFormOpen(true)}
+                  size="lg"
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Configuration
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd}
               modifiers={[restrictToVerticalAxis]}
             >
-              <SortableContext items={finalConfigs.map(c => c.name)} strategy={verticalListSortingStrategy}>
+              <SortableContext items={filteredConfigs.map(c => c.name)} strategy={verticalListSortingStrategy}>
                 <ConfigList
-                  configs={finalConfigs}
+                  configs={filteredConfigs}
                   onEdit={handleEdit}
                   onDelete={handleDeleteClick}
                   onToggleEnabled={handleToggleEnabled}
@@ -409,8 +542,19 @@ export default function HomePage(): ReactNode {
                 />
               </SortableContext>
             </DndContext>
-          </div>
-        )}
+          )}
+        </div>
+
+        <ConfigFormModal
+          open={isFormOpen}
+          onOpenChange={setIsFormOpen}
+          config={editingConfig}
+          onSave={(config): void => { void saveConfig(config) }}
+          onCancel={() => {
+            setIsFormOpen(false)
+            setEditingConfig(null)
+          }}
+        />
 
         <SystemSettingsModal
           open={isSystemSettingsOpen}

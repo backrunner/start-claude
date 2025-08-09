@@ -21,10 +21,7 @@ export interface Transformer {
     provider: LLMProvider
   ) => Promise<Record<string, any>>
   transformResponseIn?: (response: Response, context?: TransformerContext) => Promise<Response>
-
-  // 将请求格式转换为通用的格式
   transformRequestOut?: (request: any) => Promise<UnifiedChatRequest>
-  // 将相应格式转换为通用的格式
   transformResponseOut?: (response: Response) => Promise<Response>
 
   endPoint?: string

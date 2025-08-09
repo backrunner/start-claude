@@ -28,9 +28,11 @@
     "src/manager"
   ],
   "scripts": {
-    "build": "node --experimental-strip-types scripts/clean.ts && pnpm --filter manager build && rollup -c rollup.config.ts --configPlugin typescript",
+    "build": "node --experimental-strip-types scripts/clean.ts && pnpm run build:parallel && pnpm run postbuild",
+    "build:parallel": "concurrently \"pnpm run build:manager\" \"pnpm run build:cli\"",
     "postbuild": "node --experimental-strip-types scripts/postbuild.ts",
     "build:manager": "pnpm --filter manager build",
+    "build:cli": "rollup -c rollup.config.ts --configPlugin typescript",
     "watch": "rollup -c rollup.config.ts --configPlugin typescript --watch",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -40,11 +42,11 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.863.0",
+    "@aws-sdk/client-s3": "^3.864.0",
     "boxen": "^8.0.1",
     "chalk": "^5.5.0",
     "commander": "^13.1.0",
-    "inquirer": "^12.9.0",
+    "inquirer": "^12.9.1",
     "next": "^15.4.6",
     "open": "^10.2.0",
     "react": "^19.1.1",
@@ -61,7 +63,8 @@
     "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-typescript": "^12.1.4",
     "@types/inquirer": "^8.2.12",
-    "eslint": "^9.32.0",
+    "concurrently": "^9.2.0",
+    "eslint": "^9.33.0",
     "eslint-plugin-format": "^1.0.1",
     "prettier": "^3.6.2",
     "rollup": "^4.46.2",

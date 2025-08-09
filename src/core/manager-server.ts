@@ -59,10 +59,21 @@ export class ManagerServer {
       })
 
       this.childProcess.on('exit', (code, signal) => {
-        // Only show error for unexpected exits (not SIGTERM which is normal shutdown)
-        if (code !== 0 && code !== null && signal !== 'SIGTERM') {
+        // Check if this was an intentional shutdown (from ESC key or API call)
+        const wasIntentionalShutdown = code === 0 || signal === 'SIGTERM'
+        
+        if (wasIntentionalShutdown) {
+          displaySuccess('Configuration Manager stopped')
+          // Exit the CLI process as well when manager shuts down intentionally
+          setTimeout(() => {
+            displayInfo('Exiting CLI...')
+            process.exit(0)
+          }, 100)
+        } else if (code !== null) {
+          // Only show error for unexpected exits
           displayError(`Manager process exited unexpectedly with code ${code}`)
         }
+        
         this.childProcess = null
       })
 
@@ -133,6 +144,37 @@ export class ManagerServer {
     if (this.childProcess) {
       displayInfo('Stopping Configuration Manager...')
 
+      // First, try to broadcast shutdown message to WebSocket clients
+      try {
+        const req = http.request({
+          hostname: 'localhost',
+          port: this.port,
+          method: 'POST',
+          path: '/api/shutdown',
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 2000,
+        }, () => {
+          // Response received, shutdown message sent
+          displayInfo('Shutdown signal sent to manager page')
+        })
+
+        req.on('error', () => {
+          // Ignore errors - server might already be shutting down
+        })
+
+        req.on('timeout', () => {
+          req.destroy()
+        })
+
+        req.write('{}')
+        req.end()
+
+        // Give a brief moment for the WebSocket message to be sent
+        await new Promise(resolve => setTimeout(resolve, 200))
+      } catch (error) {
+        // Ignore errors during shutdown API call
+      }
+
       // Send SIGTERM for graceful shutdown
       this.childProcess.kill('SIGTERM')
 
@@ -149,7 +191,7 @@ export class ManagerServer {
         this.childProcess!.on('exit', () => {
           clearTimeout(timeout)
           this.childProcess = null
-          displaySuccess('Configuration Manager stopped')
+          // Don't show success message here - it's handled by the main exit handler
           resolve()
         })
       })

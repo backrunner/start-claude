@@ -1,9 +1,9 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { AlertTriangle, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { AlertTriangle, Trash2 } from 'lucide-react'
 
 interface ConfirmDeleteModalProps {
   open: boolean
@@ -16,7 +16,7 @@ export function ConfirmDeleteModal({ open, onClose, configName, onConfirm }: Con
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-md border-destructive/20">
-        <DialogHeader className="pb-6">
+        <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
               <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -31,10 +31,16 @@ export function ConfirmDeleteModal({ open, onClose, configName, onConfirm }: Con
         </DialogHeader>
 
         <div className="py-4">
-          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 dark:bg-destructive/10 p-4">
             <p className="text-sm text-foreground">
-              Are you sure you want to delete the configuration{' '}
-              <span className="font-semibold text-destructive">"{configName}"</span>?
+              Are you sure you want to delete the configuration
+              {' '}
+              <span className="font-semibold text-destructive">
+                &quot;
+                {configName}
+                &quot;
+              </span>
+              ?
             </p>
             <p className="text-xs text-muted-foreground mt-2">
               All associated settings and data will be permanently removed.

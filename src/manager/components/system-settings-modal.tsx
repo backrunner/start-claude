@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { SystemSettings } from '@/config/types'
-import { Activity, AlertCircle, Cloud, Database, Globe, Key, Lock, Settings2, Shield, Timer, Zap } from 'lucide-react'
+import { Activity, AlertCircle, Cloud, Database, Globe, Key, Lock, Settings2, Timer, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -146,44 +146,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto py-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="flex-1 overflow-y-auto py-6 px-1">
+          <div className="grid grid-cols-1 gap-6 pr-3">
 
-            {/* General Settings */}
-            <Card className="transition-all hover:shadow-md">
-              <CardHeader className="pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                    <Shield className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg">General</CardTitle>
-                    <CardDescription>Basic system configuration</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
-                  <div className="flex-1">
-                    <Label htmlFor="overrideCommand" className="font-medium">Override Claude Command</Label>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Enable the
-                      {' '}
-                      <code className="px-1.5 py-0.5 rounded bg-muted text-xs">sc</code>
-                      {' '}
-                      shortcut on Windows
-                    </p>
-                  </div>
-                  <Switch
-                    id="overrideCommand"
-                    checked={settings.overrideClaudeCommand}
-                    onCheckedChange={checked => setSettings(prev => ({ ...prev, overrideClaudeCommand: checked }))}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Balance Mode Settings */}
+            {/* Balance Mode Settings - Full Width */}
             <Card className="transition-all hover:shadow-md">
               <CardHeader className="pb-4">
                 <div className="flex items-center gap-3">
@@ -277,7 +243,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
             </Card>
 
             {/* S3 Sync Settings - Full Width */}
-            <Card className="lg:col-span-2 transition-all hover:shadow-md">
+            <Card className="transition-all hover:shadow-md">
               <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -419,22 +385,29 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           </div>
         </div>
 
-        <DialogFooter className="pt-6 border-t bg-muted/20">
-          <Button variant="outline" onClick={onClose} disabled={saving} className="min-w-[100px]">
-            Cancel
-          </Button>
-          <Button onClick={(): void => { void handleSave() }} disabled={saving} className="min-w-[120px]">
-            {saving
-              ? (
-                  <div className="flex items-center gap-2">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    Saving...
-                  </div>
-                )
-              : (
-                  'Save Settings'
-                )}
-          </Button>
+        <DialogFooter className="pt-6 border-t bg-muted/10 flex-shrink-0">
+          <div className="flex items-center justify-between w-full">
+            <div className="text-xs text-muted-foreground">
+              Changes will be applied immediately after saving
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={onClose} disabled={saving} className="min-w-[100px]">
+                Cancel
+              </Button>
+              <Button onClick={(): void => { void handleSave() }} disabled={saving} className="min-w-[120px] bg-primary hover:bg-primary/90">
+                {saving
+                  ? (
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        Saving...
+                      </div>
+                    )
+                  : (
+                      'Save Settings'
+                    )}
+              </Button>
+            </div>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

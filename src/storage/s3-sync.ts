@@ -445,7 +445,7 @@ export class S3SyncManager {
         return await this.downloadConfigs(true)
       }
     }
-    catch (error) {
+    catch {
       // Silent fail for auto-sync
       return true
     }
