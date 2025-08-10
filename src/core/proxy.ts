@@ -3,6 +3,8 @@ import type { ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
 import { Buffer } from 'node:buffer'
 import * as http from 'node:http'
 import * as https from 'node:https'
+import { HttpProxyAgent } from 'http-proxy-agent'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
 import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/ui'
@@ -33,10 +35,21 @@ export class ProxyServer {
   private enableLoadBalance: boolean = false
   private enableTransform: boolean = false
   private verbose: boolean = false
+  private proxyUrl?: string
+  private httpAgent?: http.Agent
+  private httpsAgent?: https.Agent
 
-  constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode, systemSettings?: any) {
+  constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode, systemSettings?: any, proxyUrl?: string) {
     this.proxyMode = proxyMode || {}
     this.verbose = this.proxyMode.verbose || false
+    this.proxyUrl = proxyUrl
+
+    // Initialize proxy agents if proxy URL is provided
+    if (this.proxyUrl) {
+      this.httpAgent = new HttpProxyAgent(this.proxyUrl)
+      this.httpsAgent = new HttpsProxyAgent(this.proxyUrl)
+      displayVerbose(`Proxy configured: ${this.proxyUrl}`, this.verbose)
+    }
 
     // Apply system settings for balance mode
     if (systemSettings?.balanceMode) {
@@ -57,11 +70,20 @@ export class ProxyServer {
 
     // If load balancing is enabled, set up endpoints
     if (this.enableLoadBalance) {
-      const validConfigs = configs.filter(c => c.baseUrl && c.apiKey)
+      // Include configs that either have API credentials OR transformer enabled
+      // The proxy will handle fallback logic for transformer-only configs
+      const validConfigs = configs.filter((c) => {
+        const hasApiCredentials = c.baseUrl && c.apiKey
+        // Type guard to check if config has transformerEnabled property
+        const hasTransformerEnabled = 'transformerEnabled' in c && c.transformerEnabled === true
+        return hasApiCredentials || hasTransformerEnabled
+      })
 
       if (validConfigs.length === 0) {
-        throw new Error('No configurations with baseUrl and apiKey found for load balancing')
+        throw new Error('No configurations found for load balancing (need either API credentials or transformer enabled)')
       }
+
+      displayVerbose(`Found ${validConfigs.length} valid configs for load balancing`, this.verbose)
 
       // Sort configs by order (lower numbers first), with undefined order treated as highest priority (0)
       validConfigs.sort((a, b) => {
@@ -93,6 +115,13 @@ export class ProxyServer {
     }
 
     displayVerbose(`Initialized with ${this.endpoints.length} endpoint(s)`, this.verbose)
+  }
+
+  private getAgent(isHttps: boolean): http.Agent | https.Agent | undefined {
+    if (this.proxyUrl) {
+      return isHttps ? this.httpsAgent : this.httpAgent
+    }
+    return undefined
   }
 
   async initialize(): Promise<void> {
@@ -142,6 +171,7 @@ export class ProxyServer {
   }
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    console.log('handle req', req.url)
     try {
       // Handle CORS preflight requests
       if (req.method === 'OPTIONS') {
@@ -157,19 +187,7 @@ export class ProxyServer {
 
       displayVerbose(`Handling ${req.method} ${req.url}`, this.verbose)
 
-      // Check if transformer mode is enabled and if we have a matching transformer
-      if (this.enableTransform) {
-        const requestPath = req.url || '/'
-        const transformer = this.transformerService.findTransformerByPath(requestPath)
-
-        if (transformer) {
-          displayVerbose(`Found transformer for ${requestPath}: ${transformer.name}`, this.verbose)
-          await this.handleTransformerRequest(req, res)
-          return
-        }
-      }
-
-      // Fall back to load balancer mode (or direct proxy if load balancing is disabled)
+      // All requests go to load balancer now, which will handle both regular and transformer endpoints
       if (this.enableLoadBalance) {
         const endpoint = this.getNextHealthyEndpoint()
         if (!endpoint) {
@@ -185,7 +203,7 @@ export class ProxyServer {
         await this.proxyRequest(req, res, endpoint)
       }
       else {
-        // If neither transformer nor load balancer handles the request, return error
+        // Single endpoint mode - no load balancing
         res.writeHead(404, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({
           error: {
@@ -205,86 +223,6 @@ export class ProxyServer {
         },
       }))
     }
-  }
-
-  private async handleTransformerRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const requestPath = req.url || '/'
-
-    // Find appropriate transformer based on request path
-    const transformer = this.transformerService.findTransformerByPath(requestPath)
-
-    if (!transformer) {
-      res.writeHead(404, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({
-        error: {
-          message: `No transformer found for endpoint: ${requestPath}`,
-          type: 'not_found',
-        },
-      }))
-      return
-    }
-
-    // Collect request body
-    const chunks: Buffer[] = []
-    req.on('data', chunk => chunks.push(chunk))
-
-    req.on('end', () => {
-      void (async () => {
-        try {
-          const body = Buffer.concat(chunks)
-          let requestData: any = {}
-
-          if (body.length > 0) {
-            try {
-              requestData = JSON.parse(body.toString())
-            }
-            catch {
-              res.writeHead(400, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({
-                error: {
-                  message: 'Invalid JSON in request body',
-                  type: 'invalid_request',
-                },
-              }))
-              return
-            }
-          }
-
-          // Transform request if transformer supports it
-          let transformedRequest = requestData
-          if (transformer.transformRequestOut) {
-            transformedRequest = await transformer.transformRequestOut(requestData)
-          }
-
-          // Forward the transformed request to the actual Claude API endpoint
-          // Use the first available config for the actual API call
-          const targetConfig = this.endpoints[0]?.config
-          if (!targetConfig?.baseUrl || !targetConfig?.apiKey) {
-            res.writeHead(500, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({
-              error: {
-                message: 'No valid endpoint configuration available for forwarding transformed request',
-                type: 'configuration_error',
-              },
-            }))
-            return
-          }
-
-          // Forward the transformed request to the actual endpoint
-          await this.forwardTransformedRequest(req, res, transformedRequest, targetConfig)
-        }
-        catch (error) {
-          displayError(`⚠️ Transformer error: ${error instanceof Error ? error.message : 'Unknown error'}`)
-          res.writeHead(500, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({
-            error: {
-              message: 'Transformer processing failed',
-              type: 'transformer_error',
-            },
-          }))
-        }
-      })()
-    })
   }
 
   /**
@@ -308,14 +246,15 @@ export class ProxyServer {
         'User-Agent': originalReq.headers['user-agent'] || 'start-claude-transformer-proxy',
       }
 
+      const isHttps = targetUrl.protocol === 'https:'
+      const httpModule = isHttps ? https : http
+
       const options = {
         method: originalReq.method || 'POST',
         headers,
         timeout: 60000, // 60 second timeout
+        agent: this.getAgent(isHttps),
       }
-
-      const isHttps = targetUrl.protocol === 'https:'
-      const httpModule = isHttps ? https : http
 
       const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
         // Forward status and headers
@@ -418,6 +357,101 @@ export class ProxyServer {
       void (async () => {
         try {
           const body = Buffer.concat(chunks)
+          let requestData: any = {}
+
+          // Parse request body to check for transformer requirements
+          if (body.length > 0) {
+            try {
+              requestData = JSON.parse(body.toString())
+            }
+            catch {
+              // If we can't parse JSON, just continue with regular proxy
+              displayVerbose('Could not parse request JSON for transformer check', this.verbose)
+            }
+          }
+
+          // Check if this endpoint has transformer enabled and we have transformer service
+          if (this.enableTransform && 'transformerEnabled' in endpoint.config && endpoint.config.transformerEnabled) {
+            displayVerbose(`Checking for transformer for endpoint: ${endpoint.config.baseUrl}`, this.verbose)
+            const transformer = this.transformerService.findTransformerByDomain(endpoint.config.baseUrl)
+
+            if (transformer) {
+              // Find the transformer name for logging
+              const transformerName = Array.from(this.transformerService.getAllTransformers().entries())
+                .find(([, t]) => t === transformer)?.[0] || 'unknown'
+              displayVerbose(`Found transformer for domain ${endpoint.config.baseUrl}: ${transformerName}`, this.verbose)
+
+              // Transform request if transformer supports it
+              let transformedRequest = requestData
+              if (transformer.transformRequestOut) {
+                transformedRequest = await transformer.transformRequestOut(requestData)
+                displayVerbose(`Request transformed by ${transformer.domain || 'transformer'}`, this.verbose)
+              }
+
+              // Forward the transformed request to this endpoint's API
+              if (endpoint.config.baseUrl && endpoint.config.apiKey) {
+                await this.forwardTransformedRequest(req, res, transformedRequest, endpoint.config)
+                return
+              }
+              else {
+                // This is a transformer-only endpoint, find fallback with API credentials
+                displayVerbose(`Endpoint ${endpoint.config.name} is transformer-only, looking for fallback`, this.verbose)
+
+                const fallbackEndpoint = this.endpoints.find(e =>
+                  e.isHealthy && e.config.baseUrl && e.config.apiKey && e !== endpoint,
+                )
+
+                if (fallbackEndpoint) {
+                  displayVerbose(`Using fallback endpoint ${fallbackEndpoint.config.name}`, this.verbose)
+                  await this.forwardTransformedRequest(req, res, transformedRequest, fallbackEndpoint.config)
+                  return
+                }
+                else {
+                  this.markEndpointUnhealthy(endpoint, 'No fallback endpoint available')
+
+                  const nextEndpoint = this.getNextHealthyEndpoint()
+                  if (nextEndpoint && nextEndpoint !== endpoint) {
+                    void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, nextEndpoint)
+                    return
+                  }
+
+                  res.writeHead(503, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify({
+                    error: {
+                      message: 'No available endpoints with API credentials for transformer fallback',
+                      type: 'service_unavailable',
+                    },
+                  }))
+                  return
+                }
+              }
+            }
+          }
+
+          // Regular proxy request (no transformation)
+          // Check if this endpoint has API credentials for regular requests
+          if (!endpoint.config.baseUrl || !endpoint.config.apiKey) {
+            displayVerbose(`Endpoint ${endpoint.config.name} has no API credentials, skipping`, this.verbose)
+            this.markEndpointUnhealthy(endpoint, 'Missing API credentials')
+
+            // Try next endpoint in rotation
+            const nextEndpoint = this.getNextHealthyEndpoint()
+            if (nextEndpoint && nextEndpoint !== endpoint) {
+              displayVerbose(`Retrying with next endpoint: ${nextEndpoint.config.name}`, this.verbose)
+              void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, nextEndpoint)
+              return
+            }
+
+            // No healthy endpoints available
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              error: {
+                message: 'No endpoints with API credentials available',
+                type: 'service_unavailable',
+              },
+            }))
+            return
+          }
 
           // Prepare headers for the upstream request
           const headers = { ...req.headers }
@@ -435,14 +469,15 @@ export class ProxyServer {
           delete headers['transfer-encoding']
           delete headers.upgrade
 
+          const isHttps = targetUrl.protocol === 'https:'
+          const httpModule = isHttps ? https : http
+
           const options = {
             method: req.method,
             headers,
             timeout: 30000, // 30 second timeout
+            agent: this.getAgent(isHttps),
           }
-
-          const isHttps = targetUrl.protocol === 'https:'
-          const httpModule = isHttps ? https : http
 
           const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
           // Forward status and headers
@@ -542,14 +577,15 @@ export class ProxyServer {
     delete headers['transfer-encoding']
     delete headers.upgrade
 
+    const isHttps = targetUrl.protocol === 'https:'
+    const httpModule = isHttps ? https : http
+
     const options = {
       method,
       headers,
       timeout: 30000, // 30 second timeout
+      agent: this.getAgent(isHttps),
     }
-
-    const isHttps = targetUrl.protocol === 'https:'
-    const httpModule = isHttps ? https : http
 
     const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
       // Forward status and headers
@@ -669,6 +705,9 @@ export class ProxyServer {
         }],
       })
 
+      const isHttps = healthUrl.protocol === 'https:'
+      const httpModule = isHttps ? https : http
+
       const options = {
         method: 'POST',
         headers: {
@@ -677,10 +716,8 @@ export class ProxyServer {
           'Content-Length': Buffer.byteLength(healthCheckBody),
         },
         timeout: 10000,
+        agent: this.getAgent(isHttps),
       }
-
-      const isHttps = healthUrl.protocol === 'https:'
-      const httpModule = isHttps ? https : http
 
       const req = httpModule.request(healthUrl, options, (res) => {
         if (res.statusCode && res.statusCode < 500) {
@@ -823,6 +860,9 @@ export class ProxyServer {
         }],
       })
 
+      const isHttps = healthUrl.protocol === 'https:'
+      const httpModule = isHttps ? https : http
+
       const options = {
         method: 'POST',
         headers: {
@@ -831,10 +871,8 @@ export class ProxyServer {
           'Content-Length': Buffer.byteLength(healthCheckBody),
         },
         timeout: 15000, // 15 second timeout for initial check
+        agent: this.getAgent(isHttps),
       }
-
-      const isHttps = healthUrl.protocol === 'https:'
-      const httpModule = isHttps ? https : http
 
       const req = httpModule.request(healthUrl, options, (res) => {
         if (res.statusCode && res.statusCode < 500) {
@@ -876,16 +914,16 @@ export class ProxyServer {
     return this.transformerService.removeTransformer(name)
   }
 
-  listTransformers(): { name: string, hasEndpoint: boolean, endpoint?: string }[] {
-    const transformers: { name: string, hasEndpoint: boolean, endpoint?: string }[] = []
+  listTransformers(): { name: string, hasDomain: boolean, domain?: string }[] {
+    const transformers: { name: string, hasDomain: boolean, domain?: string }[] = []
     const entries = Array.from(this.transformerService.getAllTransformers().entries())
 
     for (const [name, transformer] of entries) {
       if (typeof transformer === 'object') {
         transformers.push({
           name,
-          hasEndpoint: !!transformer.endPoint,
-          endpoint: transformer.endPoint,
+          hasDomain: !!transformer.domain,
+          domain: transformer.domain,
         })
       }
     }

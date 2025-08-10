@@ -16,6 +16,7 @@ export interface ProgramOptions {
   outputFormat?: string
   inputFormat?: string
   verbose?: boolean
+  debug?: boolean
   maxTurns?: number
   model?: string
   permissionMode?: string
@@ -25,12 +26,14 @@ export interface ProgramOptions {
   checkUpdates?: boolean
   dangerouslySkipPermissions?: boolean
   env?: string[]
+  proxy?: string
   apiKey?: string
   baseUrl?: string
 }
 
 export interface CliOverrides {
   env?: string[]
+  proxy?: string
   apiKey?: string
   baseUrl?: string
   model?: string
@@ -73,6 +76,10 @@ export function buildClaudeArgs(options: ProgramOptions, config?: ClaudeConfig):
     claudeArgs.push('--verbose')
   }
 
+  if (options.debug) {
+    claudeArgs.push('-d')
+  }
+
   if (options.maxTurns) {
     claudeArgs.push('--max-turns', options.maxTurns.toString())
   }
@@ -97,7 +104,7 @@ export function buildClaudeArgs(options: ProgramOptions, config?: ClaudeConfig):
   }
 
   if (options.continue) {
-    claudeArgs.push('--continue')
+    claudeArgs.push('-c')
   }
 
   if (options.dangerouslySkipPermissions) {
@@ -125,6 +132,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--output-format',
       '--input-format',
       '--verbose',
+      '--debug',
       '--max-turns',
       '--model',
       '--permission-mode',
@@ -134,6 +142,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--dangerously-skip-permissions',
       '-e',
       '--env',
+      '--proxy',
       '--api-key',
       '--base-url',
     ]
@@ -160,6 +169,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--permission-mode',
       '--env',
       '-e',
+      '--proxy',
       '--api-key',
       '--base-url',
     ]
@@ -176,6 +186,7 @@ export function filterProcessArgs(configArg?: string): string[] {
 export function buildCliOverrides(options: ProgramOptions): CliOverrides {
   return {
     env: options.env || [],
+    proxy: options.proxy,
     apiKey: options.apiKey,
     baseUrl: options.baseUrl,
     model: options.model,

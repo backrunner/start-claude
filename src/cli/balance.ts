@@ -15,6 +15,7 @@ export async function handleBalanceMode(
   options: ProgramOptions,
   configArg?: string,
   systemSettings?: any,
+  forcedConfigs?: any[], // Allow forced configs for transformer mode
 ): Promise<void> {
   // Check for S3 sync updates at startup
   const s3SyncManager = new S3SyncManager()
@@ -26,29 +27,57 @@ export async function handleBalanceMode(
     }
   }
 
-  // Get all configurations for load balancing
-  const configs = configManager.listConfigs()
-  const balanceableConfigs = configs.filter(c => c.baseUrl && c.apiKey)
+  // Get configurations for load balancing - use forced configs or all configs
+  const configs = forcedConfigs || configManager.listConfigs()
+
+  // Include configs that either have API credentials OR have transformer enabled
+  const balanceableConfigs = configs.filter((c) => {
+    const hasApiCredentials = c.baseUrl && c.apiKey
+    const hasTransformerEnabled = c.transformerEnabled === true
+
+    if (hasTransformerEnabled && !hasApiCredentials) {
+      displayInfo(`Configuration "${c.name}" is transformer-enabled but missing baseUrl/apiKey - including for transformer fallback`)
+    }
+
+    return hasApiCredentials || hasTransformerEnabled
+  })
 
   if (balanceableConfigs.length === 0) {
-    displayError('No configurations with baseUrl and apiKey found for load balancing')
-    displayInfo('Load balancing requires configurations with both baseUrl and apiKey set')
+    displayError('No configurations found for load balancing')
+    displayInfo('Load balancing requires configurations with either:')
+    displayInfo('  - baseUrl and apiKey (for direct API calls)')
+    displayInfo('  - transformerEnabled: true (for transformer processing)')
     process.exit(1)
   }
 
-  displayInfo(`Starting load balancer with ${balanceableConfigs.length} endpoints:`)
+  // Show which configs are included and why
+  displayInfo(`Starting load balancer with ${balanceableConfigs.length} endpoint${balanceableConfigs.length > 1 ? 's' : ''}:`)
   balanceableConfigs.forEach((c) => {
-    displayInfo(`  - ${c.name}: ${c.baseUrl}`)
+    const hasApi = c.baseUrl && c.apiKey
+    const hasTransformer = c.transformerEnabled === true
+
+    let status = ''
+    if (hasApi && hasTransformer) {
+      status = ' (API + transformer)'
+    }
+    else if (hasApi) {
+      status = ' (API only)'
+    }
+    else if (hasTransformer) {
+      status = ' (transformer only - needs fallback endpoints)'
+    }
+
+    displayInfo(`  - ${c.name}: ${c.baseUrl || 'no baseUrl'}${status}`)
   })
 
   try {
     // Check if any config has transformer enabled
     const hasTransformerEnabled = balanceableConfigs.some(c => c.transformerEnabled === true)
-    
-    const proxyServer = new ProxyServer(balanceableConfigs, { 
+
+    const proxyServer = new ProxyServer(balanceableConfigs, {
       enableLoadBalance: true,
-      enableTransform: hasTransformerEnabled
-    }, systemSettings)
+      enableTransform: hasTransformerEnabled,
+    }, systemSettings, options.proxy)
 
     // Perform initial health checks
     await proxyServer.performInitialHealthChecks()
@@ -56,8 +85,27 @@ export async function handleBalanceMode(
     await proxyServer.startServer(2333)
 
     displayInfo('')
-    displaySuccess('Load balancer is running!')
-    displayInfo('Starting Claude Code with load balancer...')
+
+    // Determine proxy mode and show appropriate message
+    const apiConfigs = balanceableConfigs.filter(c => c.baseUrl && c.apiKey)
+    const transformerConfigs = balanceableConfigs.filter(c => c.transformerEnabled === true)
+
+    if (apiConfigs.length > 0 && transformerConfigs.length > 0) {
+      displaySuccess('🔧 Hybrid proxy server is running! (Load balancer + Transformer)')
+      displayInfo('Starting Claude Code with hybrid proxy...')
+    }
+    else if (apiConfigs.length > 1) {
+      displaySuccess('🚀 Load balancer is running!')
+      displayInfo('Starting Claude Code with load balancer...')
+    }
+    else if (transformerConfigs.length > 0) {
+      displaySuccess('🔧 Transformer proxy is running!')
+      displayInfo('Starting Claude Code with transformer proxy...')
+    }
+    else {
+      displaySuccess('🚀 Proxy server is running!')
+      displayInfo('Starting Claude Code with proxy server...')
+    }
     displayInfo('')
 
     // Set up a load balancer configuration that preserves other settings

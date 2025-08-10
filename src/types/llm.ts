@@ -16,7 +16,7 @@ export interface Message {
   }>
 }
 
-export interface UnifiedChatRequest {
+export interface LLMChatRequest {
   model: string
   messages: Message[]
   max_tokens?: number

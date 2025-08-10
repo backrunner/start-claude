@@ -23,11 +23,11 @@ export class TransformerService {
 
   registerTransformer(name: string, transformer: Transformer): void {
     this.transformers.set(name, transformer)
+    const domainInfo = transformer.domain ? ` (domain: ${transformer.domain})` : ''
+    const defaultInfo = transformer.isDefault ? ' [DEFAULT]' : ''
+
     displayVerbose(
-      `register transformer: ${name}${transformer.endPoint
-        ? ` (endpoint: ${transformer.endPoint})`
-        : ' (no endpoint)'
-      }`,
+      `register transformer: ${name}${domainInfo}${defaultInfo}`,
       this.verbose,
     )
   }
@@ -40,28 +40,12 @@ export class TransformerService {
     return new Map(this.transformers)
   }
 
-  getTransformersWithEndpoint(): { name: string, transformer: Transformer }[] {
+  getTransformersWithDomain(): { name: string, transformer: Transformer }[] {
     const result: { name: string, transformer: Transformer }[] = []
     const entries = Array.from(this.transformers.entries())
 
     for (const [name, transformer] of entries) {
-      if (typeof transformer === 'object' && transformer.endPoint) {
-        result.push({ name, transformer })
-      }
-    }
-
-    return result
-  }
-
-  getTransformersWithoutEndpoint(): {
-    name: string
-    transformer: Transformer
-  }[] {
-    const result: { name: string, transformer: Transformer }[] = []
-    const entries = Array.from(this.transformers.entries())
-
-    for (const [name, transformer] of entries) {
-      if (typeof transformer === 'object' && !transformer.endPoint) {
+      if (typeof transformer === 'object' && transformer.domain) {
         result.push({ name, transformer })
       }
     }
@@ -126,34 +110,22 @@ export class TransformerService {
 
   private async registerDefaultTransformersInternal(): Promise<void> {
     try {
-      // Default transformers can be registered here
-      // For now, we'll implement basic OpenAI-compatible transformers
-      this.registerTransformer('openai', {
-        name: 'openai',
-        endPoint: '/v1/chat/completions',
-        transformRequestOut: async (request: any) => {
-          // Transform OpenAI format to unified format
-          // Throw error if no model is provided instead of using default
-          if (!request.model) {
-            throw new Error('Model parameter is required for OpenAI transformer')
-          }
+      // Register OpenAI as the default transformer (fallback)
+      const { OpenaiTransformer } = await import('../transformers/openai')
+      const openaiTransformer = new OpenaiTransformer()
+      this.registerTransformer('openai', openaiTransformer)
 
-          return {
-            model: request.model,
-            messages: request.messages || [],
-            max_tokens: request.max_tokens,
-            temperature: request.temperature,
-            top_p: request.top_p,
-            stream: request.stream,
-            tools: request.tools,
-            tool_choice: request.tool_choice,
-            stop_sequences: request.stop,
-          }
-        },
-        transformResponseOut: async (response: Response) => {
-          return response
-        },
-      })
+      // Register OpenRouter transformer
+      const { OpenrouterTransformer } = await import('../transformers/openrouter')
+      const openrouterTransformer = new OpenrouterTransformer()
+      this.registerTransformer('openrouter', openrouterTransformer)
+
+      // Register Gemini transformer
+      const { GeminiTransformer } = await import('../transformers/gemini')
+      const geminiTransformer = new GeminiTransformer()
+      this.registerTransformer('gemini', geminiTransformer)
+
+      displayVerbose('Default transformers registered: OpenAI (default), OpenRouter, Gemini', this.verbose)
     }
     catch (error) {
       displayVerbose(`transformer register error: ${error instanceof Error ? error.message : String(error)}`, this.verbose)
@@ -169,25 +141,40 @@ export class TransformerService {
     }
   }
 
-  // Find transformer by endpoint
-  findTransformerByEndpoint(endpoint: string): Transformer | null {
-    const entries = Array.from(this.transformers.entries())
-    for (const [, transformer] of entries) {
-      if (typeof transformer === 'object' && transformer.endPoint === endpoint) {
-        return transformer
-      }
+  // Find transformer by endpoint domain from config baseUrl
+  findTransformerByDomain(baseUrl?: string): Transformer | null {
+    if (!baseUrl) {
+      return null
     }
-    return null
-  }
 
-  // Find transformer by request path
-  findTransformerByPath(path: string): Transformer | null {
-    const entries = Array.from(this.transformers.entries())
-    for (const [, transformer] of entries) {
-      if (typeof transformer === 'object' && transformer.endPoint && path.startsWith(transformer.endPoint)) {
-        return transformer
+    try {
+      const url = new URL(baseUrl)
+      const domain = url.hostname
+      displayVerbose(`Looking for transformer for domain: ${domain}`, this.verbose)
+
+      const entries = Array.from(this.transformers.entries())
+
+      // First try to find exact domain match
+      for (const [name, transformer] of entries) {
+        if (typeof transformer === 'object' && transformer.domain === domain) {
+          displayVerbose(`Found transformer by exact domain match: ${name} for ${domain}`, this.verbose)
+          return transformer
+        }
       }
+
+      // If no exact match found, look for default transformer
+      for (const [name, transformer] of entries) {
+        if (typeof transformer === 'object' && transformer.isDefault === true) {
+          displayVerbose(`Using default transformer: ${name} for ${domain}`, this.verbose)
+          return transformer
+        }
+      }
+
+      return null
     }
-    return null
+    catch {
+      displayVerbose(`Failed to parse baseUrl ${baseUrl} for transformer matching`, this.verbose)
+      return null
+    }
   }
 }

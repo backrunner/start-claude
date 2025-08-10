@@ -30,6 +30,7 @@
     "src/services/**/*",
     "src/storage/**/*",
     "src/types/**/*",
+    "src/transformers/**/*",
     "src/utils/**/*"
   ],
   "exclude": [

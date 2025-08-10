@@ -219,6 +219,11 @@ function applyCliOverrides(env: NodeJS.ProcessEnv, overrides: CliOverrides): voi
     })
   }
 
+  // Apply proxy setting
+  if (overrides.proxy) {
+    env.HTTPS_PROXY = overrides.proxy
+  }
+
   // Apply API overrides
   if (overrides.apiKey) {
     env.ANTHROPIC_API_KEY = overrides.apiKey

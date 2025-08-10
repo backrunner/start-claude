@@ -1,4 +1,4 @@
-import type { LLMProvider, UnifiedChatRequest } from './llm'
+import type { LLMChatRequest, LLMProvider } from './llm'
 
 export interface TransformerOptions {
   [key: string]: any
@@ -17,15 +17,14 @@ export interface TransformerContext {
 
 export interface Transformer {
   transformRequestIn?: (
-    request: UnifiedChatRequest,
+    request: LLMChatRequest,
     provider: LLMProvider
   ) => Promise<Record<string, any>>
   transformResponseIn?: (response: Response, context?: TransformerContext) => Promise<Response>
-  transformRequestOut?: (request: any) => Promise<UnifiedChatRequest>
+  transformRequestOut?: (request: any) => Promise<LLMChatRequest>
   transformResponseOut?: (response: Response) => Promise<Response>
-
-  endPoint?: string
-  name?: string
+  domain?: string // Domain this transformer should handle (e.g., 'api.openai.com')
+  isDefault?: boolean // Whether this transformer is the default fallback
   auth?: (request: any, provider: LLMProvider) => Promise<any>
 }
 

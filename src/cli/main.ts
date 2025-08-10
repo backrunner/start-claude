@@ -15,12 +15,11 @@ import { ConfigManager } from '../config/manager'
 
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
-import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/ui'
+import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/ui'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/update-checker'
 import { handleBalanceMode } from './balance'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveConfig } from './common'
-import { handleTransformMode } from './transform'
 
 const program = new Command()
 const configManager = new ConfigManager()
@@ -42,6 +41,7 @@ program
   .option('--output-format <format>', 'Output format')
   .option('--input-format <format>', 'Input format')
   .option('--verbose', 'Enable verbose output')
+  .option('--debug', 'Enable debug mode')
   .option('--max-turns <number>', 'Maximum number of turns', Number.parseInt)
   .option('--model <model>', 'Override model for this session')
   .option('--permission-mode <mode>', 'Permission mode')
@@ -51,6 +51,7 @@ program
   .option('--check-updates', 'Force check for updates')
   .option('--dangerously-skip-permissions', 'Skip permission checks (dangerous)')
   .option('-e, --env <key=value>', 'Set environment variable', (value, previous: string[] = []) => [...previous, value])
+  .option('--proxy <url>', 'Set HTTPS proxy for requests')
   .option('--api-key <key>', 'Override API key for this session')
   .option('--base-url <url>', 'Override base URL for this session')
   .argument('[config]', 'Configuration name (alternative to --config)')
@@ -64,6 +65,9 @@ program
 
     // Always show welcome at the start
     displayWelcome()
+
+    // Display verbose mode status if enabled
+    displayVerbose('Verbose mode enabled', options.verbose)
 
     // Check if balance mode should be enabled by default (unless explicitly disabled)
     let shouldUseBalance = options.balance === true
@@ -137,10 +141,13 @@ program
 
     const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
 
-    // Check if we should use transform mode for a single config with transformerEnabled
-    if (!shouldUseBalance && config?.transformerEnabled === true) {
-      await handleTransformMode(config, options, configArg)
-      return
+    // Only force balance mode for transformer configs if balance mode is already enabled
+    // If user wants single config with transformer, they should explicitly enable --balance
+    if (config?.transformerEnabled === true && !shouldUseBalance) {
+      displayWarning('⚠️  This configuration has transformer enabled.')
+      displayInfo('💡 For optimal transformer functionality with fallback support, consider using --balance mode')
+      displayInfo('   which enables load balancing with multiple endpoints for reliability.')
+      displayInfo('')
     }
 
     if (config) {
