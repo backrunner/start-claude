@@ -17,8 +17,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { useToast } from '@/lib/use-toast'
+import { ShutdownCoordinator } from '@/lib/shutdown-coordinator'
 
 export default function HomePage(): ReactNode {
+  const { toast } = useToast()
   const [configs, setConfigs] = useState<ClaudeConfig[]>([])
   const [settings, setSettings] = useState<SystemSettings>({} as SystemSettings)
   const [loading, setLoading] = useState(true)
@@ -61,14 +64,16 @@ export default function HomePage(): ReactNode {
   useEffect(() => {
     void fetchConfigs()
 
-    // Function to call shutdown API
-    const callShutdownAPI = async (): Promise<void> => {
+    // Initialize shutdown coordinator
+    const shutdownCoordinator = new ShutdownCoordinator()
+
+    // Custom shutdown callback (optional - will use default if not set)
+    shutdownCoordinator.setShutdownCallback(async () => {
       try {
-        // Try both methods to ensure shutdown
         const response = await fetch('/api/shutdown', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          keepalive: true, // Ensure request completes even if page is closing
+          keepalive: true,
           body: JSON.stringify({}),
         })
         
@@ -79,18 +84,17 @@ export default function HomePage(): ReactNode {
         }
       } catch (error) {
         console.error('Error calling shutdown API:', error)
-        // Try sendBeacon as fallback
         if (navigator.sendBeacon) {
           navigator.sendBeacon('/api/shutdown', JSON.stringify({}))
         }
       }
-    }
+    })
 
     // Add ESC key listener
     const handleKeyDown = async (event: KeyboardEvent): Promise<void> => {
       if (event.key === 'Escape') {
         console.log('ESC key pressed, initiating shutdown...')
-        await callShutdownAPI()
+        await shutdownCoordinator.callShutdownIfLastTab()
         
         // Give a moment for the shutdown to process
         setTimeout(() => {
@@ -214,15 +218,12 @@ export default function HomePage(): ReactNode {
 
     // Add beforeunload listener to catch all page close scenarios
     const handleBeforeUnload = (event: BeforeUnloadEvent): void => {
-      void callShutdownAPI()
+      shutdownCoordinator.handleBeforeUnload()
     }
 
     // Add unload listener as backup for when beforeunload might not work
     const handleUnload = (): void => {
-      // Send shutdown request with sendBeacon for reliability during unload
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/shutdown', JSON.stringify({}))
-      }
+      shutdownCoordinator.handleUnload()
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -230,6 +231,9 @@ export default function HomePage(): ReactNode {
     window.addEventListener('unload', handleUnload)
     
     return () => {
+      // Cleanup shutdown coordinator
+      shutdownCoordinator.cleanup()
+      
       // Cleanup WebSocket
       if (ws) {
         ws.close(1000, 'Page unloading')
@@ -267,14 +271,27 @@ export default function HomePage(): ReactNode {
       await fetchConfigs()
       setIsFormOpen(false)
       setEditingConfig(null)
+      
+      toast({
+        title: 'Configuration saved',
+        description: `Configuration "${config.name}" has been ${editingConfig ? 'updated' : 'created'} successfully.`,
+        variant: 'success',
+      })
     }
     catch (error) {
       console.error('Error saving config:', error)
-      setError(error instanceof Error ? error.message : 'Failed to save configuration')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save configuration'
+      setError(errorMessage)
+      
+      toast({
+        title: 'Failed to save configuration',
+        description: errorMessage,
+        variant: 'destructive',
+      })
     }
   }
 
-  const updateConfigs = async (updatedConfigs: ClaudeConfig[]): Promise<void> => {
+  const updateConfigs = async (updatedConfigs: ClaudeConfig[], customMessage?: string): Promise<void> => {
     try {
       const response = await fetch('/api/configs', {
         method: 'PUT',
@@ -288,10 +305,23 @@ export default function HomePage(): ReactNode {
       }
 
       setConfigs(updatedConfigs)
+      
+      toast({
+        title: 'Configurations updated',
+        description: customMessage || 'Configuration order has been updated successfully.',
+        variant: 'success',
+      })
     }
     catch (error) {
       console.error('Error updating configs:', error)
-      setError(error instanceof Error ? error.message : 'Failed to update configurations')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update configurations'
+      setError(errorMessage)
+      
+      toast({
+        title: 'Failed to update configurations',
+        description: errorMessage,
+        variant: 'destructive',
+      })
     }
   }
 
@@ -314,10 +344,23 @@ export default function HomePage(): ReactNode {
       }
 
       await fetchConfigs()
+      
+      toast({
+        title: 'Configuration deleted',
+        description: `Configuration "${deleteConfig}" has been deleted successfully.`,
+        variant: 'success',
+      })
     }
     catch (error) {
       console.error('Error deleting config:', error)
-      setError(error instanceof Error ? error.message : 'Failed to delete configuration')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete configuration'
+      setError(errorMessage)
+      
+      toast({
+        title: 'Failed to delete configuration',
+        description: errorMessage,
+        variant: 'destructive',
+      })
     }
     finally {
       setDeleteConfig(null)
@@ -339,10 +382,23 @@ export default function HomePage(): ReactNode {
 
       const data = await response.json()
       setSettings(data.settings)
+      
+      toast({
+        title: 'System settings saved',
+        description: 'System settings have been updated successfully.',
+        variant: 'success',
+      })
     }
     catch (error) {
       console.error('Error saving system settings:', error)
-      setError(error instanceof Error ? error.message : 'Failed to save system settings')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save system settings'
+      setError(errorMessage)
+      
+      toast({
+        title: 'Failed to save system settings',
+        description: errorMessage,
+        variant: 'destructive',
+      })
       throw error
     }
   }
@@ -385,7 +441,7 @@ export default function HomePage(): ReactNode {
     const updatedConfigs = configs.map(config =>
       config.name === configName ? { ...config, enabled } : config,
     )
-    void updateConfigs(updatedConfigs)
+    void updateConfigs(updatedConfigs, `Configuration "${configName}" has been ${enabled ? 'enabled' : 'disabled'}.`)
   }
 
   const handleSetDefault = (configName: string): void => {
@@ -393,7 +449,7 @@ export default function HomePage(): ReactNode {
       ...config,
       isDefault: config.name === configName,
     }))
-    void updateConfigs(updatedConfigs)
+    void updateConfigs(updatedConfigs, `Configuration "${configName}" has been set as the default.`)
   }
 
   if (loading) {

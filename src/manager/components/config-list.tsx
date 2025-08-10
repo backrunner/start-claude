@@ -68,20 +68,14 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                     {(config.baseUrl || config.model) && (
                       <div className="flex items-center gap-3 flex-shrink-0">
                         {config.baseUrl && (
-                          <div className="flex items-center gap-2">
-                            <Globe className="h-3 w-3 text-muted-foreground" />
-                            <code className="text-xs bg-muted px-2 py-1 rounded font-mono truncate max-w-xs">
-                              {config.baseUrl}
-                            </code>
-                          </div>
+                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono truncate max-w-xs">
+                            {config.baseUrl}
+                          </code>
                         )}
                         {config.model && (
-                          <div className="flex items-center gap-2">
-                            <Brain className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground font-mono truncate max-w-xs">
-                              {config.model}
-                            </span>
-                          </div>
+                          <code className="text-xs bg-muted px-2 py-1 rounded font-mono truncate max-w-xs">
+                            {config.model}
+                          </code>
                         )}
                       </div>
                     )}

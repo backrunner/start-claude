@@ -42,7 +42,13 @@ export async function handleBalanceMode(
   })
 
   try {
-    const proxyServer = new ProxyServer(balanceableConfigs, { enableLoadBalance: true }, systemSettings)
+    // Check if any config has transformer enabled
+    const hasTransformerEnabled = balanceableConfigs.some(c => c.transformerEnabled === true)
+    
+    const proxyServer = new ProxyServer(balanceableConfigs, { 
+      enableLoadBalance: true,
+      enableTransform: hasTransformerEnabled
+    }, systemSettings)
 
     // Perform initial health checks
     await proxyServer.performInitialHealthChecks()

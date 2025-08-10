@@ -2,13 +2,11 @@
 
 import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
-import { Settings, Zap } from 'lucide-react'
-import { useState } from 'react'
+import { Settings } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { ConfigForm } from '@/components/config-form'
-import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 interface ConfigFormModalProps {
   open: boolean
@@ -19,11 +17,31 @@ interface ConfigFormModalProps {
 }
 
 export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }: ConfigFormModalProps): ReactNode {
-  const [transformerEnabled, setTransformerEnabled] = useState(false)
+  const [formData, setFormData] = useState<ClaudeConfig | null>(null)
+  const [isValid, setIsValid] = useState<boolean>(false)
+  const [saving, setSaving] = useState(false)
 
-  const handleSave = (config: ClaudeConfig): void => {
+  const handleSave = async (): Promise<void> => {
+    if (!formData || !isValid)
+      return
+
+    setSaving(true)
+    try {
+      onSave(formData)
+      onOpenChange(false)
+    }
+    catch (error) {
+      console.error('Error saving configuration:', error)
+    }
+    finally {
+      setSaving(false)
+    }
+  }
+
+  const handleFormSave = (config: ClaudeConfig): void => {
+    // This is called when form is submitted via Enter key
     onSave(config)
-    onOpenChange(false) // Close dialog after successful save
+    onOpenChange(false)
   }
 
   const handleCancel = (): void => {
@@ -31,42 +49,26 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
     onOpenChange(false) // Close dialog when cancelled
   }
 
+  const handleFormDataChange = useCallback((data: ClaudeConfig, valid: boolean) => {
+    setFormData(data)
+    setIsValid(valid)
+  }, [])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader className="pb-6 border-b flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                <Settings className="h-5 w-5 text-primary" />
-              </div>
-              <div className="flex-1">
-                <DialogTitle className="text-2xl font-semibold">
-                  {config ? 'Edit Configuration' : 'Create Configuration'}
-                </DialogTitle>
-                <DialogDescription className="text-base mt-1">
-                  {config ? 'Update your Claude configuration settings' : 'Set up a new Claude configuration'}
-                </DialogDescription>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <Settings className="h-5 w-5 text-primary" />
             </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Zap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <Label htmlFor="transformer-switch" className="text-sm font-medium">
-                  Transformer
-                </Label>
-                {transformerEnabled && (
-                  <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 text-xs">
-                    Enabled
-                  </Badge>
-                )}
-              </div>
-              <Switch
-                id="transformer-switch"
-                checked={transformerEnabled}
-                onCheckedChange={setTransformerEnabled}
-              />
+            <div className="flex-1">
+              <DialogTitle className="text-2xl font-semibold">
+                {config ? 'Edit Configuration' : 'Create Configuration'}
+              </DialogTitle>
+              <DialogDescription className="text-base mt-1">
+                {config ? 'Update your Claude configuration settings' : 'Set up a new Claude configuration'}
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -75,11 +77,38 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
           <div className="pr-3">
             <ConfigForm
               config={config}
-              onSave={handleSave}
+              onSave={handleFormSave}
               onCancel={handleCancel}
+              onFormDataChange={handleFormDataChange}
             />
           </div>
         </div>
+
+        <DialogFooter className="pt-6 border-t bg-muted/10 flex-shrink-0">
+          <div className="flex items-center justify-end w-full">
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={handleCancel} disabled={saving} className="min-w-[100px]">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void handleSave()}
+                disabled={saving || !formData || !isValid}
+                className="min-w-[120px] bg-primary hover:bg-primary/90"
+              >
+                {saving
+                  ? (
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        Saving...
+                      </div>
+                    )
+                  : (
+                      config ? 'Update Configuration' : 'Create Configuration'
+                    )}
+              </Button>
+            </div>
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

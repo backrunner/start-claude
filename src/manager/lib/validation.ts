@@ -8,6 +8,7 @@ export const claudeConfigSchema = z.object({
   apiKey: z.string().min(1, 'API key is required').optional().or(z.literal('')),
   model: z.string().optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'plan', 'bypassPermissions']).optional(),
+  transformerEnabled: z.boolean().optional().default(false),
   isDefault: z.boolean().optional().default(false),
   order: z.number().int().min(0).optional(),
   enabled: z.boolean().optional().default(true),

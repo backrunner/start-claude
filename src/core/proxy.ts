@@ -256,54 +256,22 @@ export class ProxyServer {
             transformedRequest = await transformer.transformRequestOut(requestData)
           }
 
-          // For demonstration, we'll echo back the transformed request
-          // In a real implementation, you would forward this to the actual provider
-          const response = {
-            id: `req_${Date.now()}`,
-            object: transformer.name === 'anthropic' ? 'message' : 'chat.completion',
-            created: Math.floor(Date.now() / 1000),
-            model: transformedRequest.model || 'default-model',
-            choices: transformer.name === 'anthropic'
-              ? undefined
-              : [
-                  {
-                    index: 0,
-                    message: {
-                      role: 'assistant',
-                      content: 'This is a mock response from the transformer proxy. In a real implementation, this would be forwarded to the actual LLM provider.',
-                    },
-                    finish_reason: 'stop',
-                  },
-                ],
-            // Anthropic format
-            type: transformer.name === 'anthropic' ? 'message' : undefined,
-            role: transformer.name === 'anthropic' ? 'assistant' : undefined,
-            content: transformer.name === 'anthropic'
-              ? [
-                  {
-                    type: 'text',
-                    text: 'This is a mock response from the transformer proxy. In a real implementation, this would be forwarded to the actual LLM provider.',
-                  },
-                ]
-              : undefined,
-            stop_reason: transformer.name === 'anthropic' ? 'end_turn' : undefined,
-            usage: {
-              prompt_tokens: 10,
-              completion_tokens: 20,
-              total_tokens: 30,
-              // Anthropic format
-              input_tokens: transformer.name === 'anthropic' ? 10 : undefined,
-              output_tokens: transformer.name === 'anthropic' ? 20 : undefined,
-            },
+          // Forward the transformed request to the actual Claude API endpoint
+          // Use the first available config for the actual API call
+          const targetConfig = this.endpoints[0]?.config
+          if (!targetConfig?.baseUrl || !targetConfig?.apiKey) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              error: {
+                message: 'No valid endpoint configuration available for forwarding transformed request',
+                type: 'configuration_error',
+              },
+            }))
+            return
           }
 
-          res.writeHead(200, {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key',
-          })
-          res.end(JSON.stringify(response))
+          // Forward the transformed request to the actual endpoint
+          await this.forwardTransformedRequest(req, res, transformedRequest, targetConfig)
         }
         catch (error) {
           displayError(`⚠️ Transformer error: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -317,6 +285,91 @@ export class ProxyServer {
         }
       })()
     })
+  }
+
+  /**
+   * Forward transformed request to the actual API endpoint
+   */
+  private async forwardTransformedRequest(
+    originalReq: http.IncomingMessage,
+    res: http.ServerResponse,
+    transformedRequest: any,
+    targetConfig: ClaudeConfig,
+  ): Promise<void> {
+    try {
+      const targetUrl = new URL(originalReq.url || '/', targetConfig.baseUrl)
+
+      const requestBody = JSON.stringify(transformedRequest)
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(requestBody).toString(),
+        'x-api-key': targetConfig.apiKey!,
+        'User-Agent': originalReq.headers['user-agent'] || 'start-claude-transformer-proxy',
+      }
+
+      const options = {
+        method: originalReq.method || 'POST',
+        headers,
+        timeout: 60000, // 60 second timeout
+      }
+
+      const isHttps = targetUrl.protocol === 'https:'
+      const httpModule = isHttps ? https : http
+
+      const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
+        // Forward status and headers
+        const responseHeaders = { ...proxyRes.headers }
+        delete responseHeaders.connection
+        delete responseHeaders['transfer-encoding']
+
+        // Add CORS headers
+        responseHeaders['Access-Control-Allow-Origin'] = '*'
+        responseHeaders['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        responseHeaders['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, x-api-key'
+
+        res.writeHead(proxyRes.statusCode || 200, responseHeaders)
+
+        // Forward response body
+        proxyRes.pipe(res)
+      })
+
+      proxyReq.on('error', (error) => {
+        displayError(`⚠️ Transformer proxy request error: ${error.message}`)
+
+        if (!res.headersSent) {
+          res.writeHead(502, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            error: {
+              message: `Transformer proxy request failed: ${error.message}`,
+              type: 'proxy_error',
+            },
+          }))
+        }
+      })
+
+      proxyReq.on('timeout', () => {
+        displayError('⚠️ Transformer proxy request timeout')
+        proxyReq.destroy()
+      })
+
+      // Send the transformed request body
+      proxyReq.write(requestBody)
+      proxyReq.end()
+    }
+    catch (error) {
+      displayError(`⚠️ Transformer forwarding error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          error: {
+            message: 'Transformer request forwarding failed',
+            type: 'transformer_forwarding_error',
+          },
+        }))
+      }
+    }
   }
 
   private getNextHealthyEndpoint(): EndpointStatus | null {

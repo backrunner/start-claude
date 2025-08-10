@@ -12,7 +12,6 @@ import { handleManagerCommand } from '../commands/manager'
 import { handleOverrideCommand } from '../commands/override'
 import { handleS3DownloadCommand, handleS3SetupCommand, handleS3StatusCommand, handleS3SyncCommand, handleS3UploadCommand } from '../commands/s3'
 import { ConfigManager } from '../config/manager'
-import { ConfigFileManager } from '../config/file-manager'
 
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
@@ -21,9 +20,9 @@ import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/update
 import { handleBalanceMode } from './balance'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveConfig } from './common'
+import { handleTransformMode } from './transform'
 
 const program = new Command()
-const configFileManager = ConfigFileManager.getInstance()
 const configManager = new ConfigManager()
 const s3SyncManager = new S3SyncManager()
 
@@ -65,22 +64,6 @@ program
 
     // Always show welcome at the start
     displayWelcome()
-
-    // Check and perform config migrations if needed
-    try {
-      if (configFileManager.needsMigration()) {
-        const currentVersion = configFileManager.getCurrentVersion()
-        displayInfo(`🔄 Configuration migration needed (current version: ${currentVersion})`)
-
-        // Load the config, which will automatically perform migration
-        configFileManager.load()
-        displaySuccess('✅ Configuration migration completed successfully')
-      }
-    }
-    catch (error) {
-      displayWarning(`⚠️  Config migration check failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      displayInfo('Continuing with current configuration...')
-    }
 
     // Check if balance mode should be enabled by default (unless explicitly disabled)
     let shouldUseBalance = options.balance === true
@@ -131,7 +114,7 @@ program
         if (updateSuccess) {
           displaySuccess(`✅ Successfully updated to version ${updateInfo.latestVersion}!`)
           displayInfo('🔄 Relaunching with new version...')
-          
+
           // Small delay to ensure the message is displayed
           setTimeout(() => {
             relaunchCLI()
@@ -153,6 +136,12 @@ program
     }
 
     const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
+
+    // Check if we should use transform mode for a single config with transformerEnabled
+    if (!shouldUseBalance && config?.transformerEnabled === true) {
+      await handleTransformMode(config, options, configArg)
+      return
+    }
 
     if (config) {
       displayBoxedConfig(config)

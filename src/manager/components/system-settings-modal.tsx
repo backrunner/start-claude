@@ -386,10 +386,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
         </div>
 
         <DialogFooter className="pt-6 border-t bg-muted/10 flex-shrink-0">
-          <div className="flex items-center justify-between w-full">
-            <div className="text-xs text-muted-foreground">
-              Changes will be applied immediately after saving
-            </div>
+          <div className="flex items-center justify-end w-full">
             <div className="flex gap-3">
               <Button variant="outline" onClick={onClose} disabled={saving} className="min-w-[100px]">
                 Cancel

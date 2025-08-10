@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { useEffect } from 'react'
+import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
 
 // Force dynamic rendering
@@ -41,6 +42,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="min-h-screen bg-background font-sans antialiased transition-colors duration-300">
         {children}
+        <Toaster />
       </body>
     </html>
   )
