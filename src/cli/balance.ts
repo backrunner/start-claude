@@ -84,6 +84,22 @@ export async function handleBalanceMode(
 
     await proxyServer.startServer(2333)
 
+    // Show transformer information if transformers are enabled
+    if (hasTransformerEnabled) {
+      const transformers = proxyServer.listTransformers()
+      if (transformers.length > 0) {
+        displayInfo('')
+        displayInfo('🔧 Available transformers:')
+        transformers.forEach(transformer => {
+          if (transformer.hasDomain) {
+            displayInfo(`  - ${transformer.name} (${transformer.domain})`)
+          } else {
+            displayInfo(`  - ${transformer.name}`)
+          }
+        })
+      }
+    }
+
     displayInfo('')
 
     // Determine proxy mode and show appropriate message

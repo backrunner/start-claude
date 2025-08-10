@@ -149,23 +149,38 @@ export class TransformerService {
 
     try {
       const url = new URL(baseUrl)
-      const domain = url.hostname
-      displayVerbose(`Looking for transformer for domain: ${domain}`, this.verbose)
+      const hostname = url.hostname
+      displayVerbose(`Looking for transformer for hostname: ${hostname}`, this.verbose)
 
       const entries = Array.from(this.transformers.entries())
 
       // First try to find exact domain match
       for (const [name, transformer] of entries) {
-        if (typeof transformer === 'object' && transformer.domain === domain) {
-          displayVerbose(`Found transformer by exact domain match: ${name} for ${domain}`, this.verbose)
-          return transformer
+        if (typeof transformer === 'object' && transformer.domain) {
+          // Check exact match first
+          if (transformer.domain === hostname) {
+            displayVerbose(`Found transformer by exact domain match: ${name} for ${hostname}`, this.verbose)
+            return transformer
+          }
+
+          // Check if hostname contains the transformer domain (for subdomains)
+          if (hostname.includes(transformer.domain)) {
+            displayVerbose(`Found transformer by domain substring match: ${name} (${transformer.domain}) for ${hostname}`, this.verbose)
+            return transformer
+          }
+
+          // Check if transformer domain contains hostname (for cases like api.openrouter.ai vs openrouter.ai)
+          if (transformer.domain.includes(hostname.replace(/^api\./, ''))) {
+            displayVerbose(`Found transformer by root domain match: ${name} (${transformer.domain}) for ${hostname}`, this.verbose)
+            return transformer
+          }
         }
       }
 
-      // If no exact match found, look for default transformer
+      // If no domain match found, look for default transformer
       for (const [name, transformer] of entries) {
         if (typeof transformer === 'object' && transformer.isDefault === true) {
-          displayVerbose(`Using default transformer: ${name} for ${domain}`, this.verbose)
+          displayVerbose(`Using default transformer: ${name} for ${hostname}`, this.verbose)
           return transformer
         }
       }

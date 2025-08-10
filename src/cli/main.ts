@@ -147,6 +147,29 @@ program
       displayWarning('⚠️  This configuration has transformer enabled.')
       displayInfo('💡 For optimal transformer functionality with fallback support, consider using --balance mode')
       displayInfo('   which enables load balancing with multiple endpoints for reliability.')
+      
+      // Show which transformer would be used
+      if (config.baseUrl) {
+        try {
+          const { TransformerService } = await import('../services/transformer')
+          const { ConfigService } = await import('../services/config')
+          const configService = new ConfigService()
+          const transformerService = new TransformerService(configService, options.verbose)
+          await transformerService.initialize()
+          
+          const transformer = transformerService.findTransformerByDomain(config.baseUrl)
+          if (transformer) {
+            const transformerName = Array.from(transformerService.getAllTransformers().entries())
+              .find(([, t]) => t === transformer)?.[0] || 'unknown'
+            displayInfo(`🔧 Using transformer: ${transformerName} (${transformer.domain || 'no domain'})`)
+          } else {
+            displayWarning('⚠️ No transformer found for this domain')
+          }
+        } catch (error) {
+          displayVerbose(`Failed to determine transformer: ${error instanceof Error ? error.message : 'Unknown error'}`, options.verbose)
+        }
+      }
+      
       displayInfo('')
     }
 

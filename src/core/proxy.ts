@@ -1,4 +1,5 @@
 import type { ClaudeConfig } from '../config/types'
+import type { LLMProvider } from '../types/llm'
 import type { ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
 import { Buffer } from 'node:buffer'
 import * as http from 'node:http'
@@ -171,7 +172,6 @@ export class ProxyServer {
   }
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    console.log('handle req', req.url)
     try {
       // Handle CORS preflight requests
       if (req.method === 'OPTIONS') {
@@ -231,19 +231,44 @@ export class ProxyServer {
   private async forwardTransformedRequest(
     originalReq: http.IncomingMessage,
     res: http.ServerResponse,
-    transformedRequest: any,
+    transformedRequestData: any,
     targetConfig: ClaudeConfig,
   ): Promise<void> {
     try {
-      const targetUrl = new URL(originalReq.url || '/', targetConfig.baseUrl)
+      // Get transformer for this endpoint to get the proper URL and headers
+      const transformer = this.transformerService.findTransformerByDomain(targetConfig.baseUrl)
+      let targetUrl: URL
+      let headers: Record<string, string>
+      let requestBody: string
 
-      const requestBody = JSON.stringify(transformedRequest)
+      if (transformer && transformer.transformRequestIn) {
+        // Use transformer to get proper URL and headers
+        const provider: LLMProvider = {
+          name: targetConfig.name || 'unknown',
+          baseUrl: targetConfig.baseUrl,
+          apiKey: targetConfig.apiKey!,
+        }
 
-      const headers = {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(requestBody).toString(),
-        'x-api-key': targetConfig.apiKey!,
-        'User-Agent': originalReq.headers['user-agent'] || 'start-claude-transformer-proxy',
+        const transformResult = await transformer.transformRequestIn(transformedRequestData, provider)
+
+        targetUrl = transformResult.config.url
+        headers = {
+          ...transformResult.config.headers,
+          'Content-Length': Buffer.byteLength(JSON.stringify(transformResult.body)).toString(),
+          'User-Agent': originalReq.headers['user-agent'] || 'start-claude-transformer-proxy',
+        }
+        requestBody = JSON.stringify(transformResult.body)
+      }
+      else {
+        // Fallback to original behavior if no transformer found
+        targetUrl = new URL(originalReq.url || '/', targetConfig.baseUrl)
+        headers = {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(JSON.stringify(transformedRequestData)).toString(),
+          'x-api-key': targetConfig.apiKey!,
+          'User-Agent': originalReq.headers['user-agent'] || 'start-claude-transformer-proxy',
+        }
+        requestBody = JSON.stringify(transformedRequestData)
       }
 
       const isHttps = targetUrl.protocol === 'https:'
