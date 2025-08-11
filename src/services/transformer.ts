@@ -66,28 +66,38 @@ export class TransformerService {
     options?: any
   }): Promise<boolean> {
     try {
-      const originalLoad = (Module as any)._load
-      ;(Module as any)._load = function (request: string, _parent: any, _isMain: boolean) {
-        if (request === 'claude-code-router') {
-          return {
-            displayVerbose: (msg: string) => displayVerbose(msg, true),
+      if (config.path) {
+        // Store original Module._load
+        const originalLoad = (Module as any)._load
+
+        // Temporarily override Module._load
+        ;(Module as any)._load = function (request: string, _parent: any, _isMain: boolean) {
+          if (request === 'claude-code-router') {
+            return {
+              displayVerbose: (msg: string) => displayVerbose(msg, true),
+            }
+          }
+          return originalLoad.call(Module, request, _parent, _isMain)
+        }
+
+        try {
+          // eslint-disable-next-line ts/no-require-imports
+          const module = require(require.resolve(config.path))
+          if (module) {
+            // eslint-disable-next-line new-cap
+            const instance = new module(config.options)
+            if (!instance.name) {
+              throw new Error(
+                `Transformer instance from ${config.path} does not have a name property.`,
+              )
+            }
+            this.registerTransformer(instance.name, instance)
+            return true
           }
         }
-        return originalLoad.call(Module, request, _parent, _isMain)
-      }
-      if (config.path) {
-        // eslint-disable-next-line ts/no-require-imports
-        const module = require(require.resolve(config.path))
-        if (module) {
-          // eslint-disable-next-line new-cap
-          const instance = new module(config.options)
-          if (!instance.name) {
-            throw new Error(
-              `Transformer instance from ${config.path} does not have a name property.`,
-            )
-          }
-          this.registerTransformer(instance.name, instance)
-          return true
+        finally {
+          // Always restore the original Module._load
+          ;(Module as any)._load = originalLoad
         }
       }
       return false
