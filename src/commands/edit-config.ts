@@ -1,5 +1,6 @@
+import { ConfigManager } from '../config/manager'
 import { editConfigFileInEditor } from '../utils/editor'
-import { displayError, displayInfo, displayWelcome } from '../utils/ui'
+import { displayError, displayInfo, displaySuccess, displayWelcome } from '../utils/ui'
 
 export async function handleEditConfigCommand(): Promise<void> {
   displayWelcome()
@@ -17,11 +18,31 @@ export async function handleEditConfigCommand(): Promise<void> {
   }
 
   displayInfo('Opening configuration file in editor with live reload...')
-  displayInfo('Any changes you save will be automatically reloaded.')
+  displayInfo('Any changes you save will be automatically reloaded and synced.')
 
-  const onConfigReload = (_config: any): void => {
-    // Just notify that the config was reloaded - the actual config management is handled by ConfigManager
-    displayInfo('Configuration changes detected and available for next session.')
+  // Initialize ConfigManager for S3 sync
+  const configManager = new ConfigManager()
+
+  const onConfigReload = (config: any): void => {
+    try {
+      // Validate the config structure
+      if (!config || typeof config !== 'object') {
+        displayError('Invalid configuration format')
+        return
+      }
+
+      // Load the config through ConfigManager to trigger S3 sync
+      // We do this by reading and re-saving the config file through ConfigManager
+      const configFile = configManager.load()
+
+      // Re-save to trigger auto-sync callback if S3 is configured
+      configManager.save(configFile)
+
+      displaySuccess('✅ Configuration changes detected, validated, and synced!')
+    }
+    catch (error) {
+      displayError(`❌ Failed to process config changes: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   await editConfigFileInEditor(configFilePath, onConfigReload)

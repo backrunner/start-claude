@@ -1,31 +1,19 @@
 import type { NextRequest } from 'next/server'
 import type { ClaudeConfig } from '@/config/types'
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { NextResponse } from 'next/server'
-import { CURRENT_CONFIG_VERSION } from '@/config/types'
 import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
+import { ConfigManager } from '../../../../config/manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const CONFIG_DIR = join(homedir(), '.start-claude')
-const CONFIG_PATH = join(CONFIG_DIR, 'config.json')
+const configManager = new ConfigManager()
 
 function getConfigs(): ClaudeConfig[] {
   try {
-    if (!existsSync(CONFIG_DIR)) {
-      mkdirSync(CONFIG_DIR, { recursive: true })
-    }
-
-    if (!existsSync(CONFIG_PATH)) {
-      return []
-    }
-    const data = readFileSync(CONFIG_PATH, 'utf8')
-    const parsed = JSON.parse(data)
-    return parsed.configs || []
+    const configFile = configManager.load()
+    return configFile.configs || []
   }
   catch (error) {
     console.error('Error reading configs:', error)
@@ -35,16 +23,8 @@ function getConfigs(): ClaudeConfig[] {
 
 function getSettings(): any {
   try {
-    if (!existsSync(CONFIG_DIR)) {
-      mkdirSync(CONFIG_DIR, { recursive: true })
-    }
-
-    if (!existsSync(CONFIG_PATH)) {
-      return { overrideClaudeCommand: false }
-    }
-    const data = readFileSync(CONFIG_PATH, 'utf8')
-    const parsed = JSON.parse(data)
-    return parsed.settings || { overrideClaudeCommand: false }
+    const configFile = configManager.load()
+    return configFile.settings || { overrideClaudeCommand: false }
   }
   catch (error) {
     console.error('Error reading settings:', error)
@@ -54,17 +34,14 @@ function getSettings(): any {
 
 function saveConfigs(configs: ClaudeConfig[], settings?: any): void {
   try {
-    if (!existsSync(CONFIG_DIR)) {
-      mkdirSync(CONFIG_DIR, { recursive: true })
+    const configFile = configManager.load()
+    const updatedConfigFile = {
+      ...configFile,
+      configs,
+      settings: settings || configFile.settings,
     }
 
-    const currentSettings = settings || getSettings()
-    const data = {
-      version: CURRENT_CONFIG_VERSION,
-      configs,
-      settings: currentSettings,
-    }
-    writeFileSync(CONFIG_PATH, JSON.stringify(data, null, 2))
+    configManager.save(updatedConfigFile)
   }
   catch (error) {
     console.error('Error saving configs:', error)
@@ -72,36 +49,8 @@ function saveConfigs(configs: ClaudeConfig[], settings?: any): void {
   }
 }
 
-// Simple S3 sync check function for the manager
-async function checkS3Sync(): Promise<void> {
-  try {
-    const settings = getSettings()
-    if (!settings.s3Sync) {
-      return // No S3 config, skip sync check
-    }
-
-    // Check if local file was recently modified (within last 30 seconds)
-    // If so, skip sync check to avoid conflicts during rapid changes
-    const localStats = statSync(CONFIG_PATH)
-    const timeSinceModified = Date.now() - localStats.mtime.getTime()
-    if (timeSinceModified < 30000) {
-      // File was recently modified, skip sync
-    }
-
-    // Basic check completed - in a full implementation, we'd check S3 here
-    // For now, we'll let the CLI handle the heavy S3 operations
-  }
-  catch (error) {
-    // Silent fail for sync checks
-    console.error('S3 sync check failed:', error)
-  }
-}
-
 export async function GET(): Promise<NextResponse> {
   try {
-    // Perform basic sync check when manager opens
-    await checkS3Sync()
-
     const configs = getConfigs()
     const settings = getSettings()
     return NextResponse.json({ configs, settings })

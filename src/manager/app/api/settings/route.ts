@@ -1,41 +1,19 @@
 import type { NextRequest } from 'next/server'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { NextResponse } from 'next/server'
 import { settingsUpdateRequestSchema, systemSettingsSchema } from '@/lib/validation'
+import { ConfigManager } from '../../../../config/manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const CONFIG_DIR = join(homedir(), '.start-claude')
-const CONFIG_PATH = join(CONFIG_DIR, 'config.json')
+// Initialize the ConfigManager instance
+const configManager = new ConfigManager()
 
 function getSettings(): any {
   try {
-    if (!existsSync(CONFIG_DIR)) {
-      mkdirSync(CONFIG_DIR, { recursive: true })
-    }
-
-    if (!existsSync(CONFIG_PATH)) {
-      return {
-        overrideClaudeCommand: false,
-        balanceMode: {
-          enableByDefault: false,
-          healthCheck: {
-            enabled: true,
-            intervalMs: 30000,
-          },
-          failedEndpoint: {
-            banDurationSeconds: 300,
-          },
-        },
-      }
-    }
-    const data = readFileSync(CONFIG_PATH, 'utf8')
-    const parsed = JSON.parse(data)
-    const settings = parsed.settings || { overrideClaudeCommand: false }
+    const configFile = configManager.load()
+    const settings = configFile.settings || { overrideClaudeCommand: false }
 
     // Ensure balanceMode structure exists with defaults
     if (!settings.balanceMode) {
@@ -73,37 +51,14 @@ function getSettings(): any {
 
 function saveSettings(settings: any): void {
   try {
-    if (!existsSync(CONFIG_DIR)) {
-      mkdirSync(CONFIG_DIR, { recursive: true })
+    const configFile = configManager.load()
+    const updatedConfigFile = {
+      ...configFile,
+      settings: { ...configFile.settings, ...settings },
     }
 
-    let existingData = {
-      configs: [],
-      settings: {
-        overrideClaudeCommand: false,
-        balanceMode: {
-          enableByDefault: false,
-          healthCheck: {
-            enabled: true,
-            intervalMs: 30000,
-          },
-          failedEndpoint: {
-            banDurationSeconds: 300,
-          },
-        },
-      },
-    }
-    if (existsSync(CONFIG_PATH)) {
-      const data = readFileSync(CONFIG_PATH, 'utf8')
-      existingData = JSON.parse(data)
-    }
-
-    const updatedData = {
-      ...existingData,
-      settings: { ...existingData.settings, ...settings },
-    }
-
-    writeFileSync(CONFIG_PATH, JSON.stringify(updatedData, null, 2))
+    // Use ConfigManager.save() to trigger S3 auto-sync
+    configManager.save(updatedConfigFile)
   }
   catch (error) {
     console.error('Error saving settings:', error)
