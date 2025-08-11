@@ -38,7 +38,6 @@ export class GeminiTransformer implements Transformer {
         ),
         headers: {
           'x-goog-api-key': provider.apiKey,
-          'Authorization': undefined,
         },
       },
     }

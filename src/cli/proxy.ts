@@ -77,6 +77,9 @@ export async function handleProxyMode(
     // Check if any config has transformer enabled
     const hasTransformerEnabled = proxyableConfigs.some(c => c.transformerEnabled === true)
 
+    // Set up a proxy configuration that preserves other settings - resolve early for transformer matching
+    const baseConfig = resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
+
     const proxyServer = new ProxyServer(proxyableConfigs, {
       enableLoadBalance: options.balance || false,
       enableTransform: hasTransformerEnabled,
@@ -112,14 +115,33 @@ export async function handleProxyMode(
           })
         }
         else {
-          // Show only the current transformer when not in balance mode
-          const currentTransformer = transformers[0] // Use the first transformer as current
-          displayInfo('🔧 Current transformer:')
-          if (currentTransformer.hasDomain) {
-            displayInfo(`  - ${currentTransformer.name} (${currentTransformer.domain})`)
+          // Show only the current transformer matching the base config when not in balance mode
+          if (baseConfig?.baseUrl) {
+            const matchingTransformer = transformers.find(t =>
+              t.hasDomain && t.domain && baseConfig.baseUrl!.includes(t.domain),
+            )
+
+            if (matchingTransformer) {
+              displayInfo('🔧 Current transformer:')
+              displayInfo(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
+            }
+            else {
+              displayError(`❌ No transformer found for baseUrl: ${baseConfig.baseUrl}`)
+              displayInfo('Available transformers:')
+              transformers.forEach((transformer) => {
+                if (transformer.hasDomain) {
+                  displayInfo(`  - ${transformer.name} (${transformer.domain})`)
+                }
+                else {
+                  displayInfo(`  - ${transformer.name}`)
+                }
+              })
+              process.exit(1)
+            }
           }
           else {
-            displayInfo(`  - ${currentTransformer.name}`)
+            displayError('❌ No baseConfig available for transformer matching')
+            process.exit(1)
           }
         }
       }
@@ -146,14 +168,6 @@ export async function handleProxyMode(
     else {
       displaySuccess('🚀 Proxy server is running!')
       displayInfo('Starting Claude Code with proxy server...')
-    }
-    displayInfo('')
-
-    // Set up a proxy configuration that preserves other settings
-    const baseConfig = resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
-
-    if (baseConfig) {
-      displayInfo(`Using configuration "${baseConfig.name}" for base settings`)
     }
 
     // Build arguments to pass to claude command (same as normal mode)
