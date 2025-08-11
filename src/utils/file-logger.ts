@@ -14,7 +14,6 @@ export class FileLogger {
   private logDir: string
   private logFile: string
   private enabled: boolean = false
-  private maxContentLength: number = 2000 // Maximum characters for content truncation
 
   constructor(logFileName?: string) {
     this.logDir = join(homedir(), '.start-claude', 'logs')
@@ -64,17 +63,11 @@ Log file: ${this.logFile}
     }
   }
 
-  private truncateContent(content: any): string {
+  private formatContent(content: any): string {
     if (!content)
       return ''
 
-    const str = typeof content === 'string' ? content : JSON.stringify(content, null, 2)
-
-    if (str.length > this.maxContentLength) {
-      return `${str.substring(0, this.maxContentLength)}\n... [TRUNCATED - content too long]`
-    }
-
-    return str
+    return typeof content === 'string' ? content : JSON.stringify(content, null, 2)
   }
 
   private sanitizeHeaders(headers: Record<string, any>): Record<string, any> {
@@ -99,7 +92,7 @@ Log file: ${this.logFile}
       level,
       category,
       message,
-      data: data ? this.truncateContent(data) : undefined,
+      data: data ? this.formatContent(data) : undefined,
     }
 
     const logLine = this.formatLogEntry(entry)
@@ -155,7 +148,7 @@ Log file: ${this.logFile}
     this.info('REQUEST', `${method} ${url}`, {
       headers: sanitizedHeaders,
       bodySize: body ? (typeof body === 'string' ? body.length : JSON.stringify(body).length) : 0,
-      body: body ? this.truncateContent(body) : undefined,
+      body: body ? this.formatContent(body) : undefined,
     })
   }
 
@@ -166,7 +159,7 @@ Log file: ${this.logFile}
     this.log(level, 'RESPONSE', `${statusCode} ${statusMessage}`, {
       headers: sanitizedHeaders,
       bodySize: body ? (typeof body === 'string' ? body.length : JSON.stringify(body).length) : 0,
-      body: body ? this.truncateContent(body) : undefined,
+      body: body ? this.formatContent(body) : undefined,
     })
   }
 
@@ -174,8 +167,8 @@ Log file: ${this.logFile}
     this.info('TRANSFORM', `${direction} via ${transformer}`, {
       inputSize: typeof input === 'string' ? input.length : JSON.stringify(input).length,
       outputSize: typeof output === 'string' ? output.length : JSON.stringify(output).length,
-      input: this.truncateContent(input),
-      output: this.truncateContent(output),
+      input: this.formatContent(input),
+      output: this.formatContent(output),
     })
   }
 
@@ -184,8 +177,8 @@ Log file: ${this.logFile}
     const errorStack = error instanceof Error ? error.stack : undefined
 
     this.error(category, errorMessage, {
-      stack: errorStack ? this.truncateContent(errorStack) : undefined,
-      context: context ? this.truncateContent(context) : undefined,
+      stack: errorStack ? this.formatContent(errorStack) : undefined,
+      context: context ? this.formatContent(context) : undefined,
     })
   }
 

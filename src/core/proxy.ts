@@ -4,6 +4,7 @@ import type { ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
 import { Buffer } from 'node:buffer'
 import * as http from 'node:http'
 import * as https from 'node:https'
+import { PassThrough } from 'node:stream'
 import { HttpProxyAgent } from 'http-proxy-agent'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { ConfigService } from '../services/config'
@@ -154,6 +155,67 @@ export class ProxyServer {
     }
 
     displayVerbose(`Initialized with ${this.endpoints.length} endpoint(s)`, this.verbose)
+  }
+
+  private formatUniversalResponse(
+    responseBody: string,
+    statusCode: number,
+    headers: any,
+    res: http.ServerResponse,
+  ): string {
+    try {
+      // Set HTTP status code if response is not ok (non-2xx status codes)
+      if (statusCode >= 400) {
+        res.statusCode = statusCode
+      }
+
+      // Check if it's a streaming response by looking at headers first
+      const contentType = headers['content-type'] || headers['Content-Type'] || ''
+      const isStream = contentType.includes('text/event-stream')
+
+      if (isStream) {
+        // For streaming responses, set the appropriate headers and return response as-is
+        res.setHeader('Content-Type', 'text/event-stream')
+        res.setHeader('Cache-Control', 'no-cache')
+        res.setHeader('Connection', 'keep-alive')
+        return responseBody
+      }
+
+      // For non-streaming responses, check if empty first
+      if (!responseBody.trim()) {
+        return JSON.stringify({
+          error: {
+            message: 'Empty response from upstream',
+            type: 'empty_response',
+          },
+        })
+      }
+
+      // Try to parse as JSON to validate
+      const parsedBody = JSON.parse(responseBody)
+
+      // Return the parsed and re-stringified JSON to ensure consistency
+      return JSON.stringify(parsedBody)
+    }
+    catch (parseError) {
+      // If response is not valid JSON, wrap it in a standard format
+      if (this.debug) {
+        fileLogger.error('RESPONSE_FORMAT_ERROR', 'Failed to parse response as JSON', {
+          originalBody: responseBody,
+          statusCode,
+          parseError: parseError instanceof Error ? parseError.message : 'Unknown error',
+        })
+      }
+
+      // Return a standardized error response
+      return JSON.stringify({
+        error: {
+          message: 'Invalid response format from upstream',
+          type: 'format_error',
+          originalResponse: responseBody,
+        },
+      })
+    }
   }
 
   private getAgent(isHttps: boolean): http.Agent | https.Agent | undefined {
@@ -523,8 +585,120 @@ export class ProxyServer {
 
                 res.writeHead(proxyRes.statusCode || 200, responseHeaders)
 
-                // Forward response body
-                proxyRes.pipe(res)
+                // Intercept response body for transformation and logging
+                let rawResponseBody = ''
+                const passThrough = new PassThrough()
+
+                // Collect response data
+                passThrough.on('data', (chunk) => {
+                  rawResponseBody += chunk.toString()
+                })
+
+                passThrough.on('end', () => {
+                  void (async () => {
+                    try {
+                      // Log raw response if debug is enabled
+                      if (this.debug) {
+                        fileLogger.info('EXTERNAL_API_RESPONSE', 'Raw response from external API', {
+                          transformerName,
+                          targetProvider: provider.name,
+                          statusCode: proxyRes.statusCode || 0,
+                          body: rawResponseBody,
+                        })
+                      }
+
+                      let finalResponseBody = rawResponseBody
+                      const finalResponseHeaders = { ...proxyRes.headers }
+
+                      // Apply formatResponse transformation if available
+                      if (transformer.formatResponse) {
+                        try {
+                          // Create a Response object from the raw response for transformation
+                          const responseForTransformation = new Response(rawResponseBody, {
+                            status: proxyRes.statusCode || 200,
+                            statusText: proxyRes.statusMessage || 'OK',
+                            headers: proxyRes.headers as HeadersInit,
+                          })
+
+                          // Apply the transformer's formatResponse method
+                          const transformedResponse = await transformer.formatResponse(responseForTransformation)
+
+                          // Extract the transformed body and headers
+                          finalResponseBody = await transformedResponse.text()
+
+                          // Update headers from transformed response
+                          transformedResponse.headers.forEach((value, key) => {
+                            finalResponseHeaders[key] = value
+                          })
+
+                          // Log transformation if debug is enabled
+                          if (this.debug) {
+                            fileLogger.info('TRANSFORM_RESPONSE_OUTPUT', 'Response transformed by formatResponse', {
+                              transformerName,
+                              statusCode: proxyRes.statusCode || 0,
+                              originalBodySize: rawResponseBody.length,
+                              transformedBodySize: finalResponseBody.length,
+                              originalBody: rawResponseBody,
+                              transformedBody: finalResponseBody,
+                            })
+                          }
+                        }
+                        catch (transformError) {
+                          // Log transformation error if debug is enabled
+                          if (this.debug) {
+                            fileLogger.error('TRANSFORM_RESPONSE_ERROR', 'Failed to transform response with formatResponse', {
+                              transformerName,
+                              statusCode: proxyRes.statusCode || 0,
+                              error: transformError instanceof Error ? transformError.message : 'Unknown error',
+                              originalBody: rawResponseBody,
+                            })
+                          }
+                          // Continue with original response on transformation error
+                        }
+                      }
+                      else if (this.debug) {
+                        // Log that no formatResponse transformation is available (debug only)
+                        fileLogger.info('TRANSFORM_RESPONSE_SKIPPED', 'No formatResponse method available', {
+                          transformerName,
+                          hasFormatResponse: false,
+                          originalBodySize: rawResponseBody.length,
+                        })
+                      }
+
+                      // Apply universal response formatting after transformer formatResponse
+                      finalResponseBody = this.formatUniversalResponse(
+                        finalResponseBody,
+                        proxyRes.statusCode || 200,
+                        finalResponseHeaders,
+                        res,
+                      )
+
+                      // Send the final response (transformed or original) to client
+                      res.end(finalResponseBody)
+                    }
+                    catch (error) {
+                      // If anything goes wrong, send the original response with universal formatting
+                      if (this.debug) {
+                        fileLogger.error('RESPONSE_PROCESSING_ERROR', 'Error processing response', {
+                          transformerName,
+                          error: error instanceof Error ? error.message : 'Unknown error',
+                        })
+                      }
+
+                      // Apply universal response formatting to the fallback response too
+                      const formattedFallbackResponse = this.formatUniversalResponse(
+                        rawResponseBody,
+                        proxyRes.statusCode || 200,
+                        proxyRes.headers,
+                        res,
+                      )
+                      res.end(formattedFallbackResponse)
+                    }
+                  })()
+                })
+
+                // Pipe the response through our processing stream (but don't pipe to res yet)
+                proxyRes.pipe(passThrough)
 
                 // Mark endpoint as healthy on successful response
                 if (proxyRes.statusCode && proxyRes.statusCode < 500) {
@@ -696,8 +870,41 @@ export class ProxyServer {
 
             res.writeHead(proxyRes.statusCode || 200, responseHeaders)
 
-            // Forward response body
-            proxyRes.pipe(res)
+            // Intercept response body for universal formatting and optional logging
+            let rawResponseBody = ''
+            const passThrough = new PassThrough()
+
+            // Intercept data chunks
+            passThrough.on('data', (chunk) => {
+              rawResponseBody += chunk.toString()
+            })
+
+            passThrough.on('end', () => {
+              // Apply universal response formatting
+              const formattedResponseBody = this.formatUniversalResponse(
+                rawResponseBody,
+                proxyRes.statusCode || 200,
+                proxyRes.headers,
+                res,
+              )
+
+              // Log the raw response body from external API if debug enabled
+              if (this.debug) {
+                fileLogger.info('REGULAR_API_RESPONSE', 'Raw response from external API (direct proxy)', {
+                  endpointName: endpoint.config.name,
+                  targetUrl: targetUrl.toString(),
+                  statusCode: proxyRes.statusCode || 0,
+                  body: rawResponseBody,
+                  formattedBody: formattedResponseBody,
+                })
+              }
+
+              // Send formatted response
+              res.end(formattedResponseBody)
+            })
+
+            // Pipe the response through our processing stream
+            proxyRes.pipe(passThrough)
 
             // Mark endpoint as healthy on successful response
             if (proxyRes.statusCode && proxyRes.statusCode < 500) {
@@ -885,8 +1092,41 @@ export class ProxyServer {
 
       res.writeHead(proxyRes.statusCode || 200, responseHeaders)
 
-      // Forward response body
-      proxyRes.pipe(res)
+      // Intercept response body for universal formatting and optional logging
+      let rawResponseBody = ''
+      const passThrough = new PassThrough()
+
+      // Intercept data chunks
+      passThrough.on('data', (chunk) => {
+        rawResponseBody += chunk.toString()
+      })
+
+      passThrough.on('end', () => {
+        // Apply universal response formatting
+        const formattedResponseBody = this.formatUniversalResponse(
+          rawResponseBody,
+          proxyRes.statusCode || 200,
+          proxyRes.headers,
+          res,
+        )
+
+        // Log the raw response body from external API if debug enabled
+        if (this.debug) {
+          fileLogger.info('RETRY_API_RESPONSE', 'Raw response from retry attempt', {
+            endpointName: endpoint.config.name,
+            targetUrl: targetUrl.toString(),
+            statusCode: proxyRes.statusCode || 0,
+            body: rawResponseBody,
+            formattedBody: formattedResponseBody,
+          })
+        }
+
+        // Send formatted response
+        res.end(formattedResponseBody)
+      })
+
+      // Pipe the response through our processing stream
+      proxyRes.pipe(passThrough)
 
       // Mark endpoint as healthy on successful response
       if (proxyRes.statusCode && proxyRes.statusCode < 500) {

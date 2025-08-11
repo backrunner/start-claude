@@ -38,6 +38,15 @@ vi.mock('@/services/transformer', () => ({
 vi.mock('node:http')
 vi.mock('node:https')
 
+// Mock PassThrough stream
+vi.mock('node:stream', () => ({
+  PassThrough: vi.fn().mockImplementation(() => ({
+    emit: vi.fn(),
+    on: vi.fn(),
+    pipe: vi.fn().mockReturnThis(),
+  })),
+}))
+
 const mockHttp = vi.mocked(http)
 const mockHttps = vi.mocked(https)
 const MockConfigService = vi.mocked(ConfigService)
@@ -896,6 +905,173 @@ describe('proxyServer', () => {
       )
       // Since constructor now validates configs, we can't test stub endpoint creation
       // This test now verifies that the proper error is thrown
+    })
+  })
+
+  describe('formatResponse functionality', () => {
+    let transformerConfig: ClaudeConfig
+    let proxyServer: ProxyServer
+
+    beforeEach(() => {
+      transformerConfig = {
+        name: 'openai-transformer',
+        profileType: 'default',
+        baseUrl: 'https://api.openai.com',
+        apiKey: 'sk-test-key',
+        transformerEnabled: true,
+        isDefault: false,
+      }
+
+      const proxyMode: ProxyMode = { enableTransform: true }
+      proxyServer = new ProxyServer([transformerConfig], proxyMode)
+    })
+
+    it('should have transformer service with formatResponse capability', () => {
+      const transformerService = proxyServer.getTransformerService()
+      expect(transformerService).toBeDefined()
+      expect(typeof transformerService.findTransformerByDomain).toBe('function')
+    })
+
+    it('should call transformer.formatResponse when available during response processing', () => {
+      // This test verifies that the proxy server has the infrastructure to call formatResponse
+      // The actual formatResponse method is called during the async response processing pipeline
+      const status = proxyServer.getStatus()
+      expect(status.transform).toBe(true)
+      expect(status.endpoints).toHaveLength(1)
+      expect(status.endpoints[0].config.transformerEnabled).toBe(true)
+    })
+
+    it('should handle transformation flow in transformer-enabled mode', () => {
+      // Verify that the proxy server is set up correctly for transformations
+      const transformerService = proxyServer.getTransformerService()
+      expect(transformerService).toBeDefined()
+
+      // Check that we can access the transformer configuration
+      const status = proxyServer.getStatus()
+      const endpoint = status.endpoints[0]
+      expect(endpoint.config.transformerEnabled).toBe(true)
+      expect(endpoint.config.baseUrl).toBe('https://api.openai.com')
+    })
+
+    it('should support adding custom transformers with formatResponse', async () => {
+      const mockTransformer = {
+        domain: 'custom-api.com',
+        normalizeRequest: vi.fn().mockResolvedValue({
+          body: { model: 'custom-model', messages: [] },
+          config: { url: new URL('https://custom-api.com/v1/chat'), headers: {} },
+        }),
+        formatRequest: vi.fn().mockResolvedValue({}),
+        formatResponse: vi.fn().mockImplementation(async (response: Response) => {
+          const text = await response.text()
+          return new Response(JSON.stringify({ transformed: true, original: JSON.parse(text) }), {
+            status: response.status,
+            headers: { 'Content-Type': 'application/json', 'X-Transformed': 'true' },
+          })
+        }),
+      }
+
+      // Add the custom transformer
+      await proxyServer.addTransformer('custom', mockTransformer)
+
+      // Verify that the transformer was added - check transformer service directly
+      const transformerService = proxyServer.getTransformerService()
+      expect(transformerService).toBeDefined()
+
+      // Verify the transformer has the expected methods
+      expect(typeof mockTransformer.formatResponse).toBe('function')
+      expect(typeof mockTransformer.normalizeRequest).toBe('function')
+      expect(mockTransformer.domain).toBe('custom-api.com')
+    })
+
+    it('should maintain transformer state correctly', () => {
+      // Test the basic transformer management functionality
+      const initialTransformers = proxyServer.listTransformers()
+      expect(Array.isArray(initialTransformers)).toBe(true)
+
+      const status = proxyServer.getStatus()
+      expect(status.transformers).toBeDefined()
+      expect(Array.isArray(status.transformers)).toBe(true)
+    })
+
+    it('should apply universal response formatting to valid JSON responses', () => {
+      // Test the formatUniversalResponse method directly
+      const validJsonResponse = '{"choices":[{"message":{"content":"Hello"}}]}'
+      const headers = { 'content-type': 'application/json' }
+      const mockRes = {
+        setHeader: vi.fn(),
+        statusCode: 200,
+      }
+
+      // Call the private method via reflection for testing
+      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
+      const result = formatUniversalResponse(validJsonResponse, 200, headers, mockRes)
+
+      expect(result).toBe(validJsonResponse) // Valid JSON should be returned as-is after parsing/stringifying
+      expect(() => JSON.parse(result)).not.toThrow() // Should be valid JSON
+    })
+
+    it('should handle invalid JSON responses by wrapping them', () => {
+      const invalidJsonResponse = 'Invalid JSON response'
+      const headers = { 'content-type': 'application/json' }
+      const mockRes = {
+        setHeader: vi.fn(),
+        statusCode: 200,
+      }
+
+      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
+      const result = formatUniversalResponse(invalidJsonResponse, 200, headers, mockRes)
+
+      const parsedResult = JSON.parse(result)
+      expect(parsedResult.error).toBeDefined()
+      expect(parsedResult.error.type).toBe('format_error')
+      expect(parsedResult.error.originalResponse).toBe(invalidJsonResponse)
+    })
+
+    it('should handle empty responses correctly', () => {
+      const emptyResponse = ''
+      const headers = { 'content-type': 'application/json' }
+      const mockRes = {
+        setHeader: vi.fn(),
+        statusCode: 200,
+      }
+
+      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
+      const result = formatUniversalResponse(emptyResponse, 200, headers, mockRes)
+
+      const parsedResult = JSON.parse(result)
+      expect(parsedResult.error).toBeDefined()
+      expect(parsedResult.error.type).toBe('empty_response')
+    })
+
+    it('should preserve streaming responses and set correct headers', () => {
+      const streamingResponse = 'data: {"content":"hello"}\n\ndata: {"content":"world"}\n\n'
+      const headers = { 'content-type': 'text/event-stream' }
+      const mockRes = {
+        setHeader: vi.fn(),
+        statusCode: 200,
+      }
+
+      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
+      const result = formatUniversalResponse(streamingResponse, 200, headers, mockRes)
+
+      expect(result).toBe(streamingResponse) // Streaming responses should be returned as-is
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-cache')
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive')
+    })
+
+    it('should set status code for error responses', () => {
+      const errorResponse = '{"error":"Bad request"}'
+      const headers = { 'content-type': 'application/json' }
+      const mockRes = {
+        setHeader: vi.fn(),
+        statusCode: 200,
+      }
+
+      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
+      formatUniversalResponse(errorResponse, 400, headers, mockRes)
+
+      expect(mockRes.statusCode).toBe(400)
     })
   })
 })

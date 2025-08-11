@@ -1,7 +1,6 @@
 import type { ConfigService } from '../services/config'
 
 import type { Transformer, TransformerConstructor } from '../types/transformer'
-import * as Module from 'node:module'
 import { displayVerbose } from '../utils/ui'
 
 interface TransformerConfig {
@@ -67,17 +66,17 @@ export class TransformerService {
   }): Promise<boolean> {
     try {
       if (config.path) {
-        // Store original Module._load
-        const originalLoad = (Module as any)._load
+        // Use require.cache manipulation instead of Module._load override
+        const originalRequire = module.constructor.prototype.require
 
-        // Temporarily override Module._load
-        ;(Module as any)._load = function (request: string, _parent: any, _isMain: boolean) {
-          if (request === 'claude-code-router') {
+        // Temporarily override require for the specific module loading
+        module.constructor.prototype.require = function (id: string) {
+          if (id === 'claude-code-router') {
             return {
               displayVerbose: (msg: string) => displayVerbose(msg, true),
             }
           }
-          return originalLoad.call(Module, request, _parent, _isMain)
+          return originalRequire.call(this, id)
         }
 
         try {
@@ -96,8 +95,8 @@ export class TransformerService {
           }
         }
         finally {
-          // Always restore the original Module._load
-          ;(Module as any)._load = originalLoad
+          // Always restore the original require
+          module.constructor.prototype.require = originalRequire
         }
       }
       return false
