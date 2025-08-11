@@ -1,5 +1,4 @@
 import inquirer from 'inquirer'
-import { ConfigManager } from '../config/manager'
 import { S3SyncManager } from '../storage/s3-sync'
 import { displayError, displayInfo, displayWelcome } from '../utils/ui'
 
@@ -141,40 +140,22 @@ export async function handleS3UploadCommand(options: { force?: boolean } = {}): 
     return
   }
 
-  await s3SyncManager.uploadConfigs(options.force)
+  // Let S3SyncManager handle timestamp checking and warnings
+  await s3SyncManager.uploadConfigs(options.force || false)
 }
 
 export async function handleS3DownloadCommand(options: { force?: boolean }): Promise<void> {
   displayWelcome()
 
   const s3SyncManager = new S3SyncManager()
-  const configManager = new ConfigManager()
 
   if (!s3SyncManager.isS3Configured()) {
     displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
     return
   }
 
-  if (!options.force) {
-    const localConfigs = configManager.listConfigs()
-    if (localConfigs.length > 0) {
-      const overwriteAnswer = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'overwrite',
-          message: 'Local configurations exist. Overwrite them with remote configurations?',
-          default: false,
-        },
-      ])
-
-      if (!overwriteAnswer.overwrite) {
-        displayInfo('Download cancelled.')
-        return
-      }
-    }
-  }
-
-  await s3SyncManager.downloadConfigs(true)
+  // Always let S3SyncManager handle timestamp checking and warnings
+  await s3SyncManager.downloadConfigs(options.force || false)
 }
 
 export async function handleS3StatusCommand(): Promise<void> {

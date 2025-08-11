@@ -194,6 +194,92 @@ export function buildCliOverrides(options: ProgramOptions): CliOverrides {
 }
 
 /**
+ * Handle S3 config checks for named config lookup
+ */
+async function handleS3ConfigLookup(
+  configManager: ConfigManager,
+  s3SyncManager: S3SyncManager,
+  configName: string,
+): Promise<ClaudeConfig | undefined> {
+  if (!s3SyncManager.isS3Configured()) {
+    return undefined
+  }
+
+  displayInfo(`Configuration "${configName}" not found locally. Checking S3 for updates...`)
+  const downloadSuccess = await s3SyncManager.checkRemoteUpdates()
+  if (downloadSuccess) {
+    return configManager.getConfig(configName)
+  }
+  return undefined
+}
+
+/**
+ * Handle S3 download for empty local configs
+ */
+async function handleS3EmptyConfigDownload(
+  configManager: ConfigManager,
+  s3SyncManager: S3SyncManager,
+): Promise<ClaudeConfig | undefined> {
+  if (!s3SyncManager.isS3Configured()) {
+    return undefined
+  }
+
+  displayInfo('No local configurations found, but S3 sync is configured.')
+  displayInfo('Checking S3 for existing configurations...')
+
+  const downloadSuccess = await s3SyncManager.downloadConfigs(true)
+  if (!downloadSuccess) {
+    return undefined
+  }
+
+  // Try to get default config again after download
+  const config = configManager.getDefaultConfig()
+  if (config) {
+    displayInfo(`Using downloaded configuration: ${config.name}`)
+    return config
+  }
+
+  // Downloaded configs exist but no default, let user choose
+  const downloadedConfigs = configManager.listConfigs()
+  if (downloadedConfigs.length === 0) {
+    return undefined
+  }
+
+  displayInfo('Choose a configuration to use:')
+  const answers = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'selectedConfig',
+      message: 'Select configuration:',
+      choices: downloadedConfigs.map(c => ({
+        name: `${c.name}${c.isDefault ? ' (default)' : ''}`,
+        value: c.name,
+      })),
+    },
+  ])
+
+  return configManager.getConfig(answers.selectedConfig as string)
+}
+
+/**
+ * Handle S3 update check for existing configs
+ */
+async function handleS3UpdateCheck(
+  configManager: ConfigManager,
+  s3SyncManager: S3SyncManager,
+): Promise<ClaudeConfig | undefined> {
+  if (!s3SyncManager.isS3Configured()) {
+    return undefined
+  }
+
+  const downloadSuccess = await s3SyncManager.checkRemoteUpdates()
+  if (downloadSuccess) {
+    return configManager.getDefaultConfig()
+  }
+  return undefined
+}
+
+/**
  * Resolve configuration based on options and config argument
  */
 export async function resolveConfig(
@@ -208,8 +294,12 @@ export async function resolveConfig(
   if (configName !== undefined) {
     config = configManager.getConfig(configName)
     if (!config) {
-      displayError(`Configuration "${configName}" not found`)
-      process.exit(1)
+      // If config not found and S3 is configured, check for newer remote config
+      config = await handleS3ConfigLookup(configManager, s3SyncManager, configName)
+      if (!config) {
+        displayError(`Configuration "${configName}" not found`)
+        process.exit(1)
+      }
     }
     return config
   }
@@ -223,61 +313,46 @@ export async function resolveConfig(
       displayWelcome()
 
       // Check if S3 sync is configured and try to download first
-      if (s3SyncManager.isS3Configured()) {
-        displayInfo('No local configurations found, but S3 sync is configured.')
-        displayInfo('Checking S3 for existing configurations...')
-
-        const downloadSuccess = await s3SyncManager.downloadConfigs(true)
-        if (downloadSuccess) {
-          // Try to get default config again after download
-          config = configManager.getDefaultConfig()
-          if (config) {
-            displayInfo(`Using downloaded configuration: ${config.name}`)
-            return config
-          }
-
-          // Downloaded configs exist but no default, let user choose
-          const downloadedConfigs = configManager.listConfigs()
-          if (downloadedConfigs.length > 0) {
-            displayInfo('Choose a configuration to use:')
-
-            const answers = await inquirer.prompt([
-              {
-                type: 'list',
-                name: 'selectedConfig',
-                message: 'Select configuration:',
-                choices: downloadedConfigs.map(c => ({
-                  name: `${c.name}${c.isDefault ? ' (default)' : ''}`,
-                  value: c.name,
-                })),
-              },
-            ])
-
-            return configManager.getConfig(answers.selectedConfig as string)
-          }
-        }
+      config = await handleS3EmptyConfigDownload(configManager, s3SyncManager)
+      if (config) {
+        return config
       }
 
       // If still no config after S3 check, create a new one
       return createNewConfig(configManager, s3SyncManager)
     }
     else {
-      displayWelcome()
-      displayInfo('Choose a configuration to use:')
+      // Check for newer remote configs even when we have local configs
+      const updatedConfig = await handleS3UpdateCheck(configManager, s3SyncManager)
+      if (updatedConfig) {
+        config = updatedConfig
+      }
 
-      const answers = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'selectedConfig',
-          message: 'Select configuration:',
-          choices: configs.map(c => ({
-            name: `${c.name}${c.isDefault ? ' (default)' : ''}`,
-            value: c.name,
-          })),
-        },
-      ])
+      if (!config) {
+        displayWelcome()
+        displayInfo('Choose a configuration to use:')
 
-      return configManager.getConfig(answers.selectedConfig as string)
+        const answers = await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'selectedConfig',
+            message: 'Select configuration:',
+            choices: configs.map(c => ({
+              name: `${c.name}${c.isDefault ? ' (default)' : ''}`,
+              value: c.name,
+            })),
+          },
+        ])
+
+        return configManager.getConfig(answers.selectedConfig as string)
+      }
+    }
+  }
+  else {
+    // Even when we have a default config, check if there's a newer version on S3
+    const updatedConfig = await handleS3UpdateCheck(configManager, s3SyncManager)
+    if (updatedConfig) {
+      config = updatedConfig
     }
   }
 
