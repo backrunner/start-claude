@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { NextResponse } from 'next/server'
+import { CURRENT_CONFIG_VERSION } from '@/config/types'
 import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
 
 // Force dynamic rendering
@@ -59,6 +60,7 @@ function saveConfigs(configs: ClaudeConfig[], settings?: any): void {
 
     const currentSettings = settings || getSettings()
     const data = {
+      version: CURRENT_CONFIG_VERSION,
       configs,
       settings: currentSettings,
     }
