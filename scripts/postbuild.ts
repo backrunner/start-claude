@@ -47,12 +47,13 @@ async function makeCliExecutable() {
   // Only run chmod on macOS and Linux
   if (process.platform === 'darwin' || process.platform === 'linux') {
     const cliPath = join(process.cwd(), 'bin/cli.mjs')
-    
+
     try {
       if (existsSync(cliPath)) {
         await chmod(cliPath, 0o755)
         console.log('✅ Made CLI executable on macOS/Linux')
-      } else {
+      }
+      else {
         console.warn(`Warning: CLI file not found at ${cliPath}`)
       }
     }

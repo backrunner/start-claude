@@ -542,7 +542,7 @@ describe('proxyServer', () => {
       const mockTransformer = {
         name: 'test-transformer',
         endPoint: '/test',
-        transformRequestOut: vi.fn(),
+        formatRequest: vi.fn(),
       }
 
       // Test adding transformer

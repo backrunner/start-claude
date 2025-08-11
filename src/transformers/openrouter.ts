@@ -11,15 +11,28 @@ export class OpenrouterTransformer implements Transformer {
 
   constructor(private readonly options?: TransformerOptions) {}
 
-  async transformRequestIn(
+  async normalizeRequest(
     request: LLMChatRequest,
     provider?: LLMProvider,
   ): Promise<Record<string, any>> {
+    return {
+      body: request,
+      config: {
+        url: createTransformerUrl('v1/chat/completions', provider?.baseUrl, 'https://openrouter.ai/api'),
+        headers: {
+          'Authorization': `Bearer ${provider?.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    }
+  }
+
+  async formatRequest(request: Record<string, any>): Promise<Record<string, any>> {
     // Process the request for OpenRouter specifics
     const processedRequest = { ...request }
 
     if (!processedRequest.model.includes('claude')) {
-      processedRequest.messages.forEach((msg) => {
+      processedRequest.messages.forEach((msg: any) => {
         if (Array.isArray(msg.content)) {
           msg.content.forEach((item: any) => {
             if (item.cache_control) {
@@ -33,13 +46,13 @@ export class OpenrouterTransformer implements Transformer {
             }
           })
         }
-        else if ((msg as any).cache_control) {
-          delete (msg as any).cache_control
+        else if ((msg).cache_control) {
+          delete (msg).cache_control
         }
       })
     }
     else {
-      processedRequest.messages.forEach((msg) => {
+      processedRequest.messages.forEach((msg: any) => {
         if (Array.isArray(msg.content)) {
           msg.content.forEach((item: any) => {
             if (item.type === 'image_url') {
@@ -68,34 +81,10 @@ export class OpenrouterTransformer implements Transformer {
       stop: processedRequest.stop_sequences,
     }
 
-    return {
-      body,
-      config: {
-        url: createTransformerUrl('v1/chat/completions', provider?.baseUrl, 'https://openrouter.ai/api'),
-        headers: {
-          'Authorization': `Bearer ${provider?.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    }
+    return body
   }
 
-  async transformRequestOut(request: any): Promise<any> {
-    // Transform from OpenRouter format to unified format
-    return {
-      model: request.model,
-      messages: request.messages || [],
-      max_tokens: request.max_tokens,
-      temperature: request.temperature,
-      top_p: request.top_p,
-      stream: request.stream,
-      tools: request.tools,
-      tool_choice: request.tool_choice,
-      stop_sequences: request.stop,
-    }
-  }
-
-  async transformResponseOut(response: Response): Promise<Response> {
+  async formatResponse(response: Response): Promise<Response> {
     if (response.headers.get('Content-Type')?.includes('application/json')) {
       const jsonResponse = await response.json()
       return new Response(JSON.stringify(jsonResponse), {

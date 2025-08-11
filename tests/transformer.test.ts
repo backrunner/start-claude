@@ -14,11 +14,11 @@ vi.mock('../src/transformers/openai', () => ({
     static TransformerName = 'openai'
     domain = 'api.openai.com'
     isDefault = true
-    async transformRequestOut(request: any) {
+    async formatRequest(request: any) {
       return request
     }
 
-    async transformResponseOut(response: Response) {
+    async formatResponse(response: Response) {
       return response
     }
   },
@@ -29,11 +29,11 @@ vi.mock('../src/transformers/openrouter', () => ({
     static TransformerName = 'openrouter'
     domain = 'openrouter.ai'
     isDefault = false
-    async transformRequestOut(request: any) {
+    async formatRequest(request: any) {
       return request
     }
 
-    async transformResponseOut(response: Response) {
+    async formatResponse(response: Response) {
       return response
     }
   },
@@ -61,10 +61,10 @@ describe('transformerService', () => {
       const mockTransformer: Transformer = {
         domain: 'example.com',
         isDefault: false,
-        async transformRequestOut(request: any) {
+        async formatRequest(request: any) {
           return request
         },
-        async transformResponseOut(response: Response) {
+        async formatResponse(response: Response) {
           return response
         },
       }
@@ -79,10 +79,10 @@ describe('transformerService', () => {
       const mockTransformer: Transformer = {
         domain: 'example.com',
         isDefault: true,
-        async transformRequestOut(request: any) {
+        async formatRequest(request: any) {
           return request
         },
-        async transformResponseOut(response: Response) {
+        async formatResponse(response: Response) {
           return response
         },
       }

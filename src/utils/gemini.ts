@@ -247,7 +247,7 @@ export function buildRequestBody(
   return body
 }
 
-export function transformRequestOut(
+export function normalizeResponseFromGemini(
   request: Record<string, any>,
 ): LLMChatRequest {
   const contents = request.contents
@@ -322,7 +322,7 @@ export function transformRequestOut(
   return chatRequest
 }
 
-export async function transformResponseOut(
+export async function formatResponseFromGemini(
   response: Response,
   providerName: string = 'Gemini',
   logger?: any,

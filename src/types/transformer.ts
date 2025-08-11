@@ -16,13 +16,21 @@ export interface TransformerContext {
 }
 
 export interface Transformer {
-  transformRequestIn?: (
+  // Convert LLMChatRequest to intermediate format (Claude → Unified)
+  normalizeRequest?: (
     request: LLMChatRequest,
     provider: LLMProvider
   ) => Promise<Record<string, any>>
-  transformResponseIn?: (response: Response, context?: TransformerContext) => Promise<Response>
-  transformRequestOut?: (request: any) => Promise<LLMChatRequest>
-  transformResponseOut?: (response: Response) => Promise<Response>
+
+  // Convert intermediate format to provider-specific format (Unified → Provider)
+  formatRequest?: (request: Record<string, any>) => Promise<Record<string, any>>
+
+  // Convert provider response back to unified format
+  normalizeResponse?: (response: Response, context?: TransformerContext) => Promise<Response>
+
+  // Additional response transformation for the provider
+  formatResponse?: (response: Response) => Promise<Response>
+
   domain?: string // Domain this transformer should handle (e.g., 'api.openai.com')
   isDefault?: boolean // Whether this transformer is the default fallback
   auth?: (request: any, provider: LLMProvider) => Promise<any>

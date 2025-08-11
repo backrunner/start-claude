@@ -17,20 +17,20 @@ Transformers use **domain-based routing** to automatically select the appropriat
 - **Domain**: `api.openai.com`
 - **Default**: Yes (fallback for unknown domains)
 - **Features**: Standard OpenAI API compatibility
-- **Methods**: `transformRequestOut`, `transformResponseOut`
+- **Methods**: `normalizeRequest`, `formatRequest`, `formatResponse`
 
 ### OpenRouter Transformer (`openrouter.ts`)
 
 - **Domain**: `openrouter.ai`
 - **Features**: Advanced streaming, reasoning content processing, tool calls with UUID generation
-- **Methods**: `transformRequestIn`, `transformRequestOut`, `transformResponseOut`
+- **Methods**: `normalizeRequest`, `formatRequest`, `formatResponse`
 - **Special**: Handles cache control removal, image URL formatting, complex stream processing
 
 ### Gemini Transformer (`gemini.ts`)
 
 - **Domain**: `generativelanguage.googleapis.com`
 - **Features**: Google Generative AI API support, streaming, tool calling
-- **Methods**: `transformRequestIn`, `transformRequestOut`, `transformResponseOut`
+- **Methods**: `normalizeRequest`, `formatRequest`, `formatResponse`
 - **Authentication**: Uses `x-goog-api-key` header
 - **Endpoints**: `/v1beta/models/{model}:generateContent` or `:streamGenerateContent?alt=sse`
 
@@ -43,14 +43,20 @@ interface Transformer {
   domain?: string // Domain for automatic routing
   isDefault?: boolean // Whether this is the default fallback
 
-  // Transform incoming requests (client → API)
-  transformRequestIn?: (request: LLMChatRequest, provider: LLMProvider) => Promise<Record<string, any>>
+  // Transform incoming requests from Claude format to intermediate format (Claude → Unified)
+  normalizeRequest?: (
+    request: LLMChatRequest,
+    provider: LLMProvider
+  ) => Promise<Record<string, any>>
 
-  // Transform outgoing requests (API → unified format)
-  transformRequestOut?: (request: any) => Promise<LLMChatRequest>
+  // Transform intermediate format to provider-specific format (Unified → Provider)
+  formatRequest?: (request: Record<string, any>) => Promise<Record<string, any>>
 
-  // Transform responses (API → client)
-  transformResponseOut?: (response: Response) => Promise<Response>
+  // Convert provider response back to unified format
+  normalizeResponse?: (response: Response, context?: TransformerContext) => Promise<Response>
+
+  // Additional response transformation for the provider
+  formatResponse?: (response: Response) => Promise<Response>
 
   // Custom authentication logic
   auth?: (request: any, provider: LLMProvider) => Promise<any>

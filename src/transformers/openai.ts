@@ -10,10 +10,28 @@ export class OpenaiTransformer implements Transformer {
 
   constructor(private readonly options?: TransformerOptions) {}
 
-  async transformRequestIn(
+  async normalizeRequest(
     request: LLMChatRequest,
     provider: LLMProvider,
   ): Promise<Record<string, any>> {
+    return {
+      body: request,
+      config: {
+        url: createTransformerUrl('v1/chat/completions', provider.baseUrl, 'https://api.openai.com'),
+        headers: {
+          'Authorization': `Bearer ${provider.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    }
+  }
+
+  async formatRequest(request: Record<string, any>): Promise<Record<string, any>> {
+    // Throw error if no model is provided instead of using default
+    if (!request.model) {
+      throw new Error('Model parameter is required for OpenAI transformer')
+    }
+
     const body = {
       model: request.model,
       messages: request.messages || [],
@@ -31,38 +49,10 @@ export class OpenaiTransformer implements Transformer {
       Object.assign(body, this.options)
     }
 
-    return {
-      body,
-      config: {
-        url: createTransformerUrl('v1/chat/completions', provider.baseUrl, 'https://api.openai.com'),
-        headers: {
-          'Authorization': `Bearer ${provider.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      },
-    }
+    return body
   }
 
-  async transformRequestOut(request: any): Promise<any> {
-    // Throw error if no model is provided instead of using default
-    if (!request.model) {
-      throw new Error('Model parameter is required for OpenAI transformer')
-    }
-
-    return {
-      model: request.model,
-      messages: request.messages || [],
-      max_tokens: request.max_tokens,
-      temperature: request.temperature,
-      top_p: request.top_p,
-      stream: request.stream,
-      tools: request.tools,
-      tool_choice: request.tool_choice,
-      stop_sequences: request.stop,
-    }
-  }
-
-  async transformResponseOut(response: Response): Promise<Response> {
+  async formatResponse(response: Response): Promise<Response> {
     return response
   }
 }

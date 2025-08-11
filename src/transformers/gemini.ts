@@ -2,8 +2,7 @@ import type { LLMChatRequest, LLMProvider } from '../types/llm'
 import type { Transformer, TransformerOptions } from '../types/transformer'
 import {
   buildRequestBody,
-  transformRequestOut,
-  transformResponseOut,
+  formatResponseFromGemini,
 } from '../utils/gemini'
 import { createTransformerUrl } from '../utils/transformer-url'
 
@@ -15,22 +14,20 @@ export class GeminiTransformer implements Transformer {
 
   constructor(private readonly options?: TransformerOptions) {}
 
-  async transformRequestIn(
+  async normalizeRequest(
     request: LLMChatRequest,
     provider: LLMProvider,
   ): Promise<Record<string, any>> {
-    const body = buildRequestBody(request)
-
-    // Apply any additional options from transformer configuration
-    if (this.options) {
-      Object.assign(body, this.options)
+    // Ensure model is configured in provider
+    if (!provider.model) {
+      throw new Error('Model must be configured in provider for Gemini transformer')
     }
 
     return {
-      body,
+      body: request,
       config: {
         url: createTransformerUrl(
-          `v1beta/models/${request.model}:${
+          `v1beta/models/${provider.model}:${
             request.stream ? 'streamGenerateContent?alt=sse' : 'generateContent'
           }`,
           provider.baseUrl,
@@ -43,11 +40,18 @@ export class GeminiTransformer implements Transformer {
     }
   }
 
-  async transformRequestOut(request: any): Promise<any> {
-    return transformRequestOut(request)
+  async formatRequest(request: Record<string, any>): Promise<Record<string, any>> {
+    const body = buildRequestBody(request as LLMChatRequest)
+
+    // Apply any additional options from transformer configuration
+    if (this.options) {
+      Object.assign(body, this.options)
+    }
+
+    return body
   }
 
-  async transformResponseOut(response: Response): Promise<Response> {
-    return transformResponseOut(response)
+  async formatResponse(response: Response): Promise<Response> {
+    return formatResponseFromGemini(response)
   }
 }

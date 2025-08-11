@@ -1,7 +1,7 @@
 import type { ConfigService } from '../services/config'
 
 import type { Transformer, TransformerConstructor } from '../types/transformer'
-import Module from 'node:module'
+import * as Module from 'node:module'
 import { displayVerbose } from '../utils/ui'
 
 interface TransformerConfig {

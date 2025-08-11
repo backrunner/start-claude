@@ -213,7 +213,14 @@ export class ProxyServer {
     try {
       // Log incoming request if debug is enabled
       if (this.debug) {
-        fileLogger.logRequest(req.method || 'UNKNOWN', req.url || '/', req.headers as Record<string, any>)
+        fileLogger.info('INCOMING_REQUEST', 'Received HTTP request', {
+          method: req.method || 'UNKNOWN',
+          url: req.url || '/',
+          userAgent: req.headers['user-agent'] || 'unknown',
+          contentType: req.headers['content-type'] || 'unknown',
+          origin: req.headers.origin || 'unknown',
+          headers: req.headers,
+        })
       }
 
       // Handle CORS preflight requests
@@ -227,7 +234,12 @@ export class ProxyServer {
         res.end()
 
         if (this.debug) {
-          fileLogger.logResponse(200, 'OK', res.getHeaders() as Record<string, any>, 'CORS preflight')
+          fileLogger.info('CORS_PREFLIGHT', 'Handled CORS preflight request', {
+            method: req.method || 'OPTIONS',
+            origin: req.headers.origin || 'unknown',
+            requestHeaders: req.headers['access-control-request-headers'] || 'none',
+            response: 'CORS preflight response sent',
+          })
         }
         return
       }
@@ -281,13 +293,39 @@ export class ProxyServer {
     }
     catch (error) {
       displayError(`⚠️ Request handling error: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({
+
+      // Log detailed request handling error
+      if (this.debug) {
+        fileLogger.error('REQUEST_HANDLING_ERROR', 'Exception caught in main request handler', {
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorStack: error instanceof Error ? error.stack : undefined,
+          method: req.method || 'UNKNOWN',
+          url: req.url || '/',
+          userAgent: req.headers['user-agent'] || 'unknown',
+          contentType: req.headers['content-type'] || 'unknown',
+          origin: req.headers.origin || 'unknown',
+        })
+      }
+
+      const errorResponse = {
         error: {
           message: 'Internal server error',
           type: 'internal_error',
         },
-      }))
+      }
+
+      // Log detailed error response
+      if (this.debug) {
+        fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 500 error response due to request handling error', {
+          statusCode: 500,
+          errorType: 'internal_error',
+          originalError: error instanceof Error ? error.message : 'Unknown error',
+          responseBody: errorResponse,
+        })
+      }
+
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(errorResponse))
     }
   }
 
@@ -336,25 +374,34 @@ export class ProxyServer {
         try {
           const body = Buffer.concat(chunks)
           let requestData: any = {}
+          let bodyText: string | undefined
 
-          // Log request body if debug is enabled
-          if (this.debug && body.length > 0) {
-            fileLogger.debug('PROXY_REQUEST_BODY', 'Request body received', {
-              bodySize: body.length,
-              bodyPreview: body.toString().substring(0, 500) + (body.length > 500 ? '...' : ''),
-            })
-          }
-
-          // Parse request body to check for transformer requirements
+          // Parse request body once and cache the string representation
           if (body.length > 0) {
             try {
-              requestData = JSON.parse(body.toString())
+              bodyText = body.toString()
+              requestData = JSON.parse(bodyText)
+
+              // Log request body if debug is enabled
+              if (this.debug) {
+                fileLogger.info('INCOMING_REQUEST', 'Received request body for transformation', {
+                  bodySize: body.length,
+                  model: requestData.model,
+                  messageCount: requestData.messages?.length || 0,
+                  hasTools: requestData.tools ? requestData.tools.length : 0,
+                  body: requestData,
+                })
+              }
             }
             catch {
               // If we can't parse JSON, just continue with regular proxy
               displayVerbose('Could not parse request JSON for transformer check', this.verbose)
               if (this.debug) {
-                fileLogger.warn('PROXY', 'Failed to parse request JSON for transformer check')
+                fileLogger.info('REQUEST_PARSE_ERROR', 'Received non-JSON request body', {
+                  bodySize: body.length,
+                  contentType: req.headers['content-type'] || 'unknown',
+                  body: bodyText || body.toString(),
+                })
               }
             }
           }
@@ -370,24 +417,13 @@ export class ProxyServer {
                 .find(([, t]) => t === transformer)?.[0] || 'unknown'
               displayVerbose(`Found transformer for domain ${endpoint.config.baseUrl}: ${transformerName}`, this.verbose)
 
-              // Transform request if transformer supports it
-              let transformedRequest = requestData
-              if (transformer.transformRequestOut) {
-                const originalRequest = JSON.parse(JSON.stringify(requestData)) // Deep copy for logging
-                transformedRequest = await transformer.transformRequestOut(requestData)
-                displayVerbose(`Request transformed by ${transformer.domain || 'transformer'}`, this.verbose)
-
-                if (this.debug) {
-                  fileLogger.logTransform('REQUEST', transformerName, originalRequest, transformedRequest)
-                }
-              }
-
               // Create provider for transformer using the real external API credentials
               // The endpoint.config should contain the actual API credentials for the external service
               const provider: LLMProvider = {
                 name: endpoint.config.name || 'unknown',
                 baseUrl: endpoint.config.baseUrl || `https://${transformer.domain}`,
                 apiKey: endpoint.config.apiKey || '',
+                model: endpoint.config.model || '',
               }
 
               // Validate that we have proper credentials for the transformer
@@ -395,25 +431,60 @@ export class ProxyServer {
                 throw new Error(`Transformer-enabled endpoint "${endpoint.config.name}" requires both baseUrl and apiKey for the external API`)
               }
 
-              // Get URL and headers from transformer
-              if (!transformer.transformRequestIn) {
-                throw new Error(`Transformer ${transformerName} is missing transformRequestIn method`)
+              // Step 1: Normalize request (Claude → Intermediate format with config)
+              if (!transformer.normalizeRequest) {
+                throw new Error(`Transformer ${transformerName} is missing normalizeRequest method`)
               }
-              const transformResult = await transformer.transformRequestIn(transformedRequest, provider)
-              const targetUrl = transformResult.config.url
+              const normalizeResult = await transformer.normalizeRequest(requestData, provider)
+
+              // Step 2: Format request (Intermediate → Provider-specific format)
+              let finalRequest = normalizeResult.body
+              if (transformer.formatRequest) {
+                finalRequest = await transformer.formatRequest(normalizeResult.body)
+                displayVerbose(`Request formatted by ${transformer.domain || 'transformer'}`, this.verbose)
+
+                if (this.debug) {
+                  fileLogger.logTransform('FORMAT_REQUEST', transformerName, normalizeResult.body, finalRequest)
+                }
+              }
+              else {
+                displayVerbose(`Request normalized by ${transformer.domain || 'transformer'}`, this.verbose)
+
+                if (this.debug) {
+                  fileLogger.logTransform('NORMALIZE_REQUEST', transformerName, requestData, finalRequest)
+                }
+              }
+
+              // Cache the stringified request
+              const requestBody = JSON.stringify(finalRequest)
+
+              // Log the final transformed request body to file logger
+              if (this.debug) {
+                fileLogger.info('TRANSFORM_COMPLETE', 'Request transformation completed', {
+                  transformerName,
+                  originalModel: requestData.model,
+                  targetProvider: provider.name,
+                  bodySize: requestBody.length,
+                  body: finalRequest,
+                })
+              }
+
+              const targetUrl = normalizeResult.config.url
               const headers = {
-                ...transformResult.config.headers,
-                'Content-Length': Buffer.byteLength(JSON.stringify(transformResult.body)).toString(),
+                ...normalizeResult.config.headers,
+                'Content-Length': Buffer.byteLength(requestBody).toString(),
                 'User-Agent': req.headers['user-agent'] || 'start-claude-proxy',
               }
-              const requestBody = JSON.stringify(transformResult.body)
 
               if (this.debug) {
-                fileLogger.debug('PROXY_TRANSFORMER_REQUEST', `Using transformer URL: ${targetUrl.toString()}`, {
+                fileLogger.info('OUTBOUND_REQUEST', 'Sending transformed request to external API', {
                   transformerName,
+                  targetProvider: provider.name,
                   originalUrl: req.url,
                   transformerUrl: targetUrl.toString(),
+                  method: req.method || 'POST',
                   headers,
+                  body: finalRequest,
                 })
               }
 
@@ -430,12 +501,14 @@ export class ProxyServer {
               const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
                 // Log proxy response if debug is enabled
                 if (this.debug) {
-                  fileLogger.logResponse(
-                    proxyRes.statusCode || 0,
-                    proxyRes.statusMessage || 'Unknown',
-                    proxyRes.headers as Record<string, any>,
-                    `Transformer proxy response from ${targetUrl.toString()}`,
-                  )
+                  fileLogger.info('TRANSFORM_RESPONSE', 'Received response from external API via transformer', {
+                    statusCode: proxyRes.statusCode || 0,
+                    statusMessage: proxyRes.statusMessage || 'Unknown',
+                    transformerName,
+                    targetProvider: provider.name,
+                    targetUrl: targetUrl.toString(),
+                    headers: proxyRes.headers,
+                  })
                 }
 
                 // Forward status and headers
@@ -467,27 +540,80 @@ export class ProxyServer {
 
                 // Log proxy error if debug is enabled
                 if (this.debug) {
-                  fileLogger.error('PROXY_ERROR', `Transformer proxy request failed: ${error.message}`, {
-                    targetUrl: targetUrl.toString(),
+                  fileLogger.error('TRANSFORM_REQUEST_FAILED', `External API request failed via transformer`, {
                     transformerName,
-                    error: error.message,
+                    targetProvider: provider.name,
+                    targetUrl: targetUrl.toString(),
+                    errorMessage: error.message,
+                    endpointName: endpoint.config.name,
                   })
                 }
 
                 if (!res.headersSent) {
-                  res.writeHead(502, { 'Content-Type': 'application/json' })
-                  res.end(JSON.stringify({
+                  const errorResponse = {
                     error: {
                       message: `Transformer proxy request failed: ${error.message}`,
                       type: 'proxy_error',
                     },
-                  }))
+                  }
+
+                  // Log detailed proxy error response
+                  if (this.debug) {
+                    fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 502 error response due to transformer request failure', {
+                      statusCode: 502,
+                      errorType: 'proxy_error',
+                      transformerName,
+                      targetProvider: provider.name,
+                      targetUrl: targetUrl.toString(),
+                      originalError: error.message,
+                      endpointName: endpoint.config.name,
+                      responseBody: errorResponse,
+                    })
+                  }
+
+                  res.writeHead(502, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify(errorResponse))
                 }
               })
 
               proxyReq.on('timeout', () => {
                 this.markEndpointUnhealthy(endpoint, 'Request timeout')
+
+                // Log timeout error
+                if (this.debug) {
+                  fileLogger.error('TRANSFORM_REQUEST_TIMEOUT', 'Transformer request timed out', {
+                    transformerName,
+                    targetProvider: provider.name,
+                    targetUrl: targetUrl.toString(),
+                    endpointName: endpoint.config.name,
+                    timeoutMs: 30000,
+                  })
+                }
+
                 proxyReq.destroy()
+
+                // Send timeout error response if headers haven't been sent
+                if (!res.headersSent) {
+                  const errorResponse = {
+                    error: {
+                      message: 'Request timeout',
+                      type: 'timeout_error',
+                    },
+                  }
+
+                  if (this.debug) {
+                    fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 504 error response due to timeout', {
+                      statusCode: 504,
+                      errorType: 'timeout_error',
+                      transformerName,
+                      targetProvider: provider.name,
+                      responseBody: errorResponse,
+                    })
+                  }
+
+                  res.writeHead(504, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify(errorResponse))
+                }
               })
 
               // Send the transformed request body
@@ -554,12 +680,13 @@ export class ProxyServer {
           const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
             // Log proxy response if debug is enabled
             if (this.debug) {
-              fileLogger.logResponse(
-                proxyRes.statusCode || 0,
-                proxyRes.statusMessage || 'Unknown',
-                proxyRes.headers as Record<string, any>,
-                `Regular proxy response from ${targetUrl.toString()}`,
-              )
+              fileLogger.info('REGULAR_RESPONSE', 'Received response from external API (direct proxy)', {
+                statusCode: proxyRes.statusCode || 0,
+                statusMessage: proxyRes.statusMessage || 'Unknown',
+                endpointName: endpoint.config.name,
+                targetUrl: targetUrl.toString(),
+                headers: proxyRes.headers,
+              })
             }
 
             // Forward status and headers
@@ -586,10 +713,11 @@ export class ProxyServer {
 
             // Log proxy error if debug is enabled
             if (this.debug) {
-              fileLogger.error('PROXY_ERROR', `Regular proxy request failed: ${error.message}`, {
+              fileLogger.error('REGULAR_REQUEST_FAILED', `Direct proxy request failed`, {
                 targetUrl: targetUrl.toString(),
                 endpointName: endpoint.config.name,
-                error: error.message,
+                errorMessage: error.message,
+                method: req.method || 'GET',
               })
             }
 
@@ -615,7 +743,41 @@ export class ProxyServer {
 
           proxyReq.on('timeout', () => {
             this.markEndpointUnhealthy(endpoint, 'Request timeout')
+
+            // Log timeout error
+            if (this.debug) {
+              fileLogger.error('REGULAR_REQUEST_TIMEOUT', 'Regular proxy request timed out', {
+                targetUrl: targetUrl.toString(),
+                endpointName: endpoint.config.name,
+                timeoutMs: 30000,
+                method: req.method || 'GET',
+              })
+            }
+
             proxyReq.destroy()
+
+            // Send timeout error response if headers haven't been sent
+            if (!res.headersSent) {
+              const errorResponse = {
+                error: {
+                  message: 'Request timeout',
+                  type: 'timeout_error',
+                },
+              }
+
+              if (this.debug) {
+                fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 504 error response due to timeout', {
+                  statusCode: 504,
+                  errorType: 'timeout_error',
+                  endpointName: endpoint.config.name,
+                  targetUrl: targetUrl.toString(),
+                  responseBody: errorResponse,
+                })
+              }
+
+              res.writeHead(504, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify(errorResponse))
+            }
           })
 
           // Send the request body
@@ -628,14 +790,40 @@ export class ProxyServer {
         catch (error) {
           this.markEndpointUnhealthy(endpoint, error instanceof Error ? error.message : 'Unknown error')
 
+          // Log detailed error information
+          if (this.debug) {
+            fileLogger.error('PROXY_REQUEST_EXCEPTION', 'Exception caught during proxy request processing', {
+              errorMessage: error instanceof Error ? error.message : 'Unknown error',
+              errorStack: error instanceof Error ? error.stack : undefined,
+              endpointName: endpoint.config.name,
+              endpointUrl: endpoint.config.baseUrl,
+              method: req.method || 'UNKNOWN',
+              url: req.url || '/',
+              hasTransformer: this.enableTransform && 'transformerEnabled' in endpoint.config && endpoint.config.transformerEnabled,
+            })
+          }
+
           if (!res.headersSent) {
-            res.writeHead(500, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({
+            const errorResponse = {
               error: {
                 message: 'Proxy request failed',
                 type: 'proxy_error',
               },
-            }))
+            }
+
+            // Log detailed proxy error response
+            if (this.debug) {
+              fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 500 error response due to proxy request exception', {
+                statusCode: 500,
+                errorType: 'proxy_error',
+                endpointName: endpoint.config.name,
+                originalError: error instanceof Error ? error.message : 'Unknown error',
+                responseBody: errorResponse,
+              })
+            }
+
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify(errorResponse))
           }
         }
       })()
@@ -681,12 +869,13 @@ export class ProxyServer {
     const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
       // Log retry proxy response if debug is enabled
       if (this.debug) {
-        fileLogger.logResponse(
-          proxyRes.statusCode || 0,
-          proxyRes.statusMessage || 'Unknown',
-          proxyRes.headers as Record<string, any>,
-          `Retry proxy response from ${targetUrl.toString()}`,
-        )
+        fileLogger.info('RETRY_RESPONSE', 'Received response from retry attempt', {
+          statusCode: proxyRes.statusCode || 0,
+          statusMessage: proxyRes.statusMessage || 'Unknown',
+          endpointName: endpoint.config.name,
+          targetUrl: targetUrl.toString(),
+          headers: proxyRes.headers,
+        })
       }
 
       // Forward status and headers
@@ -713,10 +902,11 @@ export class ProxyServer {
 
       // Log retry proxy error if debug is enabled
       if (this.debug) {
-        fileLogger.error('PROXY_ERROR', `Retry proxy request failed: ${error.message}`, {
+        fileLogger.error('RETRY_REQUEST_FAILED', `Retry attempt failed`, {
           targetUrl: targetUrl.toString(),
           endpointName: endpoint.config.name,
-          error: error.message,
+          errorMessage: error.message,
+          method,
         })
       }
 
@@ -734,7 +924,41 @@ export class ProxyServer {
 
     proxyReq.on('timeout', () => {
       this.markEndpointUnhealthy(endpoint, 'Request timeout')
+
+      // Log timeout error
+      if (this.debug) {
+        fileLogger.error('RETRY_REQUEST_TIMEOUT', 'Retry request timed out', {
+          targetUrl: targetUrl.toString(),
+          endpointName: endpoint.config.name,
+          timeoutMs: 30000,
+          method,
+        })
+      }
+
       proxyReq.destroy()
+
+      // Send timeout error response if headers haven't been sent
+      if (!res.headersSent) {
+        const errorResponse = {
+          error: {
+            message: 'Request timeout',
+            type: 'timeout_error',
+          },
+        }
+
+        if (this.debug) {
+          fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 504 error response due to retry timeout', {
+            statusCode: 504,
+            errorType: 'timeout_error',
+            endpointName: endpoint.config.name,
+            targetUrl: targetUrl.toString(),
+            responseBody: errorResponse,
+          })
+        }
+
+        res.writeHead(504, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(errorResponse))
+      }
     })
 
     // Send the request body
