@@ -40,20 +40,20 @@ All transformers implement the `Transformer` interface:
 
 ```typescript
 interface Transformer {
-  domain?: string; // Domain for automatic routing
-  isDefault?: boolean; // Whether this is the default fallback
+  domain?: string // Domain for automatic routing
+  isDefault?: boolean // Whether this is the default fallback
 
   // Transform incoming requests (client → API)
-  transformRequestIn?(request: LLMChatRequest, provider: LLMProvider): Promise<Record<string, any>>;
+  transformRequestIn?: (request: LLMChatRequest, provider: LLMProvider) => Promise<Record<string, any>>
 
   // Transform outgoing requests (API → unified format)
-  transformRequestOut?(request: any): Promise<LLMChatRequest>;
+  transformRequestOut?: (request: any) => Promise<LLMChatRequest>
 
   // Transform responses (API → client)
-  transformResponseOut?(response: Response): Promise<Response>;
+  transformResponseOut?: (response: Response) => Promise<Response>
 
   // Custom authentication logic
-  auth?(request: any, provider: LLMProvider): Promise<any>;
+  auth?: (request: any, provider: LLMProvider) => Promise<any>
 }
 ```
 
@@ -90,9 +90,9 @@ To add a new transformer:
 
 ```typescript
 export class MyTransformer implements Transformer {
-  static TransformerName = 'my-service';
-  domain = 'api.myservice.com';
-  isDefault = false;
+  static TransformerName = 'my-service'
+  domain = 'api.myservice.com'
+  isDefault = false
 
   // Implement required methods...
 }
@@ -101,21 +101,21 @@ export class MyTransformer implements Transformer {
 2. **Export in `index.ts`**:
 
 ```typescript
-export { MyTransformer } from './my-transformer';
+export { MyTransformer } from './my-transformer'
 
 export const availableTransformers = {
   // ... existing transformers
-  myservice: async () => import('./my-transformer').then((m) => m.MyTransformer),
-};
+  myservice: async () => import('./my-transformer').then(m => m.MyTransformer),
+}
 ```
 
 3. **Register in `TransformerService`**:
 
 ```typescript
 // In registerDefaultTransformersInternal()
-const { MyTransformer } = await import('../transformers/my-transformer');
-const myTransformer = new MyTransformer();
-this.registerTransformer('myservice', myTransformer);
+const { MyTransformer } = await import('../transformers/my-transformer')
+const myTransformer = new MyTransformer()
+this.registerTransformer('myservice', myTransformer)
 ```
 
 ## Testing

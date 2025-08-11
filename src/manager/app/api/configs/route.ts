@@ -151,7 +151,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     else {
       // Calculate the next order value as max existing order + 1
       const maxOrder = configs.length === 0 ? 0 : Math.max(...configs.map(c => c.order ?? 0))
-      
+
       // Validate new config
       const newConfigResult = claudeConfigSchema.safeParse({
         ...config,

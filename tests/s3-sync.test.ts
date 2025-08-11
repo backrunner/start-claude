@@ -159,7 +159,7 @@ describe('s3SyncManager', () => {
     it('should upload configurations to S3', async () => {
       mockConfigManagerInstance.getSettings.mockReturnValue({ s3Sync: mockS3Config })
       mockConfigManagerInstance.getConfigFile.mockReturnValue({ configs: [], settings: {} })
-      
+
       // Mock the S3 client to handle HeadObject (file doesn't exist) and PutObject
       mockS3ClientInstance.send
         .mockRejectedValueOnce({ // HeadObject - file doesn't exist
@@ -294,7 +294,7 @@ describe('s3SyncManager', () => {
     it('should sync configurations to S3', async () => {
       mockConfigManagerInstance.getSettings.mockReturnValue({ s3Sync: mockS3Config })
       mockConfigManagerInstance.getConfigFile.mockReturnValue({ configs: [], settings: {} })
-      
+
       // Mock the S3 client calls for syncConfigs (HeadObject + PutObject)
       mockS3ClientInstance.send
         .mockRejectedValueOnce({ // HeadObject - file doesn't exist

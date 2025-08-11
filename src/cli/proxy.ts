@@ -3,14 +3,15 @@ import type { ProgramOptions } from './common'
 import process from 'node:process'
 import { ProxyServer } from '../core/proxy'
 import { S3SyncManager } from '../storage/s3-sync'
+import { fileLogger } from '../utils/file-logger'
 import { displayError, displayInfo, displaySuccess } from '../utils/ui'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveBaseConfig } from './common'
 
 /**
- * Handle load balancer mode
+ * Handle proxy mode (includes load balancer and transformer functionality)
  */
-export async function handleBalanceMode(
+export async function handleProxyMode(
   configManager: ConfigManager,
   options: ProgramOptions,
   configArg?: string,
@@ -27,11 +28,11 @@ export async function handleBalanceMode(
     }
   }
 
-  // Get configurations for load balancing - use forced configs or all configs
+  // Get configurations for proxy mode - use forced configs or all configs
   const configs = forcedConfigs || configManager.listConfigs()
 
   // Include configs that either have API credentials OR have transformer enabled
-  const balanceableConfigs = configs.filter((c) => {
+  const proxyableConfigs = configs.filter((c) => {
     const hasApiCredentials = c.baseUrl && c.apiKey
     const hasTransformerEnabled = c.transformerEnabled === true
 
@@ -42,17 +43,17 @@ export async function handleBalanceMode(
     return hasApiCredentials || hasTransformerEnabled
   })
 
-  if (balanceableConfigs.length === 0) {
-    displayError('No configurations found for load balancing')
-    displayInfo('Load balancing requires configurations with either:')
+  if (proxyableConfigs.length === 0) {
+    displayError('No configurations found for proxy mode')
+    displayInfo('Proxy mode requires configurations with either:')
     displayInfo('  - baseUrl and apiKey (for direct API calls)')
     displayInfo('  - transformerEnabled: true (for transformer processing)')
     process.exit(1)
   }
 
   // Show which configs are included and why
-  displayInfo(`Starting load balancer with ${balanceableConfigs.length} endpoint${balanceableConfigs.length > 1 ? 's' : ''}:`)
-  balanceableConfigs.forEach((c) => {
+  displayInfo(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
+  proxyableConfigs.forEach((c) => {
     const hasApi = c.baseUrl && c.apiKey
     const hasTransformer = c.transformerEnabled === true
 
@@ -72,11 +73,13 @@ export async function handleBalanceMode(
 
   try {
     // Check if any config has transformer enabled
-    const hasTransformerEnabled = balanceableConfigs.some(c => c.transformerEnabled === true)
+    const hasTransformerEnabled = proxyableConfigs.some(c => c.transformerEnabled === true)
 
-    const proxyServer = new ProxyServer(balanceableConfigs, {
+    const proxyServer = new ProxyServer(proxyableConfigs, {
       enableLoadBalance: true,
       enableTransform: hasTransformerEnabled,
+      debug: options.debug || false,
+      verbose: options.verbose || options.debug || false, // Enable verbose by default in debug mode
     }, systemSettings, options.proxy)
 
     // Perform initial health checks
@@ -84,16 +87,23 @@ export async function handleBalanceMode(
 
     await proxyServer.startServer(2333)
 
+    // Show debug logging information if enabled
+    if (options.debug) {
+      displayInfo('')
+      displayInfo(`📝 Debug logging enabled - logs will be written to: ${fileLogger.getLogFilePath()}`)
+    }
+
     // Show transformer information if transformers are enabled
     if (hasTransformerEnabled) {
       const transformers = proxyServer.listTransformers()
       if (transformers.length > 0) {
         displayInfo('')
         displayInfo('🔧 Available transformers:')
-        transformers.forEach(transformer => {
+        transformers.forEach((transformer) => {
           if (transformer.hasDomain) {
             displayInfo(`  - ${transformer.name} (${transformer.domain})`)
-          } else {
+          }
+          else {
             displayInfo(`  - ${transformer.name}`)
           }
         })
@@ -103,8 +113,8 @@ export async function handleBalanceMode(
     displayInfo('')
 
     // Determine proxy mode and show appropriate message
-    const apiConfigs = balanceableConfigs.filter(c => c.baseUrl && c.apiKey)
-    const transformerConfigs = balanceableConfigs.filter(c => c.transformerEnabled === true)
+    const apiConfigs = proxyableConfigs.filter(c => c.baseUrl && c.apiKey)
+    const transformerConfigs = proxyableConfigs.filter(c => c.transformerEnabled === true)
 
     if (apiConfigs.length > 0 && transformerConfigs.length > 0) {
       displaySuccess('🔧 Hybrid proxy server is running! (Load balancer + Transformer)')
@@ -124,8 +134,8 @@ export async function handleBalanceMode(
     }
     displayInfo('')
 
-    // Set up a load balancer configuration that preserves other settings
-    const baseConfig = resolveBaseConfig(configManager, options, configArg, balanceableConfigs)
+    // Set up a proxy configuration that preserves other settings
+    const baseConfig = resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
 
     if (baseConfig) {
       displayInfo(`Using configuration "${baseConfig.name}" for base settings`)

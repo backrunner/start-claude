@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-// Force dynamic rendering  
+// Force dynamic rendering
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
@@ -12,15 +12,16 @@ const activeConnections = new Set<any>()
 
 // Initialize WebSocket server if not already created
 function initWebSocketServer() {
-  if (wsServer) return wsServer
+  if (wsServer)
+    return wsServer
 
   try {
     // Use ws library for WebSocket server
     const { WebSocketServer } = require('ws')
-    
-    wsServer = new WebSocketServer({ 
-      port: 3001,  // Use separate port for WebSocket
-      host: 'localhost'
+
+    wsServer = new WebSocketServer({
+      port: 3001, // Use separate port for WebSocket
+      host: 'localhost',
     })
 
     wsServer.on('connection', (ws: any) => {
@@ -41,7 +42,8 @@ function initWebSocketServer() {
       const pingInterval = setInterval(() => {
         if (ws.readyState === 1) { // OPEN
           ws.ping()
-        } else {
+        }
+        else {
           clearInterval(pingInterval)
           activeConnections.delete(ws)
         }
@@ -54,7 +56,8 @@ function initWebSocketServer() {
 
     console.log('WebSocket server started on port 3001')
     return wsServer
-  } catch (error) {
+  }
+  catch (error) {
     console.error('Failed to start WebSocket server:', error)
     return null
   }
@@ -65,19 +68,20 @@ export async function GET() {
   try {
     // Initialize WebSocket server
     const server = initWebSocketServer()
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       websocketUrl: 'ws://localhost:3001',
       connected: activeConnections.size,
-      serverRunning: !!server
+      serverRunning: !!server,
     })
-  } catch (error) {
+  }
+  catch (error) {
     console.error('WebSocket endpoint error:', error)
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'WebSocket server unavailable',
       websocketUrl: null,
       connected: 0,
-      serverRunning: false
+      serverRunning: false,
     }, { status: 500 })
   }
 }
@@ -85,15 +89,15 @@ export async function GET() {
 // Function to broadcast shutdown message to all connected clients
 export function broadcastShutdown() {
   console.log(`Broadcasting shutdown to ${activeConnections.size} connections`)
-  
+
   if (activeConnections.size === 0) {
     console.log('No WebSocket connections to notify')
     return
   }
-  
-  const message = JSON.stringify({ 
-    type: 'shutdown', 
-    timestamp: Date.now() 
+
+  const message = JSON.stringify({
+    type: 'shutdown',
+    timestamp: Date.now(),
   })
 
   activeConnections.forEach((ws) => {
@@ -102,7 +106,8 @@ export function broadcastShutdown() {
         ws.send(message)
         console.log('Shutdown message sent to WebSocket client')
       }
-    } catch (error) {
+    }
+    catch (error) {
       console.error('Error sending shutdown message:', error)
       activeConnections.delete(ws)
     }
@@ -113,18 +118,20 @@ export function broadcastShutdown() {
     activeConnections.forEach((ws) => {
       try {
         ws.close()
-      } catch (error) {
+      }
+      catch (error) {
         console.error('Error closing WebSocket:', error)
       }
     })
     activeConnections.clear()
-    
+
     // Close the WebSocket server if it exists
     if (wsServer) {
       try {
         wsServer.close()
         console.log('WebSocket server closed')
-      } catch (error) {
+      }
+      catch (error) {
         console.error('Error closing WebSocket server:', error)
       }
     }

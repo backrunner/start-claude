@@ -4,7 +4,8 @@ import {
   buildRequestBody,
   transformRequestOut,
   transformResponseOut,
-} from '../utils/gemini.util'
+} from '../utils/gemini'
+import { createTransformerUrl } from '../utils/transformer-url'
 
 export class GeminiTransformer implements Transformer {
   static TransformerName = 'gemini'
@@ -28,11 +29,12 @@ export class GeminiTransformer implements Transformer {
     return {
       body,
       config: {
-        url: new URL(
-          `./v1beta/models/${request.model}:${
+        url: createTransformerUrl(
+          `v1beta/models/${request.model}:${
             request.stream ? 'streamGenerateContent?alt=sse' : 'generateContent'
           }`,
           provider.baseUrl,
+          'https://generativelanguage.googleapis.com',
         ),
         headers: {
           'x-goog-api-key': provider.apiKey,

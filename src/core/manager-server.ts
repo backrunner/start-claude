@@ -61,7 +61,7 @@ export class ManagerServer {
       this.childProcess.on('exit', (code, signal) => {
         // Check if this was an intentional shutdown (from ESC key or API call)
         const wasIntentionalShutdown = code === 0 || signal === 'SIGTERM'
-        
+
         if (wasIntentionalShutdown) {
           displaySuccess('Configuration Manager stopped')
           // Exit the CLI process as well when manager shuts down intentionally
@@ -69,11 +69,12 @@ export class ManagerServer {
             displayInfo('Exiting CLI...')
             process.exit(0)
           }, 100)
-        } else if (code !== null) {
+        }
+        else if (code !== null) {
           // Only show error for unexpected exits
           displayError(`Manager process exited unexpectedly with code ${code}`)
         }
-        
+
         this.childProcess = null
       })
 
@@ -171,7 +172,8 @@ export class ManagerServer {
 
         // Give a brief moment for the WebSocket message to be sent
         await new Promise(resolve => setTimeout(resolve, 200))
-      } catch (error) {
+      }
+      catch {
         // Ignore errors during shutdown API call
       }
 

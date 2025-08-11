@@ -40,6 +40,7 @@ export interface ProxyMode {
   enableTransform?: boolean
   transformers?: string[]
   verbose?: boolean
+  debug?: boolean
 }
 
 export interface ProxyConfig {

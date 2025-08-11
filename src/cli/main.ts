@@ -17,9 +17,9 @@ import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/ui'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/update-checker'
-import { handleBalanceMode } from './balance'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveConfig } from './common'
+import { handleProxyMode } from './proxy'
 
 const program = new Command()
 const configManager = new ConfigManager()
@@ -33,7 +33,7 @@ program
 program
   .option('--config <name>', 'Use specific configuration')
   .option('--list', 'List all configurations')
-  .option('--balance', 'Start a load balancer proxy server on port 2333')
+  .option('--balance', 'Start a proxy server with load balancing on port 2333')
   .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
   .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
   .option('--disallowedTools <tools>', 'Comma-separated list of disallowed tools', value => value.split(','))
@@ -70,20 +70,29 @@ program
     displayVerbose('Verbose mode enabled', options.verbose)
 
     // Check if balance mode should be enabled by default (unless explicitly disabled)
-    let shouldUseBalance = options.balance === true
+    let shouldUseProxy = options.balance === true
     let systemSettings: any = null
 
-    if (!shouldUseBalance && options.balance !== false) {
+    if (!shouldUseProxy && options.balance !== false) {
       try {
         systemSettings = s3SyncManager.getSystemSettings()
-        shouldUseBalance = systemSettings?.balanceMode?.enableByDefault === true
+        shouldUseProxy = systemSettings?.balanceMode?.enableByDefault === true
       }
       catch {
         // Ignore errors getting system settings, just use default behavior
       }
     }
 
-    if (shouldUseBalance) {
+    // If not yet using proxy, check if we need it for transformer-enabled configs
+    if (!shouldUseProxy) {
+      const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
+      if (config?.transformerEnabled === true) {
+        shouldUseProxy = true
+        displayInfo('🔧 Auto-enabling proxy mode for transformer-enabled configuration')
+      }
+    }
+
+    if (shouldUseProxy) {
       // Get fresh system settings if we haven't already
       if (!systemSettings) {
         try {
@@ -93,7 +102,7 @@ program
           // Use null if we can't get settings
         }
       }
-      await handleBalanceMode(configManager, options, configArg, systemSettings)
+      await handleProxyMode(configManager, options, configArg, systemSettings)
       return
     }
 
@@ -140,38 +149,6 @@ program
     }
 
     const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
-
-    // Only force balance mode for transformer configs if balance mode is already enabled
-    // If user wants single config with transformer, they should explicitly enable --balance
-    if (config?.transformerEnabled === true && !shouldUseBalance) {
-      displayWarning('⚠️  This configuration has transformer enabled.')
-      displayInfo('💡 For optimal transformer functionality with fallback support, consider using --balance mode')
-      displayInfo('   which enables load balancing with multiple endpoints for reliability.')
-      
-      // Show which transformer would be used
-      if (config.baseUrl) {
-        try {
-          const { TransformerService } = await import('../services/transformer')
-          const { ConfigService } = await import('../services/config')
-          const configService = new ConfigService()
-          const transformerService = new TransformerService(configService, options.verbose)
-          await transformerService.initialize()
-          
-          const transformer = transformerService.findTransformerByDomain(config.baseUrl)
-          if (transformer) {
-            const transformerName = Array.from(transformerService.getAllTransformers().entries())
-              .find(([, t]) => t === transformer)?.[0] || 'unknown'
-            displayInfo(`🔧 Using transformer: ${transformerName} (${transformer.domain || 'no domain'})`)
-          } else {
-            displayWarning('⚠️ No transformer found for this domain')
-          }
-        } catch (error) {
-          displayVerbose(`Failed to determine transformer: ${error instanceof Error ? error.message : 'Unknown error'}`, options.verbose)
-        }
-      }
-      
-      displayInfo('')
-    }
 
     if (config) {
       displayBoxedConfig(config)

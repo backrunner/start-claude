@@ -1,4 +1,5 @@
-import type { ConfigFile } from '../config/types'
+import type { S3ClientConfig } from '@aws-sdk/client-s3'
+import type { ConfigFile, SystemSettings } from '../config/types'
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -27,6 +28,16 @@ export interface S3ObjectInfo {
   exists: boolean
 }
 
+interface AwsError {
+  name?: string
+  message?: string
+  Code?: string
+  $fault?: string
+  $metadata?: {
+    httpStatusCode?: number
+  }
+}
+
 export class S3SyncManager {
   private s3Client: S3Client | null = null
   private configManager: ConfigManager
@@ -39,12 +50,45 @@ export class S3SyncManager {
     this.configManager.setAutoSyncCallback(async () => this.autoUploadAfterChange())
   }
 
+  private disableAutoSync(): void {
+    this.configManager.setAutoSyncCallback(null)
+  }
+
+  private enableAutoSync(): void {
+    this.configManager.setAutoSyncCallback(async () => this.autoUploadAfterChange())
+  }
+
+  private formatAwsError(error: unknown): string {
+    const awsError = error as AwsError
+    let errorMessage = 'Unknown error'
+    let statusCode = ''
+
+    if (error instanceof Error) {
+      errorMessage = error.message
+    }
+
+    // Extract AWS SDK specific error details
+    if (awsError.$metadata?.httpStatusCode) {
+      statusCode = ` (HTTP ${awsError.$metadata.httpStatusCode})`
+    }
+
+    if (awsError.Code) {
+      errorMessage = `${awsError.Code}: ${errorMessage}`
+    }
+
+    if (awsError.$fault) {
+      errorMessage = `${awsError.$fault} - ${errorMessage}`
+    }
+
+    return `${errorMessage}${statusCode}`
+  }
+
   private getS3Config(): S3Config | null {
     const settings = this.configManager.getSettings()
     return settings.s3Sync || null
   }
 
-  public getSystemSettings(): any {
+  public getSystemSettings(): SystemSettings {
     return this.configManager.getSettings()
   }
 
@@ -54,7 +98,7 @@ export class S3SyncManager {
   }
 
   private initializeS3Client(config: S3Config): void {
-    const clientConfig: any = {
+    const clientConfig: S3ClientConfig = {
       region: config.region,
       credentials: {
         accessKeyId: config.accessKeyId,
@@ -148,8 +192,9 @@ export class S3SyncManager {
       await this.s3Client.send(command)
       return true
     }
-    catch (error: any) {
-      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+    catch (error: unknown) {
+      const awsError = error as AwsError
+      if (awsError.name === 'NotFound' || awsError.$metadata?.httpStatusCode === 404) {
         return false
       }
       throw error
@@ -174,8 +219,9 @@ export class S3SyncManager {
         exists: true,
       }
     }
-    catch (error: any) {
-      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+    catch (error: unknown) {
+      const awsError = error as AwsError
+      if (awsError.name === 'NotFound' || awsError.$metadata?.httpStatusCode === 404) {
         return {
           lastModified: new Date(0),
           size: 0,
@@ -267,8 +313,8 @@ export class S3SyncManager {
       displaySuccess(`Configuration uploaded to S3 successfully! (${this.formatTimestamp(now)})`)
       return true
     }
-    catch (error) {
-      displayError(`Failed to upload to S3: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    catch (error: unknown) {
+      displayError(`Failed to upload to S3: ${this.formatAwsError(error)}`)
       return false
     }
   }
@@ -345,13 +391,20 @@ export class S3SyncManager {
       const configData = await response.Body!.transformToString()
       const remoteConfigFile: ConfigFile = JSON.parse(configData)
 
-      // Save the downloaded configuration
-      this.configManager.saveConfigFile(remoteConfigFile)
-      displaySuccess(`Configuration downloaded from S3 successfully! (${this.formatTimestamp(remoteInfo.lastModified)})`)
-      return true
+      // Save the downloaded configuration (disable auto-sync to prevent re-upload)
+      this.disableAutoSync()
+      try {
+        this.configManager.saveConfigFile(remoteConfigFile)
+        displaySuccess(`Configuration downloaded from S3 successfully! (${this.formatTimestamp(remoteInfo.lastModified)})`)
+        return true
+      }
+      finally {
+        this.enableAutoSync()
+      }
     }
-    catch (error) {
-      displayError(`Failed to download from S3: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    catch (error: unknown) {
+      console.error(error)
+      displayError(`Failed to download from S3: ${this.formatAwsError(error)}`)
       return false
     }
   }
@@ -395,8 +448,8 @@ export class S3SyncManager {
         return true
       }
     }
-    catch (error) {
-      displayError(`Failed to sync configs: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    catch (error: unknown) {
+      displayError(`Failed to sync configs: ${this.formatAwsError(error)}`)
       return false
     }
   }
@@ -498,8 +551,8 @@ export class S3SyncManager {
 
       return false
     }
-    catch (error) {
-      displayError(`Failed to check remote updates: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    catch (error: unknown) {
+      displayError(`Failed to check remote updates: ${this.formatAwsError(error)}`)
       return false
     }
   }

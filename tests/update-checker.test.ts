@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as childProcess from 'node:child_process'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../src/utils/update-checker'
 
 // Mock the package.json version
@@ -30,10 +30,10 @@ vi.mock('../src/utils/update-check-cache', () => ({
 const mockExec = vi.mocked(childProcess.exec)
 const mockSpawn = vi.mocked(childProcess.spawn)
 
-describe('UpdateChecker', () => {
+describe('updateChecker', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    
+
     // Mock process.argv
     Object.defineProperty(process, 'argv', {
       value: ['node', '/path/to/cli.js', '--config', 'test'],
@@ -56,7 +56,7 @@ describe('UpdateChecker', () => {
 
     it('should check for updates when never checked before', async () => {
       mockInstance.shouldCheckForUpdates.mockReturnValue(true)
-      
+
       // Mock successful pnpm command
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
@@ -66,7 +66,7 @@ describe('UpdateChecker', () => {
       })
 
       const result = await checkForUpdates(false)
-      
+
       expect(result).toEqual({
         currentVersion: '0.1.2',
         latestVersion: '1.0.1',
@@ -76,7 +76,7 @@ describe('UpdateChecker', () => {
       expect(mockExec).toHaveBeenCalledWith(
         'pnpm view start-claude version',
         { timeout: 5000 },
-        expect.any(Function)
+        expect.any(Function),
       )
     })
 
@@ -92,7 +92,7 @@ describe('UpdateChecker', () => {
       })
 
       const result = await checkForUpdates(true)
-      
+
       expect(result).toEqual({
         currentVersion: '0.1.2',
         latestVersion: '0.1.2',
@@ -103,7 +103,7 @@ describe('UpdateChecker', () => {
 
     it('should return null on network error', async () => {
       mockInstance.shouldCheckForUpdates.mockReturnValue(true)
-      
+
       // Mock failed pnpm command
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
@@ -118,7 +118,7 @@ describe('UpdateChecker', () => {
 
     it('should save timestamp after successful check', async () => {
       mockInstance.shouldCheckForUpdates.mockReturnValue(true)
-      
+
       // Mock successful pnpm command
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
@@ -128,7 +128,7 @@ describe('UpdateChecker', () => {
       })
 
       await checkForUpdates(false)
-      
+
       expect(mockInstance.setLastCheckTimestamp).toHaveBeenCalledWith(expect.any(Number), '0.1.2')
     })
   })
@@ -147,7 +147,7 @@ describe('UpdateChecker', () => {
       expect(mockExec).toHaveBeenCalledWith(
         'pnpm add -g start-claude@latest',
         { timeout: 30000 },
-        expect.any(Function)
+        expect.any(Function),
       )
     })
 
@@ -182,7 +182,7 @@ describe('UpdateChecker', () => {
         unref: vi.fn(),
       }
       mockSpawn.mockReturnValue(mockChild as any)
-      
+
       // Mock process.exit for this test only
       const originalExit = process.exit
       const mockExit = vi.fn()
@@ -198,11 +198,12 @@ describe('UpdateChecker', () => {
           {
             detached: true,
             stdio: 'inherit',
-          }
+          },
         )
         expect(mockChild.unref).toHaveBeenCalled()
         expect(mockExit).toHaveBeenCalledWith(0)
-      } finally {
+      }
+      finally {
         process.exit = originalExit
       }
     })

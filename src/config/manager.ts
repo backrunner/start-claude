@@ -10,8 +10,8 @@ export class ConfigManager {
     this.configFileManager = ConfigFileManager.getInstance()
   }
 
-  setAutoSyncCallback(callback: () => Promise<void>): void {
-    this.autoSyncCallback = callback
+  setAutoSyncCallback(callback: (() => Promise<void>) | null): void {
+    this.autoSyncCallback = callback || undefined
   }
 
   load(): ConfigFile {

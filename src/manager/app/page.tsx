@@ -6,7 +6,7 @@ import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { AlertCircle, Loader2, Plus, Search, Settings, Sparkles, Command } from 'lucide-react'
+import { AlertCircle, Command, Loader2, Plus, Search, Settings, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ConfigFormModal } from '@/components/config-form-modal'
 import { ConfigList } from '@/components/config-list'
@@ -17,8 +17,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { useToast } from '@/lib/use-toast'
 import { ShutdownCoordinator } from '@/lib/shutdown-coordinator'
+import { useToast } from '@/lib/use-toast'
 
 export default function HomePage(): ReactNode {
   const { toast } = useToast()
@@ -76,13 +76,15 @@ export default function HomePage(): ReactNode {
           keepalive: true,
           body: JSON.stringify({}),
         })
-        
+
         if (response.ok) {
           console.log('Shutdown API called successfully')
-        } else {
+        }
+        else {
           console.warn('Shutdown API returned non-ok response')
         }
-      } catch (error) {
+      }
+      catch (error) {
         console.error('Error calling shutdown API:', error)
         if (navigator.sendBeacon) {
           navigator.sendBeacon('/api/shutdown', JSON.stringify({}))
@@ -95,7 +97,7 @@ export default function HomePage(): ReactNode {
       if (event.key === 'Escape') {
         console.log('ESC key pressed, initiating shutdown...')
         await shutdownCoordinator.callShutdownIfLastTab()
-        
+
         // Give a moment for the shutdown to process
         setTimeout(() => {
           window.close()
@@ -114,7 +116,7 @@ export default function HomePage(): ReactNode {
         // First check if WebSocket server is available
         const wsInfoResponse = await fetch('/api/ws', { cache: 'no-cache' })
         const wsInfo = await wsInfoResponse.json()
-        
+
         if (!wsInfo.serverRunning || !wsInfo.websocketUrl) {
           console.log('WebSocket server not available, using health check fallback')
           useHealthCheck = true
@@ -139,12 +141,13 @@ export default function HomePage(): ReactNode {
           try {
             const message = JSON.parse(event.data)
             console.log('WebSocket message received:', message)
-            
+
             if (message.type === 'shutdown') {
               console.log('Shutdown message received via WebSocket, closing page...')
               window.close()
             }
-          } catch (error) {
+          }
+          catch (error) {
             console.error('Error parsing WebSocket message:', error)
           }
         }
@@ -152,7 +155,7 @@ export default function HomePage(): ReactNode {
         ws.onclose = (event) => {
           console.log('WebSocket connection closed:', event.code, event.reason)
           ws = null
-          
+
           // If close wasn't intentional, try to reconnect or fallback to health check
           if (event.code !== 1000 && !useHealthCheck) {
             console.log('WebSocket connection lost, starting health check fallback')
@@ -170,8 +173,8 @@ export default function HomePage(): ReactNode {
             startHealthCheck()
           }
         }
-
-      } catch (error) {
+      }
+      catch (error) {
         console.error('Failed to connect WebSocket:', error)
         useHealthCheck = true
         startHealthCheck()
@@ -186,14 +189,16 @@ export default function HomePage(): ReactNode {
           cache: 'no-cache',
         })
         return response.ok
-      } catch (error) {
+      }
+      catch (error) {
         return false
       }
     }
 
     const startHealthCheck = (): void => {
-      if (healthCheckInterval) return // Already running
-      
+      if (healthCheckInterval)
+        return // Already running
+
       console.log('Starting health check polling (WebSocket fallback)')
       healthCheckInterval = setInterval(async () => {
         if (!useHealthCheck) {
@@ -229,17 +234,17 @@ export default function HomePage(): ReactNode {
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('beforeunload', handleBeforeUnload)
     window.addEventListener('unload', handleUnload)
-    
+
     return () => {
       // Cleanup shutdown coordinator
       shutdownCoordinator.cleanup()
-      
+
       // Cleanup WebSocket
       if (ws) {
         ws.close(1000, 'Page unloading')
         ws = null
       }
-      
+
       // Cleanup intervals and timeouts
       if (healthCheckInterval) {
         clearInterval(healthCheckInterval)
@@ -247,7 +252,7 @@ export default function HomePage(): ReactNode {
       if (wsReconnectTimeout) {
         clearTimeout(wsReconnectTimeout)
       }
-      
+
       // Cleanup event listeners
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('beforeunload', handleBeforeUnload)
@@ -271,7 +276,7 @@ export default function HomePage(): ReactNode {
       await fetchConfigs()
       setIsFormOpen(false)
       setEditingConfig(null)
-      
+
       toast({
         title: 'Configuration saved',
         description: `Configuration "${config.name}" has been ${editingConfig ? 'updated' : 'created'} successfully.`,
@@ -282,7 +287,7 @@ export default function HomePage(): ReactNode {
       console.error('Error saving config:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to save configuration'
       setError(errorMessage)
-      
+
       toast({
         title: 'Failed to save configuration',
         description: errorMessage,
@@ -305,7 +310,7 @@ export default function HomePage(): ReactNode {
       }
 
       setConfigs(updatedConfigs)
-      
+
       toast({
         title: 'Configurations updated',
         description: customMessage || 'Configuration order has been updated successfully.',
@@ -316,7 +321,7 @@ export default function HomePage(): ReactNode {
       console.error('Error updating configs:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to update configurations'
       setError(errorMessage)
-      
+
       toast({
         title: 'Failed to update configurations',
         description: errorMessage,
@@ -344,7 +349,7 @@ export default function HomePage(): ReactNode {
       }
 
       await fetchConfigs()
-      
+
       toast({
         title: 'Configuration deleted',
         description: `Configuration "${deleteConfig}" has been deleted successfully.`,
@@ -355,7 +360,7 @@ export default function HomePage(): ReactNode {
       console.error('Error deleting config:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete configuration'
       setError(errorMessage)
-      
+
       toast({
         title: 'Failed to delete configuration',
         description: errorMessage,
@@ -382,7 +387,7 @@ export default function HomePage(): ReactNode {
 
       const data = await response.json()
       setSettings(data.settings)
-      
+
       toast({
         title: 'System settings saved',
         description: 'System settings have been updated successfully.',
@@ -393,7 +398,7 @@ export default function HomePage(): ReactNode {
       console.error('Error saving system settings:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to save system settings'
       setError(errorMessage)
-      
+
       toast({
         title: 'Failed to save system settings',
         description: errorMessage,
@@ -540,65 +545,69 @@ export default function HomePage(): ReactNode {
           </div>
 
           {/* Configuration List */}
-          {filteredConfigs.length === 0 && searchTerm ? (
-            <Card className="border-dashed border-2">
-              <CardContent className="text-center py-12">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted mx-auto mb-4">
-                  <Search className="w-6 h-6 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold text-muted-foreground mb-2">
-                  No configurations found
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Try adjusting your search terms or clear the filter
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={() => setSearchTerm('')}
-                  className="mt-4"
-                >
-                  Clear Search
-                </Button>
-              </CardContent>
-            </Card>
-          ) : filteredConfigs.length === 0 ? (
-            <Card className="border-dashed border-2">
-              <CardContent className="text-center py-12">
-                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10 mx-auto mb-6">
-                  <Plus className="w-8 h-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">No Configurations Yet</h3>
-                <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-                  Get started by creating your first Claude configuration to manage your AI assistant settings
-                </p>
-                <Button
-                  onClick={() => setIsFormOpen(true)}
-                  size="lg"
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Your First Configuration
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-              modifiers={[restrictToVerticalAxis]}
-            >
-              <SortableContext items={filteredConfigs.map(c => c.name)} strategy={verticalListSortingStrategy}>
-                <ConfigList
-                  configs={filteredConfigs}
-                  onEdit={handleEdit}
-                  onDelete={handleDeleteClick}
-                  onToggleEnabled={handleToggleEnabled}
-                  onSetDefault={handleSetDefault}
-                />
-              </SortableContext>
-            </DndContext>
-          )}
+          {filteredConfigs.length === 0 && searchTerm
+            ? (
+                <Card className="border-dashed border-2">
+                  <CardContent className="text-center py-12">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted mx-auto mb-4">
+                      <Search className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-muted-foreground mb-2">
+                      No configurations found
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Try adjusting your search terms or clear the filter
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setSearchTerm('')}
+                      className="mt-4"
+                    >
+                      Clear Search
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            : filteredConfigs.length === 0
+              ? (
+                  <Card className="border-dashed border-2">
+                    <CardContent className="text-center py-12">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10 mx-auto mb-6">
+                        <Plus className="w-8 h-8 text-primary" />
+                      </div>
+                      <h3 className="text-xl font-semibold mb-2">No Configurations Yet</h3>
+                      <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                        Get started by creating your first Claude configuration to manage your AI assistant settings
+                      </p>
+                      <Button
+                        onClick={() => setIsFormOpen(true)}
+                        size="lg"
+                        className="bg-primary hover:bg-primary/90"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Create Your First Configuration
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )
+              : (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                    modifiers={[restrictToVerticalAxis]}
+                  >
+                    <SortableContext items={filteredConfigs.map(c => c.name)} strategy={verticalListSortingStrategy}>
+                      <ConfigList
+                        configs={filteredConfigs}
+                        onEdit={handleEdit}
+                        onDelete={handleDeleteClick}
+                        onToggleEnabled={handleToggleEnabled}
+                        onSetDefault={handleSetDefault}
+                      />
+                    </SortableContext>
+                  </DndContext>
+                )}
         </div>
 
         <ConfigFormModal

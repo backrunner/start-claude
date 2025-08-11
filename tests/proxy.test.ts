@@ -950,4 +950,252 @@ describe('proxyServer', () => {
       expect(mockHttps.request).not.toHaveBeenCalled()
     })
   })
+
+  describe('/v1/messages endpoint handling', () => {
+    let mockIncomingMessage: any
+    let mockServerResponse: any
+
+    beforeEach(() => {
+      mockIncomingMessage = {
+        method: 'POST',
+        url: '/v1/messages',
+        headers: {
+          'content-type': 'application/json',
+          'authorization': 'Bearer sk-claude-proxy-server',
+        },
+        on: vi.fn(),
+      }
+
+      mockServerResponse = {
+        writeHead: vi.fn(),
+        end: vi.fn(),
+        headersSent: false,
+        getHeaders: vi.fn().mockReturnValue({}),
+      }
+    })
+
+    it('should handle /v1/messages with load balancer enabled', async () => {
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      const ps = new ProxyServer(testConfigs, proxyMode)
+
+      // Mock proxyRequest to avoid actual HTTP calls
+      const proxyRequestSpy = vi.spyOn(ps as any, 'proxyRequest').mockResolvedValue(undefined)
+
+      const handleRequest = (ps as any).handleRequest.bind(ps)
+      await handleRequest(mockIncomingMessage, mockServerResponse)
+
+      expect(proxyRequestSpy).toHaveBeenCalledWith(
+        mockIncomingMessage,
+        mockServerResponse,
+        expect.objectContaining({
+          config: expect.objectContaining({
+            name: expect.any(String),
+          }),
+        }),
+      )
+    })
+
+    it('should handle /v1/messages with transformer-only mode (no load balancer)', async () => {
+      const transformerConfigs: ClaudeConfig[] = [
+        {
+          name: 'transformer-config',
+          profileType: 'default',
+          baseUrl: 'https://api.openai.com',
+          transformerEnabled: true,
+          isDefault: false,
+        },
+      ]
+
+      const proxyMode: ProxyMode = { enableTransform: true }
+      const ps = new ProxyServer(transformerConfigs, proxyMode)
+
+      // Mock proxyRequest to avoid actual HTTP calls
+      const proxyRequestSpy = vi.spyOn(ps as any, 'proxyRequest').mockResolvedValue(undefined)
+
+      const handleRequest = (ps as any).handleRequest.bind(ps)
+      await handleRequest(mockIncomingMessage, mockServerResponse)
+
+      expect(proxyRequestSpy).toHaveBeenCalledWith(
+        mockIncomingMessage,
+        mockServerResponse,
+        expect.objectContaining({
+          config: expect.objectContaining({
+            name: 'transformer-config',
+            transformerEnabled: true,
+          }),
+        }),
+      )
+    })
+
+    it('should handle /v1/messages with both load balancer and transformer enabled', async () => {
+      const mixedConfigs: ClaudeConfig[] = [
+        {
+          name: 'api-config',
+          profileType: 'default',
+          baseUrl: 'https://api1.example.com',
+          apiKey: 'sk-test-key-1',
+          isDefault: false,
+        },
+        {
+          name: 'transformer-config',
+          profileType: 'default',
+          baseUrl: 'https://api.openai.com',
+          transformerEnabled: true,
+          isDefault: false,
+        },
+      ]
+
+      const proxyMode: ProxyMode = { enableLoadBalance: true, enableTransform: true }
+      const ps = new ProxyServer(mixedConfigs, proxyMode)
+
+      // Mock proxyRequest to avoid actual HTTP calls
+      const proxyRequestSpy = vi.spyOn(ps as any, 'proxyRequest').mockResolvedValue(undefined)
+
+      const handleRequest = (ps as any).handleRequest.bind(ps)
+      await handleRequest(mockIncomingMessage, mockServerResponse)
+
+      expect(proxyRequestSpy).toHaveBeenCalledWith(
+        mockIncomingMessage,
+        mockServerResponse,
+        expect.objectContaining({
+          config: expect.objectContaining({
+            name: expect.any(String),
+          }),
+        }),
+      )
+    })
+
+    it('should return 503 when no transformer-enabled endpoints available in transformer-only mode', async () => {
+      const configsWithoutTransformer: ClaudeConfig[] = [
+        {
+          name: 'api-only-config',
+          profileType: 'default',
+          baseUrl: 'https://api1.example.com',
+          apiKey: 'sk-test-key-1',
+          isDefault: false,
+        },
+      ]
+
+      const proxyMode: ProxyMode = { enableTransform: true }
+      const ps = new ProxyServer(configsWithoutTransformer, proxyMode)
+
+      const handleRequest = (ps as any).handleRequest.bind(ps)
+      await handleRequest(mockIncomingMessage, mockServerResponse)
+
+      expect(mockServerResponse.writeHead).toHaveBeenCalledWith(503, { 'Content-Type': 'application/json' })
+      expect(mockServerResponse.end).toHaveBeenCalledWith(JSON.stringify({
+        error: {
+          message: 'No transformer-enabled endpoints available',
+          type: 'service_unavailable',
+        },
+      }))
+    })
+
+    it('should return 404 when neither load balancing nor transformers are enabled', async () => {
+      const proxyMode: ProxyMode = {} // No modes enabled
+      const ps = new ProxyServer([], proxyMode)
+
+      const handleRequest = (ps as any).handleRequest.bind(ps)
+      await handleRequest(mockIncomingMessage, mockServerResponse)
+
+      expect(mockServerResponse.writeHead).toHaveBeenCalledWith(404, { 'Content-Type': 'application/json' })
+      expect(mockServerResponse.end).toHaveBeenCalledWith(JSON.stringify({
+        error: {
+          message: 'No handler found for this request',
+          type: 'not_found',
+        },
+      }))
+    })
+  })
+
+  describe('transformer functionality across different modes', () => {
+    it('should create endpoints correctly in transformer-only mode', () => {
+      const transformerConfig: ClaudeConfig = {
+        name: 'openai-transformer-only',
+        profileType: 'default',
+        baseUrl: 'https://api.openai.com',
+        transformerEnabled: true,
+        isDefault: false,
+      }
+
+      const proxyMode: ProxyMode = { enableTransform: true } // Only transformer, no load balancer
+      const ps = new ProxyServer([transformerConfig], proxyMode)
+
+      const status = ps.getStatus()
+      expect(status.transform).toBe(true)
+      expect(status.loadBalance).toBe(false)
+      expect(status.endpoints).toHaveLength(1)
+      expect(status.endpoints[0].config.name).toBe('openai-transformer-only')
+      expect(status.endpoints[0].config.transformerEnabled).toBe(true)
+    })
+
+    it('should handle both transformer and load balancer modes together', () => {
+      const transformerConfig: ClaudeConfig = {
+        name: 'openai-transformer',
+        profileType: 'default',
+        baseUrl: 'https://api.openai.com',
+        apiKey: 'sk-openai-key',
+        transformerEnabled: true,
+        isDefault: false,
+      }
+
+      const proxyMode: ProxyMode = { enableLoadBalance: true, enableTransform: true }
+      const ps = new ProxyServer([transformerConfig], proxyMode)
+
+      const status = ps.getStatus()
+      expect(status.transform).toBe(true)
+      expect(status.loadBalance).toBe(true)
+      expect(status.endpoints).toHaveLength(1)
+      expect(status.endpoints[0].config.transformerEnabled).toBe(true)
+    })
+
+    it('should filter transformer configs correctly in transformer-only mode', () => {
+      const mixedConfigs: ClaudeConfig[] = [
+        {
+          name: 'regular-api',
+          profileType: 'default',
+          baseUrl: 'https://api.regular.com',
+          apiKey: 'sk-regular-key',
+          isDefault: false,
+        },
+        {
+          name: 'transformer-config',
+          profileType: 'default',
+          baseUrl: 'https://api.openai.com',
+          transformerEnabled: true,
+          isDefault: false,
+        },
+      ]
+
+      const proxyMode: ProxyMode = { enableTransform: true } // Only transformer, no load balancer
+      const ps = new ProxyServer(mixedConfigs, proxyMode)
+
+      const status = ps.getStatus()
+      expect(status.transform).toBe(true)
+      expect(status.loadBalance).toBe(false)
+      expect(status.endpoints).toHaveLength(1)
+      expect(status.endpoints[0].config.name).toBe('transformer-config')
+    })
+
+    it('should create stub endpoint when no transformer configs in transformer-only mode', () => {
+      const regularConfigs: ClaudeConfig[] = [
+        {
+          name: 'regular-api',
+          profileType: 'default',
+          baseUrl: 'https://api.regular.com',
+          apiKey: 'sk-regular-key',
+          isDefault: false,
+        },
+      ]
+
+      const proxyMode: ProxyMode = { enableTransform: true }
+      const ps = new ProxyServer(regularConfigs, proxyMode)
+
+      const status = ps.getStatus()
+      expect(status.transform).toBe(true)
+      expect(status.endpoints).toHaveLength(1)
+      expect(status.endpoints[0].config.name).toBe('proxy-server')
+      expect(status.endpoints[0].config.baseUrl).toBe('http://localhost:2333')
+    })
+  })
 })

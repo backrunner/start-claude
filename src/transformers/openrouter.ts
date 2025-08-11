@@ -1,6 +1,7 @@
 import type { LLMChatRequest, LLMProvider } from '../types/llm'
 import type { Transformer, TransformerOptions } from '../types/transformer'
 import { v4 as uuidv4 } from 'uuid'
+import { createTransformerUrl } from '../utils/transformer-url'
 
 export class OpenrouterTransformer implements Transformer {
   static TransformerName = 'openrouter'
@@ -70,7 +71,7 @@ export class OpenrouterTransformer implements Transformer {
     return {
       body,
       config: {
-        url: new URL('./v1/chat/completions', provider?.baseUrl || 'https://openrouter.ai/api'),
+        url: createTransformerUrl('v1/chat/completions', provider?.baseUrl, 'https://openrouter.ai/api'),
         headers: {
           'Authorization': `Bearer ${provider?.apiKey}`,
           'Content-Type': 'application/json',
