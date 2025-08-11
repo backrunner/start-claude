@@ -1,34 +1,54 @@
-# Load Balancer Guide
+# Load Balancer & Proxy Guide
 
-The enhanced load balancer distributes requests across multiple Claude API endpoints with intelligent health monitoring, automatic failover, and configurable system settings.
+The enhanced proxy server provides load balancing across multiple Claude API endpoints with intelligent health monitoring, automatic failover, transformer support, and configurable system settings.
 
 ## 🆕 Enhanced Features
 
 - **🏥 Smart Health Monitoring**: Configurable health check intervals (10s - 5min)
 - **🚫 Endpoint Banning**: Auto-ban failed endpoints with configurable duration (1min - 1hour)
+- **🔧 Transformer Support**: Process requests through transformers for different API providers
 - **⚙️ System Integration**: Configure via modern web interface
 - **🔄 Auto-Enable**: Set balance mode as default behavior
 - **📊 Enhanced Logging**: Detailed health check and failover information
 
 ## Overview
 
-The load balancer:
+The proxy server:
 
 - **Distributes requests** across multiple healthy endpoints using round-robin
 - **Health monitoring** - automatically detects and handles unhealthy endpoints
 - **Failover support** - switches to backup endpoints when primary ones fail
+- **Transformer processing** - supports transformation between different API formats
 - **Priority ordering** - respects configuration order for endpoint priority
 - **Proxy server** - runs on port 2333 by default
 
 ## Quick Start
 
 ```bash
-# Start load balancer with all available configurations
+# Start proxy server with all available configurations
 start-claude --balance
 
-# Use load balancer with specific configurations
+# Use proxy server with specific configurations
 start-claude --balance config1 config2 config3
+
+# Start proxy server without detailed output (simplified mode)
+start-claude config1
 ```
+
+## New Behavior Changes
+
+### Load Balancing Control
+
+- **Load balancing is enabled only when explicitly requested** via `--balance` flag or configuration settings
+- The `--balance` flag **enables load balancing** and shows detailed endpoint information and available transformers
+- Without `--balance`, proxy mode runs with transformer-only support (no load balancing between multiple endpoints)
+- Use system settings to enable load balancing by default if desired
+
+### Transformer Requirements
+
+- **Transformer-enabled configs now require API credentials** (`baseUrl` and `apiKey`)
+- This ensures transformers have the necessary credentials to forward requests to external APIs
+- Transformer configs participate in load balancing when `--balance` is enabled
 
 ## How It Works
 

@@ -433,8 +433,15 @@ export function resolveBaseConfig(
       process.exit(1)
     }
     if (!balanceableConfigs.includes(baseConfig)) {
-      displayWarning(`Configuration "${configName}" is not included in load balancing (missing baseUrl or apiKey)`)
-      displayInfo('Using it for other settings only, load balancing will use available endpoints')
+      const hasTransformer = 'transformerEnabled' in baseConfig && baseConfig.transformerEnabled === true
+      if (hasTransformer) {
+        displayWarning(`Configuration "${configName}" is transformer-enabled but missing baseUrl/apiKey for API calls`)
+        displayInfo('Using it for settings and transformer processing only')
+      }
+      else {
+        displayWarning(`Configuration "${configName}" is not included in load balancing (missing baseUrl or apiKey)`)
+        displayInfo('Using it for other settings only, load balancing will use available endpoints')
+      }
     }
   }
   else {

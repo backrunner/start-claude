@@ -941,7 +941,7 @@ export class ProxyServer {
 
         // If first endpoint failed, try the next one
         if (i === 0) {
-          displayWarning(`First endpoint failed, trying alternatives...`)
+          displayWarning('First endpoint failed, trying alternatives...')
           continue
         }
       }

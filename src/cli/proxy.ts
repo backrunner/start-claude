@@ -51,32 +51,34 @@ export async function handleProxyMode(
     process.exit(1)
   }
 
-  // Show which configs are included and why
-  displayInfo(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
-  proxyableConfigs.forEach((c) => {
-    const hasApi = c.baseUrl && c.apiKey
-    const hasTransformer = c.transformerEnabled === true
+  // Show which configs are included and why - only when balance mode is enabled
+  if (options.balance) {
+    displayInfo(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
+    proxyableConfigs.forEach((c) => {
+      const hasApi = c.baseUrl && c.apiKey
+      const hasTransformer = c.transformerEnabled === true
 
-    let status = ''
-    if (hasApi && hasTransformer) {
-      status = ' (API + transformer)'
-    }
-    else if (hasApi) {
-      status = ' (API only)'
-    }
-    else if (hasTransformer) {
-      status = ' (transformer only - needs fallback endpoints)'
-    }
+      let status = ''
+      if (hasApi && hasTransformer) {
+        status = ' (API + transformer)'
+      }
+      else if (hasApi) {
+        status = ' (API only)'
+      }
+      else if (hasTransformer) {
+        status = ' (transformer only - needs fallback endpoints)'
+      }
 
-    displayInfo(`  - ${c.name}: ${c.baseUrl || 'no baseUrl'}${status}`)
-  })
+      displayInfo(`  - ${c.name}: ${c.baseUrl || 'no baseUrl'}${status}`)
+    })
+  }
 
   try {
     // Check if any config has transformer enabled
     const hasTransformerEnabled = proxyableConfigs.some(c => c.transformerEnabled === true)
 
     const proxyServer = new ProxyServer(proxyableConfigs, {
-      enableLoadBalance: true,
+      enableLoadBalance: options.balance || false,
       enableTransform: hasTransformerEnabled,
       debug: options.debug || false,
       verbose: options.verbose || options.debug || false, // Enable verbose by default in debug mode
@@ -98,15 +100,28 @@ export async function handleProxyMode(
       const transformers = proxyServer.listTransformers()
       if (transformers.length > 0) {
         displayInfo('')
-        displayInfo('🔧 Available transformers:')
-        transformers.forEach((transformer) => {
-          if (transformer.hasDomain) {
-            displayInfo(`  - ${transformer.name} (${transformer.domain})`)
+        if (options.balance) {
+          displayInfo('🔧 Available transformers:')
+          transformers.forEach((transformer) => {
+            if (transformer.hasDomain) {
+              displayInfo(`  - ${transformer.name} (${transformer.domain})`)
+            }
+            else {
+              displayInfo(`  - ${transformer.name}`)
+            }
+          })
+        }
+        else {
+          // Show only the current transformer when not in balance mode
+          const currentTransformer = transformers[0] // Use the first transformer as current
+          displayInfo('🔧 Current transformer:')
+          if (currentTransformer.hasDomain) {
+            displayInfo(`  - ${currentTransformer.name} (${currentTransformer.domain})`)
           }
           else {
-            displayInfo(`  - ${transformer.name}`)
+            displayInfo(`  - ${currentTransformer.name}`)
           }
-        })
+        }
       }
     }
 
