@@ -164,21 +164,23 @@ export class ProxyServer {
     res: http.ServerResponse,
   ): string {
     try {
-      // Set HTTP status code if response is not ok (non-2xx status codes)
-      if (statusCode >= 400) {
-        res.statusCode = statusCode
-      }
-
       // Check if it's a streaming response by looking at headers first
       const contentType = headers['content-type'] || headers['Content-Type'] || ''
-      const isStream = contentType.includes('text/event-stream')
+      const isStream = contentType.includes('text/event-stream') || responseBody.startsWith('data: ')
 
       if (isStream) {
-        // For streaming responses, set the appropriate headers and return response as-is
-        res.setHeader('Content-Type', 'text/event-stream')
-        res.setHeader('Cache-Control', 'no-cache')
-        res.setHeader('Connection', 'keep-alive')
+        // For streaming responses, set the appropriate headers only if not already sent
+        if (!res.headersSent) {
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Connection', 'keep-alive')
+        }
         return responseBody
+      }
+
+      // Set HTTP status code if response is not ok (non-2xx status codes) and headers not sent
+      if (statusCode >= 400 && !res.headersSent) {
+        res.statusCode = statusCode
       }
 
       // For non-streaming responses, check if empty first
@@ -207,7 +209,20 @@ export class ProxyServer {
         })
       }
 
-      // Return a standardized error response
+      // For streaming responses that failed to parse, return as-is
+      const contentType = headers['content-type'] || headers['Content-Type'] || ''
+      const isStream = contentType.includes('text/event-stream') || responseBody.startsWith('data: ')
+
+      if (isStream) {
+        if (!res.headersSent) {
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Connection', 'keep-alive')
+        }
+        return responseBody
+      }
+
+      // Return a standardized error response for non-streaming content
       return JSON.stringify({
         error: {
           message: 'Invalid response format from upstream',

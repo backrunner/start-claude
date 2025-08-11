@@ -1000,6 +1000,7 @@ describe('proxyServer', () => {
       const mockRes = {
         setHeader: vi.fn(),
         statusCode: 200,
+        headersSent: false,
       }
 
       // Call the private method via reflection for testing
@@ -1016,6 +1017,7 @@ describe('proxyServer', () => {
       const mockRes = {
         setHeader: vi.fn(),
         statusCode: 200,
+        headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
@@ -1033,6 +1035,7 @@ describe('proxyServer', () => {
       const mockRes = {
         setHeader: vi.fn(),
         statusCode: 200,
+        headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
@@ -1049,6 +1052,7 @@ describe('proxyServer', () => {
       const mockRes = {
         setHeader: vi.fn(),
         statusCode: 200,
+        headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
@@ -1060,12 +1064,63 @@ describe('proxyServer', () => {
       expect(mockRes.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive')
     })
 
+    it('should detect streaming responses by content pattern even without headers', () => {
+      const streamingResponse = 'data: {"choices":[{"delta":{"role":"assistant","content":"Hello"}}]}\n\n'
+      const headers = { 'content-type': 'application/json' } // Wrong header type
+      const mockRes = {
+        setHeader: vi.fn(),
+        statusCode: 200,
+        headersSent: false,
+      }
+
+      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
+      const result = formatUniversalResponse(streamingResponse, 200, headers, mockRes)
+
+      expect(result).toBe(streamingResponse) // Should detect streaming by content pattern
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-cache')
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive')
+    })
+
+    it('should handle headers already sent scenario gracefully', () => {
+      const streamingResponse = 'data: {"content":"hello"}\n\n'
+      const headers = { 'content-type': 'text/event-stream' }
+      const mockRes = {
+        setHeader: vi.fn(),
+        statusCode: 200,
+        headersSent: true, // Headers already sent
+      }
+
+      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
+      const result = formatUniversalResponse(streamingResponse, 200, headers, mockRes)
+
+      expect(result).toBe(streamingResponse) // Should still return response
+      expect(mockRes.setHeader).not.toHaveBeenCalled() // Should not try to set headers
+    })
+
+    it('should handle streaming response parse errors gracefully', () => {
+      const malformedStreamingResponse = 'data: invalid json content\n\n'
+      const headers = { 'content-type': 'text/event-stream' }
+      const mockRes = {
+        setHeader: vi.fn(),
+        statusCode: 200,
+        headersSent: false,
+      }
+
+      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
+      const result = formatUniversalResponse(malformedStreamingResponse, 200, headers, mockRes)
+
+      expect(result).toBe(malformedStreamingResponse) // Should return original streaming response even if malformed
+      expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
+    })
+
     it('should set status code for error responses', () => {
       const errorResponse = '{"error":"Bad request"}'
       const headers = { 'content-type': 'application/json' }
       const mockRes = {
         setHeader: vi.fn(),
         statusCode: 200,
+        headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
