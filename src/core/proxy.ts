@@ -588,17 +588,15 @@ export class ProxyServer {
                   })
                 }
 
-                // Forward status and headers
-                const responseHeaders = { ...proxyRes.headers }
-                delete responseHeaders.connection
-                delete responseHeaders['transfer-encoding']
+                // Prepare initial response headers (but don't send yet)
+                const initialResponseHeaders = { ...proxyRes.headers }
+                delete initialResponseHeaders.connection
+                delete initialResponseHeaders['transfer-encoding']
 
                 // Add CORS headers
-                responseHeaders['Access-Control-Allow-Origin'] = '*'
-                responseHeaders['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-                responseHeaders['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, x-api-key'
-
-                res.writeHead(proxyRes.statusCode || 200, responseHeaders)
+                initialResponseHeaders['Access-Control-Allow-Origin'] = '*'
+                initialResponseHeaders['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+                initialResponseHeaders['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, x-api-key'
 
                 // Intercept response body for transformation and logging
                 let rawResponseBody = ''
@@ -623,7 +621,7 @@ export class ProxyServer {
                       }
 
                       let finalResponseBody = rawResponseBody
-                      const finalResponseHeaders = { ...proxyRes.headers }
+                      let finalResponseHeaders = { ...initialResponseHeaders }
 
                       // Apply formatResponse transformation if available
                       if (transformer.formatResponse) {
@@ -642,9 +640,11 @@ export class ProxyServer {
                           finalResponseBody = await transformedResponse.text()
 
                           // Update headers from transformed response
+                          const transformedHeaders: Record<string, string> = {}
                           transformedResponse.headers.forEach((value, key) => {
-                            finalResponseHeaders[key] = value
+                            transformedHeaders[key] = value
                           })
+                          finalResponseHeaders = { ...finalResponseHeaders, ...transformedHeaders }
 
                           // Log transformation if debug is enabled
                           if (this.debug) {
@@ -688,6 +688,11 @@ export class ProxyServer {
                         res,
                       )
 
+                      // Now send headers with final transformed headers
+                      if (!res.headersSent) {
+                        res.writeHead(proxyRes.statusCode || 200, finalResponseHeaders)
+                      }
+
                       // Send the final response (transformed or original) to client
                       res.end(finalResponseBody)
                     }
@@ -704,9 +709,15 @@ export class ProxyServer {
                       const formattedFallbackResponse = this.formatUniversalResponse(
                         rawResponseBody,
                         proxyRes.statusCode || 200,
-                        proxyRes.headers,
+                        initialResponseHeaders,
                         res,
                       )
+
+                      // Send fallback headers if not already sent
+                      if (!res.headersSent) {
+                        res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
+                      }
+
                       res.end(formattedFallbackResponse)
                     }
                   })()
@@ -878,12 +889,12 @@ export class ProxyServer {
               })
             }
 
-            // Forward status and headers
-            const responseHeaders = { ...proxyRes.headers }
-            delete responseHeaders.connection
-            delete responseHeaders['transfer-encoding']
+            // Prepare response headers (but don't send yet)
+            const initialResponseHeaders = { ...proxyRes.headers }
+            delete initialResponseHeaders.connection
+            delete initialResponseHeaders['transfer-encoding']
 
-            res.writeHead(proxyRes.statusCode || 200, responseHeaders)
+            // Don't send headers yet - wait for universal formatting to complete
 
             // Intercept response body for universal formatting and optional logging
             let rawResponseBody = ''
@@ -899,7 +910,7 @@ export class ProxyServer {
               const formattedResponseBody = this.formatUniversalResponse(
                 rawResponseBody,
                 proxyRes.statusCode || 200,
-                proxyRes.headers,
+                initialResponseHeaders,
                 res,
               )
 
@@ -912,6 +923,11 @@ export class ProxyServer {
                   body: rawResponseBody,
                   formattedBody: formattedResponseBody,
                 })
+              }
+
+              // Send headers with final formatted headers
+              if (!res.headersSent) {
+                res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
               }
 
               // Send formatted response
@@ -1100,12 +1116,12 @@ export class ProxyServer {
         })
       }
 
-      // Forward status and headers
-      const responseHeaders = { ...proxyRes.headers }
-      delete responseHeaders.connection
-      delete responseHeaders['transfer-encoding']
+      // Prepare response headers (but don't send yet)
+      const initialResponseHeaders = { ...proxyRes.headers }
+      delete initialResponseHeaders.connection
+      delete initialResponseHeaders['transfer-encoding']
 
-      res.writeHead(proxyRes.statusCode || 200, responseHeaders)
+      // Don't send headers yet - wait for universal formatting to complete
 
       // Intercept response body for universal formatting and optional logging
       let rawResponseBody = ''
@@ -1121,7 +1137,7 @@ export class ProxyServer {
         const formattedResponseBody = this.formatUniversalResponse(
           rawResponseBody,
           proxyRes.statusCode || 200,
-          proxyRes.headers,
+          initialResponseHeaders,
           res,
         )
 
@@ -1134,6 +1150,11 @@ export class ProxyServer {
             body: rawResponseBody,
             formattedBody: formattedResponseBody,
           })
+        }
+
+        // Send headers with final formatted headers
+        if (!res.headersSent) {
+          res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
         }
 
         // Send formatted response
