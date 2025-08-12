@@ -10,6 +10,7 @@ import { HttpsProxyAgent } from 'https-proxy-agent'
 import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
 import { fileLogger } from '../utils/file-logger'
+import { convertOpenAIResponseToAnthropic, isOpenAIFormat } from '../utils/openai-to-anthropic'
 import { handleStreamingResponse } from '../utils/sse'
 import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/ui'
 
@@ -158,20 +159,38 @@ export class ProxyServer {
     displayVerbose(`Initialized with ${this.endpoints.length} endpoint(s)`, this.verbose)
   }
 
-  private formatUniversalResponse(
+  private async formatUniversalResponse(
     responseBody: string,
     statusCode: number,
     headers: any,
     res: http.ServerResponse,
-  ): string | null {
+  ): Promise<string | null> {
     // First check if this is a streaming response and handle it
-    const streamingResult = handleStreamingResponse(responseBody, statusCode, headers, res)
+    const streamingResult = await handleStreamingResponse(responseBody, statusCode, headers, res)
     if (streamingResult === null) {
       // SSE response was already sent
       return null
     }
 
     try {
+      // Check if this is OpenAI format that needs conversion to Anthropic
+      if (isOpenAIFormat(responseBody)) {
+        try {
+          const openaiResponse = JSON.parse(responseBody)
+          const anthropicResponse = convertOpenAIResponseToAnthropic(openaiResponse)
+          return JSON.stringify(anthropicResponse)
+        }
+        catch (conversionError) {
+          // If conversion fails, continue with original response
+          if (this.debug) {
+            fileLogger.error('OPENAI_CONVERSION_ERROR', 'Failed to convert OpenAI response to Anthropic format', {
+              error: conversionError instanceof Error ? conversionError.message : 'Unknown error',
+              originalBody: responseBody,
+            })
+          }
+        }
+      }
+
       // Set HTTP status code if response is not ok (non-2xx status codes) and headers not sent
       if (statusCode >= 400 && !res.headersSent) {
         res.statusCode = statusCode
@@ -662,7 +681,7 @@ export class ProxyServer {
                       }
 
                       // Apply universal response formatting after transformer formatResponse
-                      const formattedFinalResponseBody = this.formatUniversalResponse(
+                      const formattedFinalResponseBody = await this.formatUniversalResponse(
                         finalResponseBody,
                         proxyRes.statusCode || 200,
                         finalResponseHeaders,
@@ -693,7 +712,7 @@ export class ProxyServer {
                       }
 
                       // Apply universal response formatting to the fallback response too
-                      const formattedFallbackResponse = this.formatUniversalResponse(
+                      const formattedFallbackResponse = await this.formatUniversalResponse(
                         rawResponseBody,
                         proxyRes.statusCode || 200,
                         initialResponseHeaders,
@@ -893,38 +912,40 @@ export class ProxyServer {
             })
 
             passThrough.on('end', () => {
-              // Apply universal response formatting
-              const formattedResponseBody = this.formatUniversalResponse(
-                rawResponseBody,
-                proxyRes.statusCode || 200,
-                initialResponseHeaders,
-                res,
-              )
+              void (async () => {
+                // Apply universal response formatting
+                const formattedResponseBody = await this.formatUniversalResponse(
+                  rawResponseBody,
+                  proxyRes.statusCode || 200,
+                  initialResponseHeaders,
+                  res,
+                )
 
-              // For streaming responses, formatUniversalResponse handles everything
-              if (formattedResponseBody === null) {
+                // For streaming responses, formatUniversalResponse handles everything
+                if (formattedResponseBody === null) {
                 // Response already sent via SSE
-                return
-              }
+                  return
+                }
 
-              // Log the raw response body from external API if debug enabled
-              if (this.debug) {
-                fileLogger.info('REGULAR_API_RESPONSE', 'Raw response from external API (direct proxy)', {
-                  endpointName: endpoint.config.name,
-                  targetUrl: targetUrl.toString(),
-                  statusCode: proxyRes.statusCode || 0,
-                  body: rawResponseBody,
-                  formattedBody: formattedResponseBody,
-                })
-              }
+                // Log the raw response body from external API if debug enabled
+                if (this.debug) {
+                  fileLogger.info('REGULAR_API_RESPONSE', 'Raw response from external API (direct proxy)', {
+                    endpointName: endpoint.config.name,
+                    targetUrl: targetUrl.toString(),
+                    statusCode: proxyRes.statusCode || 0,
+                    body: rawResponseBody,
+                    formattedBody: formattedResponseBody,
+                  })
+                }
 
-              // Send headers with final formatted headers
-              if (!res.headersSent) {
-                res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
-              }
+                // Send headers with final formatted headers
+                if (!res.headersSent) {
+                  res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
+                }
 
-              // Send formatted response
-              res.end(formattedResponseBody)
+                // Send formatted response
+                res.end(formattedResponseBody)
+              })()
             })
 
             // Pipe the response through our processing stream
@@ -1126,38 +1147,40 @@ export class ProxyServer {
       })
 
       passThrough.on('end', () => {
-        // Apply universal response formatting
-        const formattedResponseBody = this.formatUniversalResponse(
-          rawResponseBody,
-          proxyRes.statusCode || 200,
-          initialResponseHeaders,
-          res,
-        )
+        void (async () => {
+          // Apply universal response formatting
+          const formattedResponseBody = await this.formatUniversalResponse(
+            rawResponseBody,
+            proxyRes.statusCode || 200,
+            initialResponseHeaders,
+            res,
+          )
 
-        // For streaming responses, formatUniversalResponse handles everything
-        if (formattedResponseBody === null) {
+          // For streaming responses, formatUniversalResponse handles everything
+          if (formattedResponseBody === null) {
           // Response already sent via SSE
-          return
-        }
+            return
+          }
 
-        // Log the raw response body from external API if debug enabled
-        if (this.debug) {
-          fileLogger.info('RETRY_API_RESPONSE', 'Raw response from retry attempt', {
-            endpointName: endpoint.config.name,
-            targetUrl: targetUrl.toString(),
-            statusCode: proxyRes.statusCode || 0,
-            body: rawResponseBody,
-            formattedBody: formattedResponseBody,
-          })
-        }
+          // Log the raw response body from external API if debug enabled
+          if (this.debug) {
+            fileLogger.info('RETRY_API_RESPONSE', 'Raw response from retry attempt', {
+              endpointName: endpoint.config.name,
+              targetUrl: targetUrl.toString(),
+              statusCode: proxyRes.statusCode || 0,
+              body: rawResponseBody,
+              formattedBody: formattedResponseBody,
+            })
+          }
 
-        // Send headers with final formatted headers
-        if (!res.headersSent) {
-          res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
-        }
+          // Send headers with final formatted headers
+          if (!res.headersSent) {
+            res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
+          }
 
-        // Send formatted response
-        res.end(formattedResponseBody)
+          // Send formatted response
+          res.end(formattedResponseBody)
+        })()
       })
 
       // Pipe the response through our processing stream

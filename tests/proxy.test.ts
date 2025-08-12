@@ -993,7 +993,7 @@ describe('proxyServer', () => {
       expect(Array.isArray(status.transformers)).toBe(true)
     })
 
-    it('should apply universal response formatting to valid JSON responses', () => {
+    it('should apply universal response formatting to valid JSON responses', async () => {
       // Test the formatUniversalResponse method directly
       const validJsonResponse = '{"choices":[{"message":{"content":"Hello"}}]}'
       const headers = { 'content-type': 'application/json' }
@@ -1005,13 +1005,13 @@ describe('proxyServer', () => {
 
       // Call the private method via reflection for testing
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = formatUniversalResponse(validJsonResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(validJsonResponse, 200, headers, mockRes)
 
       expect(result).toBe(validJsonResponse) // Valid JSON should be returned as-is after parsing/stringifying
       expect(() => JSON.parse(result)).not.toThrow() // Should be valid JSON
     })
 
-    it('should handle invalid JSON responses by wrapping them', () => {
+    it('should handle invalid JSON responses by wrapping them', async () => {
       const invalidJsonResponse = 'Invalid JSON response'
       const headers = { 'content-type': 'application/json' }
       const mockRes = {
@@ -1021,7 +1021,7 @@ describe('proxyServer', () => {
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = formatUniversalResponse(invalidJsonResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(invalidJsonResponse, 200, headers, mockRes)
 
       const parsedResult = JSON.parse(result)
       expect(parsedResult.error).toBeDefined()
@@ -1029,7 +1029,7 @@ describe('proxyServer', () => {
       expect(parsedResult.error.originalResponse).toBe(invalidJsonResponse)
     })
 
-    it('should handle empty responses correctly', () => {
+    it('should handle empty responses correctly', async () => {
       const emptyResponse = ''
       const headers = { 'content-type': 'application/json' }
       const mockRes = {
@@ -1039,82 +1039,101 @@ describe('proxyServer', () => {
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = formatUniversalResponse(emptyResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(emptyResponse, 200, headers, mockRes)
 
       const parsedResult = JSON.parse(result)
       expect(parsedResult.error).toBeDefined()
       expect(parsedResult.error.type).toBe('empty_response')
     })
 
-    it('should preserve streaming responses and set correct headers', () => {
+    it('should preserve streaming responses and set correct headers', async () => {
       const streamingResponse = 'data: {"content":"hello"}\n\ndata: {"content":"world"}\n\n'
       const headers = { 'content-type': 'text/event-stream' }
       const mockRes = {
         setHeader: vi.fn(),
+        writeHead: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
         statusCode: 200,
         headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = formatUniversalResponse(streamingResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(streamingResponse, 200, headers, mockRes)
 
       expect(result).toBe(null) // Streaming responses should return null (already sent)
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-cache')
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive')
+      expect(mockRes.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      }))
     })
 
-    it('should detect streaming responses by content pattern even without headers', () => {
+    it('should detect streaming responses by content pattern even without headers', async () => {
       const streamingResponse = 'data: {"choices":[{"delta":{"role":"assistant","content":"Hello"}}]}\n\n'
       const headers = { 'content-type': 'application/json' } // Wrong header type
       const mockRes = {
         setHeader: vi.fn(),
+        writeHead: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
         statusCode: 200,
         headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = formatUniversalResponse(streamingResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(streamingResponse, 200, headers, mockRes)
 
       expect(result).toBe(null) // Should detect streaming by content pattern and return null
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-cache')
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive')
+      expect(mockRes.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      }))
     })
 
-    it('should handle headers already sent scenario gracefully', () => {
+    it('should handle headers already sent scenario gracefully', async () => {
       const streamingResponse = 'data: {"content":"hello"}\n\n'
       const headers = { 'content-type': 'text/event-stream' }
       const mockRes = {
         setHeader: vi.fn(),
+        writeHead: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
         statusCode: 200,
         headersSent: true, // Headers already sent
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = formatUniversalResponse(streamingResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(streamingResponse, 200, headers, mockRes)
 
       expect(result).toBe(null) // Should still handle streaming response
       expect(mockRes.setHeader).not.toHaveBeenCalled() // Should not try to set headers
+      expect(mockRes.writeHead).not.toHaveBeenCalled() // Should not try to write headers
     })
 
-    it('should handle streaming response parse errors gracefully', () => {
+    it('should handle streaming response parse errors gracefully', async () => {
       const malformedStreamingResponse = 'data: invalid json content\n\n'
       const headers = { 'content-type': 'text/event-stream' }
       const mockRes = {
         setHeader: vi.fn(),
+        writeHead: vi.fn(),
+        write: vi.fn(),
+        end: vi.fn(),
         statusCode: 200,
         headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = formatUniversalResponse(malformedStreamingResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(malformedStreamingResponse, 200, headers, mockRes)
 
       expect(result).toBe(null) // Should return null for streaming response
-      expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
+      expect(mockRes.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+        'Content-Type': 'text/event-stream',
+      }))
     })
 
-    it('should set status code for error responses', () => {
+    it('should set status code for error responses', async () => {
       const errorResponse = '{"error":"Bad request"}'
       const headers = { 'content-type': 'application/json' }
       const mockRes = {
@@ -1124,7 +1143,7 @@ describe('proxyServer', () => {
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      formatUniversalResponse(errorResponse, 400, headers, mockRes)
+      await formatUniversalResponse(errorResponse, 400, headers, mockRes)
 
       expect(mockRes.statusCode).toBe(400)
     })

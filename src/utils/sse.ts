@@ -1,4 +1,5 @@
 import type * as http from 'node:http'
+import { convertOpenAIStreamToAnthropic, isOpenAIStreamFormat } from './openai-to-anthropic'
 
 /**
  * Utility functions for handling Server-Sent Events (SSE) streaming responses
@@ -89,14 +90,72 @@ export function sendSSEResponse(
 /**
  * Handle streaming response - either send as SSE chunks or return body for regular processing
  * Returns null if SSE response was sent, otherwise returns the body for further processing
+ *
+ * This function also handles conversion from OpenAI streaming format to Anthropic format
  */
-export function handleStreamingResponse(
+export async function handleStreamingResponse(
   responseBody: string,
   statusCode: number,
   headers: Record<string, any>,
   res: http.ServerResponse,
-): string | null {
+): Promise<string | null> {
   if (isSSEResponse(responseBody, headers)) {
+    // Check if this is OpenAI format that needs conversion to Anthropic
+    if (isOpenAIStreamFormat(responseBody)) {
+      // Convert OpenAI stream to Anthropic format
+      try {
+        const openaiStream = new ReadableStream({
+          start(controller) {
+            const encoder = new TextEncoder()
+            controller.enqueue(encoder.encode(responseBody))
+            controller.close()
+          },
+        })
+
+        const anthropicStream = await convertOpenAIStreamToAnthropic(openaiStream)
+
+        // Set SSE headers
+        if (!res.headersSent) {
+          const finalHeaders = {
+            ...headers,
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          }
+
+          if (typeof res.writeHead === 'function') {
+            res.writeHead(statusCode, finalHeaders)
+          }
+        }
+
+        // Stream the converted response
+        if (typeof res.write === 'function' && typeof res.end === 'function') {
+          const reader = anthropicStream.getReader()
+          const decoder = new TextDecoder()
+
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done)
+                break
+              res.write(decoder.decode(value))
+            }
+          }
+          finally {
+            reader.releaseLock()
+            res.end()
+          }
+        }
+
+        return null // Response already sent
+      }
+      catch (error) {
+        // If conversion fails, fall back to original streaming
+        console.warn('Failed to convert OpenAI stream to Anthropic format:', error)
+      }
+    }
+
+    // Send as regular SSE response
     sendSSEResponse(responseBody, statusCode, headers, res)
     return null // Response already sent
   }
