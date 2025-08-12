@@ -36,11 +36,101 @@ Official Claude login with proxy support:
 
 ### System Settings
 
-Configure global system behavior via web interface (`start-claude manager`):
+Configure global system behavior via web interface (`start-claude manager`) or by editing system settings file:
 
-- **Balance Mode Settings**: Enable by default, health check intervals, endpoint banning
-- **S3 Sync Configuration**: Automatic sync preferences and conflict resolution
-- **Command Override**: Enable Windows compatibility mode
+#### Balance Mode Settings
+
+Control default load balancing behavior:
+
+- **Enable by Default**: Automatically start in balance mode for all commands
+
+  ```json
+  {
+    "balanceMode": {
+      "enableByDefault": true
+    }
+  }
+  ```
+
+- **Health Check Interval**: How often to check endpoint health (10s - 5min)
+
+  ```json
+  {
+    "balanceMode": {
+      "healthCheckInterval": 30000 // 30 seconds
+    }
+  }
+  ```
+
+- **Ban Duration**: How long to ban failed endpoints (1min - 1hour)
+
+  ```json
+  {
+    "balanceMode": {
+      "banDuration": 300000 // 5 minutes
+    }
+  }
+  ```
+
+- **Disable Health Checks**: Use simple round-robin without health monitoring
+  ```json
+  {
+    "balanceMode": {
+      "disableHealthChecks": true
+    }
+  }
+  ```
+
+#### S3 Sync Settings
+
+Configure automatic synchronization behavior:
+
+- **Auto Upload**: Automatically upload configurations when changed
+
+  ```json
+  {
+    "s3Sync": {
+      "autoUpload": true
+    }
+  }
+  ```
+
+- **Auto Download**: Download configurations when manager starts
+
+  ```json
+  {
+    "s3Sync": {
+      "autoDownload": true
+    }
+  }
+  ```
+
+- **Conflict Resolution**: How to handle sync conflicts
+  ```json
+  {
+    "s3Sync": {
+      "conflictResolution": "prompt" // "local", "remote", or "prompt"
+    }
+  }
+  ```
+
+#### Command Override Settings
+
+Control shell command alias behavior:
+
+- **Override Status**: Current command override state
+- **Shell Detection**: Automatically detected shell and configuration file
+- **Supported Shells**: List of shells that support override functionality
+
+Access system settings via:
+
+```bash
+# Web interface (recommended)
+start-claude manager  # Go to Settings tab
+
+# Direct file editing
+~/.start-claude/system-settings.json
+```
 
 ### Authentication & API
 

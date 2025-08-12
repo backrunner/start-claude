@@ -11,7 +11,7 @@ A powerful CLI tool to manage and start Claude Code with different configuration
 start-claude --api-key sk-your-key
 
 # Option 2: Set up command override (Recommended)
-start-claude override --enable
+start-claude override
 
 # Option 3: Create a custom alias
 doskey sc=start-claude $*
@@ -29,6 +29,9 @@ We recommend using the **override feature** for the best Windows experience.
 - ☁️ **S3 Sync**: Smart sync across devices with conflict detection and modification time tracking
 - 🎨 **Modern Web Interface**: Beautiful, responsive configuration manager with real-time search and drag-and-drop
 - ⚖️ **Advanced Load Balancer**: Intelligent load balancing with health monitoring, automatic failover, and configurable settings
+- 🔄 **Transformer Support**: Convert between different AI API formats (OpenAI, custom providers)
+- 💻 **Command Override**: Windows-compatible shell aliases with dual script + alias approach
+- 🌐 **Multi-Provider Support**: Mix and match different AI providers in load balancing
 
 ## Quick Start
 
@@ -45,7 +48,7 @@ start-claude --api-key sk-your-key --model claude-3-sonnet
 sc --api-key sk-your-key --model claude-3-sonnet
 
 # Windows users: Enable override for better compatibility
-start-claude override --enable
+start-claude override
 
 # For persistent configurations, add one interactively
 start-claude add
@@ -61,8 +64,11 @@ start-claude manager
 | **[Installation Guide](docs/en/installation.md)**   | **[安装指南](docs/zh/installation.md)**        |
 | **[Quick Start Guide](docs/en/quick-start.md)**     | **[快速开始](docs/zh/quick-start.md)**         |
 | **[Configuration Guide](docs/en/configuration.md)** | **[配置指南](docs/zh/configuration.md)**       |
-| **[S3 Sync Guide](docs/en/s3-sync.md)**             | **[S3 同步指南](docs/zh/s3-sync.md)**          |
+| **[CLI Reference](docs/en/cli-reference.md)**       | **[CLI 参考](docs/zh/cli-reference.md)**       |
+| **[Web Manager Guide](docs/en/manager.md)**         | **[Web 管理器指南](docs/zh/manager.md)**       |
+| **[Transformer Guide](docs/en/transformer.md)**     | **[转换器指南](docs/zh/transformer.md)**       |
 | **[Load Balancer Guide](docs/en/load-balancer.md)** | **[负载均衡器指南](docs/zh/load-balancer.md)** |
+| **[S3 Sync Guide](docs/en/s3-sync.md)**             | **[S3 同步指南](docs/zh/s3-sync.md)**          |
 | **[Development Guide](docs/en/development.md)**     | **[开发指南](docs/zh/development.md)**         |
 
 ## Basic Usage
@@ -76,9 +82,7 @@ start-claude add               # Add new configuration
 start-claude edit <name>       # Edit configuration
 
 # Modern Web Interface
-start-claude manager           # Open beautiful web-based configuration manager
-                              # Features: drag-and-drop sorting, real-time search,
-                              #           dark mode, system settings
+start-claude manager          # Open web-based configuration manager
 
 # Advanced Load Balancer with Health Monitoring
 start-claude --balance         # Start with system default balance settings
@@ -94,9 +98,11 @@ start-claude s3-sync           # Smart sync with conflict resolution
 start-claude s3-upload --force # Force upload (ignore timestamp warnings)
 start-claude s3-download       # Download with timestamp comparison
 
-# Windows-friendly commands (避免 sc 冲突)
-start-claude --api-key sk-key --model claude-3-haiku
-start-claude override --enable # Enable command override for Windows
+# Override original claude-code command
+start-claude override         # Enable claude command override
+start-claude override disable # Disable override
+start-claude override status  # Check override status
+start-claude override shells  # Show supported shells
 ```
 
 ## Modern Web Interface
@@ -173,4 +179,4 @@ MIT License
 
 ---
 
-💡 **Pro Tip**: Windows users should use `start-claude override --enable` for the best experience, as the `sc` alias may conflict with system commands.
+💡 **Pro Tip**: Windows users should use `start-claude override` for the best experience, as the `sc` alias may conflict with system commands.
