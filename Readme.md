@@ -1,12 +1,4 @@
-```
-
- ______     ______   ______     ______     ______   ______     __         ______     __  __     _____     ______    
-/\  ___\   /\__  _\ /\  __ \   /\  == \   /\__  _\ /\  ___\   /\ \       /\  __ \   /\ \/\ \   /\  __-.  /\  ___\   
-\ \___  \  \/_/\ \/ \ \  __ \  \ \  __<   \/_/\ \/ \ \ \____  \ \ \____  \ \  __ \  \ \ \_\ \  \ \ \/\ \ \ \  __\   
- \/\_____\    \ \_\  \ \_\ \_\  \ \_\ \_\    \ \_\  \ \_____\  \ \_____\  \ \_\ \_\  \ \_____\  \ \____-  \ \_____\ 
-  \/_____/     \/_/   \/_/\/_/   \/_/ /_/     \/_/   \/_____/   \/_____/   \/_/\/_/   \/_____/   \/____/   \/_____/ 
-                                                                                                                    
-```
+# start-claude
 
 A powerful CLI tool to manage and start Claude Code with different configurations. Easily manage multiple Claude configurations, sync them across devices with S3, and switch between them with a beautiful, interactive interface.
 
