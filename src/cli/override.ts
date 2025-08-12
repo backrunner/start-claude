@@ -14,19 +14,19 @@ const UNIX_SHELLS: Record<string, ShellConfig> = {
   bash: {
     path: path.join(os.homedir(), '.bashrc'),
     aliasPrefix: 'alias',
-    aliasFormat: 'alias claude="start-claude"',
+    aliasFormat: 'export PATH="$HOME/.start-claude/bin:$PATH"\nalias claude="start-claude"',
     comment: '# start-claude override',
   },
   zsh: {
     path: path.join(os.homedir(), '.zshrc'),
     aliasPrefix: 'alias',
-    aliasFormat: 'alias claude="start-claude"',
+    aliasFormat: 'export PATH="$HOME/.start-claude/bin:$PATH"\nalias claude="start-claude"',
     comment: '# start-claude override',
   },
   fish: {
     path: path.join(os.homedir(), '.config/fish/config.fish'),
     aliasPrefix: 'alias',
-    aliasFormat: 'alias claude="start-claude"',
+    aliasFormat: 'set -x PATH "$HOME/.start-claude/bin" $PATH\nalias claude="start-claude"',
     comment: '# start-claude override',
   },
 }
@@ -108,6 +108,48 @@ export class OverrideManager {
     }
   }
 
+  private setupScriptDirectory(): boolean {
+    try {
+      const scriptDir = path.join(os.homedir(), '.start-claude', 'bin')
+      const scriptPath = path.join(scriptDir, 'claude')
+
+      // Ensure directory exists
+      if (!fs.existsSync(scriptDir)) {
+        fs.mkdirSync(scriptDir, { recursive: true })
+      }
+
+      // Create the claude wrapper script
+      const scriptContent = this.isWindows()
+        ? `@echo off\nstart-claude %*`
+        : `#!/bin/bash\nexec start-claude "$@"`
+
+      fs.writeFileSync(scriptPath, scriptContent, 'utf-8')
+
+      // Make executable on Unix systems
+      if (!this.isWindows()) {
+        fs.chmodSync(scriptPath, 0o755)
+      }
+
+      return true
+    }
+    catch {
+      return false
+    }
+  }
+
+  private removeScriptDirectory(): boolean {
+    try {
+      const scriptDir = path.join(os.homedir(), '.start-claude')
+      if (fs.existsSync(scriptDir)) {
+        fs.rmSync(scriptDir, { recursive: true, force: true })
+      }
+      return true
+    }
+    catch {
+      return false
+    }
+  }
+
   private setupWindowsCmdAlias(shellConfig: ShellConfig): boolean {
     try {
       // For CMD, we create a batch file and add it to PATH
@@ -142,23 +184,31 @@ export class OverrideManager {
       return false
     }
 
+    // Check if script exists
+    const scriptPath = path.join(os.homedir(), '.start-claude', 'bin', 'claude')
+    const scriptExists = fs.existsSync(scriptPath)
+
     try {
       if (!fs.existsSync(shellConfig.path)) {
-        return false
+        return scriptExists
       }
 
       const content = fs.readFileSync(shellConfig.path, 'utf-8')
 
       // For CMD, check if the batch file exists and has the right content
       if (this.isWindows() && this.detectWindowsShell() === 'cmd') {
-        return content.includes('start-claude %*')
+        return scriptExists || content.includes('start-claude %*')
       }
 
-      // For other shells, check for the alias line
-      return content.includes(shellConfig.aliasFormat)
+      // For other shells, check for either PATH export or alias
+      const hasPathExport = content.includes('export PATH="$HOME/.start-claude/bin:$PATH"')
+        || content.includes('set -x PATH "$HOME/.start-claude/bin" $PATH')
+      const hasAlias = content.includes('alias claude="start-claude"')
+
+      return scriptExists || hasPathExport || hasAlias
     }
     catch {
-      return false
+      return scriptExists
     }
   }
 
@@ -174,21 +224,32 @@ export class OverrideManager {
     }
 
     try {
+      // First, setup the script directory and claude wrapper
+      const scriptSetup = this.setupScriptDirectory()
+      if (!scriptSetup) {
+        return false
+      }
+
       this.ensureDirectoryExists(shellConfig.path)
 
       let content = ''
       if (fs.existsSync(shellConfig.path)) {
         content = fs.readFileSync(shellConfig.path, 'utf-8')
+
+        // Remove existing override lines (including comments) first
+        const lines = content.split('\n')
+        const filteredLines = lines.filter(line =>
+          !line.includes(shellConfig.comment)
+          && !line.includes('alias claude="start-claude"')
+          && !line.includes('export PATH="$HOME/.start-claude/bin:$PATH"')
+          && !line.includes('set -x PATH "$HOME/.start-claude/bin" $PATH'),
+        )
+        content = filteredLines.join('\n')
       }
 
-      // Check if alias already exists
-      if (content.includes(shellConfig.aliasFormat)) {
-        return true
-      }
-
-      // Add the alias
-      const aliasLines = [shellConfig.comment, shellConfig.aliasFormat]
-      const newContent = `${content.trim()}\n\n${aliasLines.join('\n')}\n`
+      // Add both PATH export and alias
+      const overrideLines = [shellConfig.comment, shellConfig.aliasFormat]
+      const newContent = `${content.trim()}\n\n${overrideLines.join('\n')}\n`
 
       fs.writeFileSync(shellConfig.path, newContent, 'utf-8')
       return true
@@ -205,22 +266,27 @@ export class OverrideManager {
     }
 
     try {
+      // Remove the script directory
+      this.removeScriptDirectory()
+
       if (!fs.existsSync(shellConfig.path)) {
         return true
       }
 
-      // For CMD, just delete the batch file
+      // For CMD, just delete the batch file (already handled by removeScriptDirectory)
       if (this.isWindows() && this.detectWindowsShell() === 'cmd') {
-        fs.unlinkSync(shellConfig.path)
         return true
       }
 
-      // For other shells, remove the alias lines
+      // For other shells, remove both PATH export and alias lines
       const content = fs.readFileSync(shellConfig.path, 'utf-8')
       const lines = content.split('\n')
 
       const filteredLines = lines.filter(line =>
-        !line.includes(shellConfig.comment) && !line.includes(shellConfig.aliasFormat),
+        !line.includes(shellConfig.comment)
+        && !line.includes('alias claude="start-claude"')
+        && !line.includes('export PATH="$HOME/.start-claude/bin:$PATH"')
+        && !line.includes('set -x PATH "$HOME/.start-claude/bin" $PATH'),
       )
 
       const newContent = filteredLines.join('\n')

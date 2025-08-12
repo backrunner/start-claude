@@ -165,6 +165,8 @@ program
     // Create CLI overrides for environment variables and API settings
     const cliOverrides = buildCliOverrides(options)
 
+    displayInfo('🚀 Claude Code is starting...')
+
     const exitCode = await startClaude(config, allArgs, cliOverrides)
     process.exit(exitCode)
   })
@@ -196,10 +198,25 @@ program
   .description('Set a configuration as default')
   .action(handleDefaultCommand)
 
-program
+const overrideCmd = program
   .command('override')
-  .description('Manage Claude command override settings')
+  .description('Enable Claude command override (alias "claude" to "start-claude")')
   .action(handleOverrideCommand)
+
+overrideCmd
+  .command('disable')
+  .description('Disable Claude command override')
+  .action(() => import('../commands/override').then(m => m.handleOverrideDisableCommand()))
+
+overrideCmd
+  .command('status')
+  .description('View Claude command override status')
+  .action(() => import('../commands/override').then(m => m.handleOverrideStatusCommand()))
+
+overrideCmd
+  .command('shells')
+  .description('Show supported shells for override')
+  .action(() => import('../commands/override').then(m => m.handleOverrideShellsCommand()))
 
 program
   .command('s3-setup')

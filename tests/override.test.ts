@@ -37,6 +37,8 @@ describe('overrideManager', () => {
     mockFs.writeFileSync.mockImplementation(() => undefined)
     mockFs.mkdirSync.mockImplementation(() => undefined)
     mockFs.unlinkSync.mockImplementation(() => undefined)
+    mockFs.rmSync.mockImplementation(() => undefined)
+    mockFs.chmodSync.mockImplementation(() => undefined)
 
     // Import OverrideManager after mocks are set up
     const overrideModule = await import('../src/cli/override')
@@ -54,7 +56,32 @@ describe('overrideManager', () => {
     })
 
     describe('isOverrideActive', () => {
+      it('should return true when script exists', () => {
+        mockFs.existsSync.mockImplementation((path) => 
+          path.toString().includes('.start-claude/bin/claude')
+        )
+        mockFs.readFileSync.mockReturnValue('# no alias')
+
+        const result = overrideManager.isOverrideActive()
+
+        expect(result).toBe(true)
+      })
+
+      it('should return true when PATH export exists in shell config', () => {
+        mockFs.existsSync.mockImplementation((path) => 
+          !path.toString().includes('.start-claude/bin/claude')
+        )
+        mockFs.readFileSync.mockReturnValue('export PATH="$HOME/.start-claude/bin:$PATH"')
+
+        const result = overrideManager.isOverrideActive()
+
+        expect(result).toBe(true)
+      })
+
       it('should return true when alias exists in shell config', () => {
+        mockFs.existsSync.mockImplementation((path) => 
+          !path.toString().includes('.start-claude/bin/claude')
+        )
         mockFs.readFileSync.mockReturnValue('alias claude="start-claude"')
 
         const result = overrideManager.isOverrideActive()
@@ -62,7 +89,10 @@ describe('overrideManager', () => {
         expect(result).toBe(true)
       })
 
-      it('should return false when alias does not exist', () => {
+      it('should return false when neither script nor aliases exist', () => {
+        mockFs.existsSync.mockImplementation((path) => 
+          !path.toString().includes('.start-claude/bin/claude')
+        )
         mockFs.readFileSync.mockReturnValue('# some other content')
 
         const result = overrideManager.isOverrideActive()
@@ -70,7 +100,7 @@ describe('overrideManager', () => {
         expect(result).toBe(false)
       })
 
-      it('should return false when shell config file does not exist', () => {
+      it('should return false when shell config file and script do not exist', () => {
         mockFs.existsSync.mockReturnValue(false)
 
         const result = overrideManager.isOverrideActive()
@@ -86,24 +116,41 @@ describe('overrideManager', () => {
         expect(result).toBe(false)
       })
 
-      it('should handle read errors gracefully', () => {
+      it('should handle read errors gracefully but still check script', () => {
+        mockFs.existsSync.mockImplementation((path) => 
+          path.toString().includes('.start-claude/bin/claude')
+        )
         mockFs.readFileSync.mockImplementation(() => {
           throw new Error('Read error')
         })
 
         const result = overrideManager.isOverrideActive()
 
-        expect(result).toBe(false)
+        expect(result).toBe(true)
       })
     })
 
     describe('enableOverride', () => {
-      it('should add alias to shell config when not present', () => {
+      it('should create script and add both PATH export and alias to shell config', () => {
         mockFs.readFileSync.mockReturnValue('# existing content')
 
         const result = overrideManager.enableOverride()
 
         expect(result).toBe(true)
+        expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+          expect.stringContaining('.start-claude/bin/claude'),
+          expect.stringContaining('exec start-claude "$@"'),
+          'utf-8',
+        )
+        expect(mockFs.chmodSync).toHaveBeenCalledWith(
+          expect.stringContaining('.start-claude/bin/claude'),
+          0o755
+        )
+        expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+          expectedZshPath,
+          expect.stringContaining('export PATH="$HOME/.start-claude/bin:$PATH"'),
+          'utf-8',
+        )
         expect(mockFs.writeFileSync).toHaveBeenCalledWith(
           expectedZshPath,
           expect.stringContaining('alias claude="start-claude"'),
@@ -111,12 +158,17 @@ describe('overrideManager', () => {
         )
       })
 
-      it('should return true when alias already exists', () => {
+      it('should still create script and update RC file even when alias exists', () => {
         mockFs.readFileSync.mockReturnValue('alias claude="start-claude"')
 
         const result = overrideManager.enableOverride()
 
         expect(result).toBe(true)
+        expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+          expect.stringContaining('.start-claude/bin/claude'),
+          expect.stringContaining('exec start-claude "$@"'),
+          'utf-8',
+        )
       })
 
       it('should create config file if it does not exist', () => {
@@ -148,19 +200,25 @@ describe('overrideManager', () => {
     })
 
     describe('disableOverride', () => {
-      it('should remove alias from shell config', () => {
+      it('should remove script directory and clean shell config', () => {
         mockFs.readFileSync.mockReturnValue(`# start-claude override
+export PATH="$HOME/.start-claude/bin:$PATH"
 alias claude="start-claude"
 # other content`)
 
         const result = overrideManager.disableOverride()
 
         expect(result).toBe(true)
-        expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-          expectedZshPath,
-          expect.not.stringContaining('claude'),
-          'utf-8',
+        expect(mockFs.rmSync).toHaveBeenCalledWith(
+          expect.stringContaining('.start-claude'),
+          { recursive: true, force: true }
         )
+        const writtenContent = mockFs.writeFileSync.mock.calls.find(call => 
+          call[0] === expectedZshPath
+        )?.[1] as string
+        expect(writtenContent).not.toContain('claude')
+        expect(writtenContent).not.toContain('.start-claude')
+        expect(writtenContent).toContain('# other content')
       })
 
       it('should return true when config file does not exist', () => {
@@ -295,11 +353,12 @@ alias claude="start-claude"
         )
       })
 
-      it('should delete batch file when disabling', () => {
+      it('should delete script directory when disabling', () => {
         overrideManager.disableOverride()
 
-        expect(mockFs.unlinkSync).toHaveBeenCalledWith(
-          expect.stringContaining('claude-alias.bat'),
+        expect(mockFs.rmSync).toHaveBeenCalledWith(
+          expect.stringContaining('.start-claude'),
+          { recursive: true, force: true }
         )
       })
     })
