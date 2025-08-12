@@ -206,17 +206,17 @@ const overrideCmd = program
 overrideCmd
   .command('disable')
   .description('Disable Claude command override')
-  .action(() => import('../commands/override').then(m => m.handleOverrideDisableCommand()))
+  .action(async () => (await import('../commands/override')).handleOverrideDisableCommand())
 
 overrideCmd
   .command('status')
   .description('View Claude command override status')
-  .action(() => import('../commands/override').then(m => m.handleOverrideStatusCommand()))
+  .action(async () => (await import('../commands/override')).handleOverrideStatusCommand())
 
 overrideCmd
   .command('shells')
   .description('Show supported shells for override')
-  .action(() => import('../commands/override').then(m => m.handleOverrideShellsCommand()))
+  .action(async () => (await import('../commands/override')).handleOverrideShellsCommand())
 
 program
   .command('s3-setup')

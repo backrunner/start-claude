@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../src/utils/update-checker'
 
 // Mock the package.json version
-vi.mock('../../package.json', () => ({
-  version: '1.0.0',
+vi.mock('../package.json', () => ({
+  version: '0.1.2',
 }))
 
 // Mock child_process
@@ -184,9 +184,10 @@ describe('updateChecker', () => {
       mockSpawn.mockReturnValue(mockChild as any)
 
       // Mock process.exit for this test only
+      // eslint-disable-next-line ts/unbound-method
       const originalExit = process.exit
       const mockExit = vi.fn()
-      // @ts-ignore
+      // @ts-expect-error - Mocking process.exit for testing
       process.exit = mockExit
 
       try {
@@ -204,6 +205,7 @@ describe('updateChecker', () => {
         expect(mockExit).toHaveBeenCalledWith(0)
       }
       finally {
+        // Restore original process.exit
         process.exit = originalExit
       }
     })
