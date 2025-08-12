@@ -1,30 +1,20 @@
-# Start Claude
-
-A powerful CLI tool to manage and start Claude Code with different configurations. Easily manage multiple Claude configurations, sync them across devices with S3, and switch between them with a beautiful, interactive interface.
-
-## ⚠️ Important Notice for Windows Users
-
-**The `sc` command may not work on Windows** due to system command conflicts. Windows reserves `sc` for Service Control operations. If you encounter issues, please use one of these alternatives:
-
-```bash
-# Option 1: Use the full command name
-start-claude --api-key sk-your-key
-
-# Option 2: Set up command override (Recommended)
-start-claude override
-
-# Option 3: Create a custom alias
-doskey sc=start-claude $*
 ```
 
-We recommend using the **override feature** for the best Windows experience.
+ ______     ______   ______     ______     ______   ______     __         ______     __  __     _____     ______    
+/\  ___\   /\__  _\ /\  __ \   /\  == \   /\__  _\ /\  ___\   /\ \       /\  __ \   /\ \/\ \   /\  __-.  /\  ___\   
+\ \___  \  \/_/\ \/ \ \  __ \  \ \  __<   \/_/\ \/ \ \ \____  \ \ \____  \ \  __ \  \ \ \_\ \  \ \ \/\ \ \ \  __\   
+ \/\_____\    \ \_\  \ \_\ \_\  \ \_\ \_\    \ \_\  \ \_____\  \ \_____\  \ \_\ \_\  \ \_____\  \ \____-  \ \_____\ 
+  \/_____/     \/_/   \/_/\/_/   \/_/ /_/     \/_/   \/_____/   \/_____/   \/_/\/_/   \/_____/   \/____/   \/_____/ 
+                                                                                                                    
+```
+
+A powerful CLI tool to manage and start Claude Code with different configurations. Easily manage multiple Claude configurations, sync them across devices with S3, and switch between them with a beautiful, interactive interface.
 
 ## Features
 
 - 🚀 **Easy Configuration Management**: Add, edit, remove, and list Claude configurations
 - 🔧 **Environment Variable Support**: Full support for all 35+ Claude Code environment variables
 - ⚡ **CLI Overrides**: Override API key, model, base URL, and set custom environment variables directly from command line
-- 🎯 **Default Configuration**: Set a default configuration for quick startup
 - 📦 **Auto-Install**: Automatically detect and install Claude Code CLI if missing
 - ☁️ **S3 Sync**: Smart sync across devices with conflict detection and modification time tracking
 - 🎨 **Modern Web Interface**: Beautiful, responsive configuration manager with real-time search and drag-and-drop
@@ -39,12 +29,14 @@ We recommend using the **override feature** for the best Windows experience.
 
 ```bash
 # Install globally
+npm install -g start-claude
+# or
 pnpm add -g start-claude
 
 # Start Claude Code directly with CLI overrides (no config needed)
 start-claude --api-key sk-your-key --model claude-3-sonnet
 
-# Use the short command alias (may not work on Windows - see warning above)
+# Use the short command alias (may not work on Windows)
 sc --api-key sk-your-key --model claude-3-sonnet
 
 # Windows users: Enable override for better compatibility
@@ -176,6 +168,25 @@ We welcome contributions! See our [Development Guide](docs/en/development.md) fo
 ## License
 
 MIT License
+
+---
+
+## ⚠️ Important Notice for Windows Users
+
+**The `sc` command may not work on Windows** due to system command conflicts. Windows reserves `sc` for Service Control operations. If you encounter issues, please use one of these alternatives:
+
+```bash
+# Option 1: Use the full command name
+start-claude --api-key sk-your-key
+
+# Option 2: Set up command override (Recommended)
+start-claude override
+
+# Option 3: Create a custom alias
+doskey sc=start-claude $*
+```
+
+We recommend using the **override feature** for the best Windows experience.
 
 ---
 
