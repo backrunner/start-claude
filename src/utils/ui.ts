@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '../core/types'
+import type { ClaudeConfig } from '../config/types'
 import boxen from 'boxen'
 import chalk from 'chalk'
 

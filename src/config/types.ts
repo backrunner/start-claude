@@ -5,8 +5,10 @@ export interface ClaudeConfig {
   apiKey?: string
   model?: string
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
+  transformerEnabled?: boolean // Enable transformer for this configuration
   isDefault?: boolean
   order?: number // Lower numbers are prioritized first (0 = highest priority)
+  enabled?: boolean // Configuration is enabled/disabled
 
   // Environment variables for Claude Code
   authToken?: string
@@ -46,7 +48,44 @@ export interface ClaudeConfig {
   vertexRegion40Sonnet?: string
 }
 
+/**
+ * System settings interface
+ */
+export interface SystemSettings {
+  overrideClaudeCommand: boolean
+  balanceMode?: {
+    enableByDefault: boolean
+    healthCheck: {
+      enabled: boolean
+      intervalMs: number
+    }
+    failedEndpoint: {
+      banDurationSeconds: number
+    }
+  }
+  s3Sync?: {
+    bucket: string
+    region: string
+    accessKeyId: string
+    secretAccessKey: string
+    key: string
+    endpointUrl?: string
+  }
+}
+
+/**
+ * Versioned configuration file structure
+ */
 export interface ConfigFile {
+  version: number
+  configs: ClaudeConfig[]
+  settings: SystemSettings
+}
+
+/**
+ * Legacy configuration file (pre-versioning)
+ */
+export interface LegacyConfigFile {
   configs: ClaudeConfig[]
   settings: {
     overrideClaudeCommand: boolean
@@ -59,4 +98,19 @@ export interface ConfigFile {
       endpointUrl?: string
     }
   }
+}
+
+/**
+ * Current configuration file version
+ */
+export const CURRENT_CONFIG_VERSION = 1
+
+/**
+ * Migration information interface
+ */
+export interface MigrationInfo {
+  fromVersion: number
+  toVersion: number
+  description: string
+  timestamp: number
 }

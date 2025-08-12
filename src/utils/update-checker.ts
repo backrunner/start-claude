@@ -1,8 +1,7 @@
-import { exec } from 'node:child_process'
-import { promisify } from 'node:util'
+import { exec, spawn } from 'node:child_process'
+import process from 'node:process'
 import { version } from '../../package.json'
-
-const execAsync = promisify(exec)
+import { UpdateCheckCache } from './update-check-cache'
 
 export interface UpdateInfo {
   currentVersion: string
@@ -11,18 +10,36 @@ export interface UpdateInfo {
   updateCommand: string
 }
 
-export async function checkForUpdates(): Promise<UpdateInfo | null> {
+export async function checkForUpdates(forceCheck = false): Promise<UpdateInfo | null> {
   try {
-    const { stdout } = await execAsync('npm view start-claude version', { timeout: 5000 })
-    const latestVersion = stdout.trim()
+    const cache = UpdateCheckCache.getInstance()
+
+    // Check if we should skip the update check based on last check time
+    if (!forceCheck && !cache.shouldCheckForUpdates()) {
+      return null
+    }
+
+    const latestVersion = await new Promise<string>((resolve, reject) => {
+      exec('pnpm view start-claude version', { timeout: 5000 }, (error, stdout) => {
+        if (error) {
+          reject(error)
+        }
+        else {
+          resolve(stdout.trim())
+        }
+      })
+    })
 
     const hasUpdate = compareVersions(version, latestVersion) < 0
+
+    // Update the last check timestamp
+    cache.setLastCheckTimestamp(Date.now(), version)
 
     return {
       currentVersion: version,
       latestVersion,
       hasUpdate,
-      updateCommand: 'npm install -g start-claude@latest',
+      updateCommand: 'pnpm add -g start-claude@latest',
     }
   }
   catch {
@@ -50,10 +67,19 @@ function compareVersions(current: string, latest: string): number {
 
 export async function performAutoUpdate(): Promise<boolean> {
   try {
-    const { stderr } = await execAsync('npm install -g start-claude@latest', { timeout: 30000 })
+    const result = await new Promise<{ stderr: string }>((resolve, reject) => {
+      exec('pnpm add -g start-claude@latest', { timeout: 30000 }, (error, stdout, stderr) => {
+        if (error) {
+          reject(error)
+        }
+        else {
+          resolve({ stderr })
+        }
+      })
+    })
 
     // Check if the update was successful
-    if (stderr && (stderr.includes('error') || stderr.includes('failed'))) {
+    if (result.stderr && (result.stderr.includes('error') || result.stderr.includes('failed'))) {
       return false
     }
 
@@ -62,4 +88,27 @@ export async function performAutoUpdate(): Promise<boolean> {
   catch {
     return false
   }
+}
+
+/**
+ * Restarts the CLI with the same arguments after an update
+ * This ensures the user continues with their original command
+ */
+export function relaunchCLI(): void {
+  // Get the original command and arguments
+  const args = process.argv.slice(2) // Remove 'node' and script path
+  const executable = process.argv[0] // node executable
+  const scriptPath = process.argv[1] // script path
+
+  // Spawn a new process with the same arguments
+  const child = spawn(executable, [scriptPath, ...args], {
+    detached: true,
+    stdio: 'inherit',
+  })
+
+  // Allow the parent process to exit independently
+  child.unref()
+
+  // Exit the current process
+  process.exit(0)
 }

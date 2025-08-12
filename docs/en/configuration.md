@@ -34,6 +34,14 @@ Official Claude login with proxy support:
 
 ## Advanced Configuration Options
 
+### System Settings
+
+Configure global system behavior via web interface (`start-claude manager`):
+
+- **Balance Mode Settings**: Enable by default, health check intervals, endpoint banning
+- **S3 Sync Configuration**: Automatic sync preferences and conflict resolution
+- **Command Override**: Enable Windows compatibility mode
+
 ### Authentication & API
 
 - **Auth Token**: Custom authorization token (`ANTHROPIC_AUTH_TOKEN`)
@@ -147,6 +155,16 @@ Configurations are stored in `~/.start-claude/config.json`:
   ],
   "settings": {
     "overrideClaudeCommand": false,
+    "balanceMode": {
+      "enableByDefault": true,
+      "healthCheck": {
+        "enabled": true,
+        "intervalMs": 30000
+      },
+      "failedEndpoint": {
+        "banDurationSeconds": 300
+      }
+    },
     "s3Sync": {
       "bucket": "my-claude-configs",
       "region": "us-east-1",

@@ -8,8 +8,11 @@
 # Start Claude Code directly with CLI overrides (no config needed)
 start-claude --api-key sk-your-key --model claude-3-sonnet
 
-# Use the short command alias
+# Use the short command alias (may not work on Windows - see Windows warning in README)
 sc --api-key sk-your-key --model claude-3-sonnet
+
+# Windows users: Enable override for better compatibility
+start-claude override --enable
 
 # Set environment variables on the fly
 start-claude -e DEBUG=1 -e NODE_ENV=production --verbose
@@ -50,8 +53,9 @@ start-claude list
 
 ## Basic Commands
 
-- `start-claude` or `sc` - Start with default config or directly without config
-- `start-claude <config>` or `sc <config>` - Start with a specific configuration
+- `start-claude` - Start with default config or directly without config
+- `start-claude <config>` - Start with a specific configuration
+- `start-claude manager` - Open modern web-based configuration manager
 - `start-claude --config <name>` - Start with a specific configuration
 - `start-claude --list` - List all configurations
 - `start-claude add` - Add a new configuration
@@ -59,7 +63,25 @@ start-claude list
 - `start-claude remove <name>` - Remove a configuration
 - `start-claude default <name>` - Set a configuration as default
 
-**💡 Pro Tip**: Use `sc` as a short alias for `start-claude` to save typing!
+**💡 Pro Tip**: Windows users should use `start-claude override --enable` for the best experience, as the `sc` alias may conflict with system commands!
+
+## Modern Web Interface
+
+Access the beautiful, modern configuration manager:
+
+```bash
+# Launch the web interface
+start-claude manager
+# Opens at http://localhost:3000 with your configurations
+```
+
+Features:
+
+- 🎨 Modern gradient-based UI with dark mode support
+- 🔍 Real-time search and filtering
+- 📱 Drag-and-drop configuration reordering
+- ⚙️ Centralized system settings
+- ✅ Real-time validation with detailed error messages
 
 ## CLI Override Examples
 

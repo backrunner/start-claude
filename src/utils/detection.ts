@@ -48,8 +48,8 @@ async function detectPackageManager(): Promise<{
     }
   }
 
-  // Prefer npm if available, otherwise use the first available
-  const preferred = available.find(pm => pm.name === 'npm') || available[0]
+  // Prefer pnpm if available, otherwise use the first available
+  const preferred = available.find(pm => pm.name === 'pnpm') || available[0]
 
   return { available, preferred }
 }

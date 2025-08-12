@@ -1,5 +1,5 @@
-import type { ConfigManager } from '../core/config'
-import type { ClaudeConfig } from '../core/types'
+import type { ConfigManager } from '../config/manager'
+import type { ClaudeConfig } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
 import inquirer from 'inquirer'
@@ -16,20 +16,24 @@ export interface ProgramOptions {
   outputFormat?: string
   inputFormat?: string
   verbose?: boolean
+  debug?: boolean
   maxTurns?: number
   model?: string
   permissionMode?: string
   permissionPromptTool?: boolean
   resume?: boolean
   continue?: boolean
+  checkUpdates?: boolean
   dangerouslySkipPermissions?: boolean
   env?: string[]
+  proxy?: string
   apiKey?: string
   baseUrl?: string
 }
 
 export interface CliOverrides {
   env?: string[]
+  proxy?: string
   apiKey?: string
   baseUrl?: string
   model?: string
@@ -72,6 +76,10 @@ export function buildClaudeArgs(options: ProgramOptions, config?: ClaudeConfig):
     claudeArgs.push('--verbose')
   }
 
+  if (options.debug) {
+    claudeArgs.push('-d')
+  }
+
   if (options.maxTurns) {
     claudeArgs.push('--max-turns', options.maxTurns.toString())
   }
@@ -96,7 +104,7 @@ export function buildClaudeArgs(options: ProgramOptions, config?: ClaudeConfig):
   }
 
   if (options.continue) {
-    claudeArgs.push('--continue')
+    claudeArgs.push('-c')
   }
 
   if (options.dangerouslySkipPermissions) {
@@ -124,6 +132,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--output-format',
       '--input-format',
       '--verbose',
+      '--debug',
       '--max-turns',
       '--model',
       '--permission-mode',
@@ -133,6 +142,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--dangerously-skip-permissions',
       '-e',
       '--env',
+      '--proxy',
       '--api-key',
       '--base-url',
     ]
@@ -159,6 +169,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--permission-mode',
       '--env',
       '-e',
+      '--proxy',
       '--api-key',
       '--base-url',
     ]
@@ -175,10 +186,97 @@ export function filterProcessArgs(configArg?: string): string[] {
 export function buildCliOverrides(options: ProgramOptions): CliOverrides {
   return {
     env: options.env || [],
+    proxy: options.proxy,
     apiKey: options.apiKey,
     baseUrl: options.baseUrl,
     model: options.model,
   }
+}
+
+/**
+ * Handle S3 config checks for named config lookup
+ */
+async function handleS3ConfigLookup(
+  configManager: ConfigManager,
+  s3SyncManager: S3SyncManager,
+  configName: string,
+): Promise<ClaudeConfig | undefined> {
+  if (!s3SyncManager.isS3Configured()) {
+    return undefined
+  }
+
+  displayInfo(`Configuration "${configName}" not found locally. Checking S3 for updates...`)
+  const downloadSuccess = await s3SyncManager.checkRemoteUpdates()
+  if (downloadSuccess) {
+    return configManager.getConfig(configName)
+  }
+  return undefined
+}
+
+/**
+ * Handle S3 download for empty local configs
+ */
+async function handleS3EmptyConfigDownload(
+  configManager: ConfigManager,
+  s3SyncManager: S3SyncManager,
+): Promise<ClaudeConfig | undefined> {
+  if (!s3SyncManager.isS3Configured()) {
+    return undefined
+  }
+
+  displayInfo('No local configurations found, but S3 sync is configured.')
+  displayInfo('Checking S3 for existing configurations...')
+
+  const downloadSuccess = await s3SyncManager.downloadConfigs(true)
+  if (!downloadSuccess) {
+    return undefined
+  }
+
+  // Try to get default config again after download
+  const config = configManager.getDefaultConfig()
+  if (config) {
+    displayInfo(`Using downloaded configuration: ${config.name}`)
+    return config
+  }
+
+  // Downloaded configs exist but no default, let user choose
+  const downloadedConfigs = configManager.listConfigs()
+  if (downloadedConfigs.length === 0) {
+    return undefined
+  }
+
+  displayInfo('Choose a configuration to use:')
+  const answers = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'selectedConfig',
+      message: 'Select configuration:',
+      choices: downloadedConfigs.map(c => ({
+        name: `${c.name}${c.isDefault ? ' (default)' : ''}`,
+        value: c.name,
+      })),
+    },
+  ])
+
+  return configManager.getConfig(answers.selectedConfig as string)
+}
+
+/**
+ * Handle S3 update check for existing configs
+ */
+async function handleS3UpdateCheck(
+  configManager: ConfigManager,
+  s3SyncManager: S3SyncManager,
+): Promise<ClaudeConfig | undefined> {
+  if (!s3SyncManager.isS3Configured()) {
+    return undefined
+  }
+
+  const downloadSuccess = await s3SyncManager.checkRemoteUpdates()
+  if (downloadSuccess) {
+    return configManager.getDefaultConfig()
+  }
+  return undefined
 }
 
 /**
@@ -196,8 +294,12 @@ export async function resolveConfig(
   if (configName !== undefined) {
     config = configManager.getConfig(configName)
     if (!config) {
-      displayError(`Configuration "${configName}" not found`)
-      process.exit(1)
+      // If config not found and S3 is configured, check for newer remote config
+      config = await handleS3ConfigLookup(configManager, s3SyncManager, configName)
+      if (!config) {
+        displayError(`Configuration "${configName}" not found`)
+        process.exit(1)
+      }
     }
     return config
   }
@@ -211,61 +313,46 @@ export async function resolveConfig(
       displayWelcome()
 
       // Check if S3 sync is configured and try to download first
-      if (s3SyncManager.isS3Configured()) {
-        displayInfo('No local configurations found, but S3 sync is configured.')
-        displayInfo('Checking S3 for existing configurations...')
-
-        const downloadSuccess = await s3SyncManager.downloadConfigs(true)
-        if (downloadSuccess) {
-          // Try to get default config again after download
-          config = configManager.getDefaultConfig()
-          if (config) {
-            displayInfo(`Using downloaded configuration: ${config.name}`)
-            return config
-          }
-
-          // Downloaded configs exist but no default, let user choose
-          const downloadedConfigs = configManager.listConfigs()
-          if (downloadedConfigs.length > 0) {
-            displayInfo('Choose a configuration to use:')
-
-            const answers = await inquirer.prompt([
-              {
-                type: 'list',
-                name: 'selectedConfig',
-                message: 'Select configuration:',
-                choices: downloadedConfigs.map(c => ({
-                  name: `${c.name}${c.isDefault ? ' (default)' : ''}`,
-                  value: c.name,
-                })),
-              },
-            ])
-
-            return configManager.getConfig(answers.selectedConfig as string)
-          }
-        }
+      config = await handleS3EmptyConfigDownload(configManager, s3SyncManager)
+      if (config) {
+        return config
       }
 
       // If still no config after S3 check, create a new one
       return createNewConfig(configManager, s3SyncManager)
     }
     else {
-      displayWelcome()
-      displayInfo('Choose a configuration to use:')
+      // Check for newer remote configs even when we have local configs
+      const updatedConfig = await handleS3UpdateCheck(configManager, s3SyncManager)
+      if (updatedConfig) {
+        config = updatedConfig
+      }
 
-      const answers = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'selectedConfig',
-          message: 'Select configuration:',
-          choices: configs.map(c => ({
-            name: `${c.name}${c.isDefault ? ' (default)' : ''}`,
-            value: c.name,
-          })),
-        },
-      ])
+      if (!config) {
+        displayWelcome()
+        displayInfo('Choose a configuration to use:')
 
-      return configManager.getConfig(answers.selectedConfig as string)
+        const answers = await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'selectedConfig',
+            message: 'Select configuration:',
+            choices: configs.map(c => ({
+              name: `${c.name}${c.isDefault ? ' (default)' : ''}`,
+              value: c.name,
+            })),
+          },
+        ])
+
+        return configManager.getConfig(answers.selectedConfig as string)
+      }
+    }
+  }
+  else {
+    // Even when we have a default config, check if there's a newer version on S3
+    const updatedConfig = await handleS3UpdateCheck(configManager, s3SyncManager)
+    if (updatedConfig) {
+      config = updatedConfig
     }
   }
 
@@ -420,14 +507,27 @@ export function resolveBaseConfig(
       displayError(`Configuration "${configName}" not found`)
       process.exit(1)
     }
-    if (!balanceableConfigs.includes(baseConfig)) {
-      displayWarning(`Configuration "${configName}" is not included in load balancing (missing baseUrl or apiKey)`)
-      displayInfo('Using it for other settings only, load balancing will use available endpoints')
+    if (!balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
+      const hasTransformer = 'transformerEnabled' in baseConfig && baseConfig.transformerEnabled === true
+      const missingCompleteApiCredentials = !baseConfig.baseUrl || !baseConfig.apiKey || !baseConfig.model
+
+      if (hasTransformer && missingCompleteApiCredentials) {
+        displayWarning(`Configuration "${baseConfig.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) for API calls`)
+        displayInfo('Using it for settings and transformer processing only')
+      }
+      else if (missingCompleteApiCredentials) {
+        displayWarning(`Configuration "${baseConfig.name}" is not included in load balancing (missing baseUrl, apiKey, or model)`)
+        displayInfo('Using it for other settings only, load balancing will use available endpoints')
+      }
+      else {
+        displayWarning(`Configuration "${baseConfig.name}" is not included in load balancing`)
+        displayInfo('Using it for other settings only, load balancing will use available endpoints')
+      }
     }
   }
   else {
     baseConfig = configManager.getDefaultConfig()
-    if (!baseConfig || !balanceableConfigs.includes(baseConfig)) {
+    if (!baseConfig || !balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
       baseConfig = balanceableConfigs[0]
     }
   }

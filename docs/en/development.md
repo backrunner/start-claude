@@ -3,25 +3,25 @@
 ## Prerequisites
 
 - Node.js 18+
-- npm (for installation and Claude Code CLI)
+- pnpm (for installation and Claude Code CLI)
 
 ## Setup
 
 ```bash
 git clone https://github.com/your-username/start-claude.git
 cd start-claude
-npm install
+pnpm install
 ```
 
 ## Available Scripts
 
-- `npm run build` - Build the project
-- `npm run watch` - Build and watch for changes
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Fix linting issues
-- `npm test` - Run tests
-- `npm run test:run` - Run tests once
-- `npm run test:coverage` - Run tests with coverage
+- `pnpm run build` - Build the project
+- `pnpm run watch` - Build and watch for changes
+- `pnpm run lint` - Run ESLint
+- `pnpm run lint:fix` - Fix linting issues
+- `pnpm test` - Run tests
+- `pnpm run test:run` - Run tests once
+- `pnpm run test:coverage` - Run tests with coverage
 
 ## Testing
 
@@ -29,16 +29,16 @@ The project uses Vitest for testing:
 
 ```bash
 # Run tests
-npm test
+pnpm test
 
 # Run tests with coverage
-npm run test:coverage
+pnpm run test:coverage
 
 # Run specific test file
-npm test -- tests/config.test.ts
+pnpm test -- tests/config.test.ts
 
 # Watch mode
-npm run test:watch
+pnpm run test:watch
 ```
 
 ## Project Structure
@@ -112,10 +112,10 @@ The project uses ESLint with a strict configuration:
 
 ```bash
 # Check code style
-npm run lint
+pnpm run lint
 
 # Auto-fix style issues
-npm run lint:fix
+pnpm run lint:fix
 ```
 
 Key style guidelines:
@@ -158,7 +158,7 @@ Test configurations and fixtures are defined inline to ensure test isolation.
 The project uses Rollup for building:
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 This creates:
@@ -183,8 +183,8 @@ The `package.json` includes:
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
 3. Make your changes
 4. Add tests for your changes
-5. Run tests: `npm test`
-6. Run linting: `npm run lint:fix`
+5. Run tests: `pnpm test`
+6. Run linting: `pnpm run lint:fix`
 7. Commit your changes: `git commit -m 'Add amazing feature'`
 8. Push to the branch: `git push origin feature/amazing-feature`
 9. Open a Pull Request
@@ -215,7 +215,7 @@ Pull requests require:
 
 ```bash
 # Build and link for local testing
-npm run build
+pnpm run build
 npm link
 
 # Test CLI commands
@@ -314,28 +314,28 @@ The project follows semantic versioning:
 ```bash
 # Clear node modules and reinstall
 rm -rf node_modules package-lock.json
-npm install
+pnpm install
 
 # Clean TypeScript cache
-npm run build -- --clean
+pnpm run build -- --clean
 ```
 
 ### Test Issues
 
 ```bash
 # Run tests with verbose output
-npm test -- --reporter=verbose
+pnpm test -- --reporter=verbose
 
 # Run specific test pattern
-npm test -- --grep "configuration"
+pnpm test -- --grep "configuration"
 ```
 
 ### Linting Issues
 
 ```bash
 # See detailed linting errors
-npm run lint -- --format=codeframe
+pnpm run lint -- --format=codeframe
 
 # Fix auto-fixable issues
-npm run lint:fix
+pnpm run lint:fix
 ```

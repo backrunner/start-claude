@@ -1,10 +1,17 @@
+import type { ClaudeConfig } from '../config/types'
+import type { LLMProvider } from '../types/llm'
 import type { ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
-import type { ClaudeConfig } from './types'
 import { Buffer } from 'node:buffer'
 import * as http from 'node:http'
 import * as https from 'node:https'
+import { PassThrough } from 'node:stream'
+import { HttpProxyAgent } from 'http-proxy-agent'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
+import { fileLogger } from '../utils/file-logger'
+import { convertOpenAIResponseToAnthropic, isOpenAIFormat } from '../utils/openai-to-anthropic'
+import { handleStreamingResponse } from '../utils/sse'
 import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/ui'
 
 const log = console.log
@@ -15,6 +22,7 @@ interface EndpointStatus {
   lastCheck: number
   failureCount: number
   lastError?: string
+  bannedUntil?: number // Timestamp when ban expires
 }
 
 export class ProxyServer {
@@ -22,6 +30,9 @@ export class ProxyServer {
   private currentIndex = 0
   private server?: http.Server
   private healthCheckInterval?: NodeJS.Timeout
+  private healthCheckIntervalMs: number = 30000 // Default 30 seconds
+  private healthCheckEnabled: boolean = true
+  private failedEndpointBanDurationSeconds: number = 300 // Default 5 minutes
   private proxyApiKey: string = 'sk-claude-proxy-server'
   private transformerService: TransformerService
   private configService: ConfigService
@@ -29,10 +40,43 @@ export class ProxyServer {
   private enableLoadBalance: boolean = false
   private enableTransform: boolean = false
   private verbose: boolean = false
+  private debug: boolean = false
+  private proxyUrl?: string
+  private httpAgent?: http.Agent
+  private httpsAgent?: https.Agent
 
-  constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode) {
+  constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode, systemSettings?: any, proxyUrl?: string) {
     this.proxyMode = proxyMode || {}
     this.verbose = this.proxyMode.verbose || false
+    this.debug = this.proxyMode.debug || false
+    this.proxyUrl = proxyUrl
+
+    // Enable verbose mode automatically if debug mode is enabled
+    if (this.debug && !this.verbose) {
+      this.verbose = true
+    }
+
+    // Enable file logging if debug mode is on
+    if (this.debug) {
+      fileLogger.enable()
+      fileLogger.info('PROXY', 'Debug logging enabled for proxy server')
+      fileLogger.info('PROXY', `Verbose mode: ${this.verbose}`)
+    }
+
+    // Initialize proxy agents if proxy URL is provided
+    if (this.proxyUrl) {
+      this.httpAgent = new HttpProxyAgent(this.proxyUrl)
+      this.httpsAgent = new HttpsProxyAgent(this.proxyUrl)
+      displayVerbose(`Proxy configured: ${this.proxyUrl}`, this.verbose)
+      fileLogger.debug('PROXY', `HTTP/HTTPS proxy configured: ${this.proxyUrl}`)
+    }
+
+    // Apply system settings for balance mode
+    if (systemSettings?.balanceMode) {
+      this.healthCheckIntervalMs = systemSettings.balanceMode.healthCheck?.intervalMs || 30000
+      this.healthCheckEnabled = systemSettings.balanceMode.healthCheck?.enabled !== false
+      this.failedEndpointBanDurationSeconds = systemSettings.balanceMode.failedEndpoint?.banDurationSeconds || 300
+    }
 
     // Initialize services
     this.configService = new ConfigService()
@@ -46,11 +90,24 @@ export class ProxyServer {
 
     // If load balancing is enabled, set up endpoints
     if (this.enableLoadBalance) {
-      const validConfigs = configs.filter(c => c.baseUrl && c.apiKey)
+      // Include configs that either have API credentials OR transformer enabled
+      // Note: transformer-enabled configs MUST have real external API credentials
+      const validConfigs = configs.filter((c) => {
+        const hasApiCredentials = c.baseUrl && c.apiKey
+        const hasTransformerEnabled = 'transformerEnabled' in c && c.transformerEnabled === true
+
+        if (hasTransformerEnabled && !hasApiCredentials) {
+          throw new Error(`Configuration "${c.name}" has transformerEnabled=true but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
+        }
+
+        return hasApiCredentials || hasTransformerEnabled
+      })
 
       if (validConfigs.length === 0) {
-        throw new Error('No configurations with baseUrl and apiKey found for load balancing')
+        throw new Error('No configurations found for load balancing (need either API credentials or transformer enabled)')
       }
+
+      displayVerbose(`Found ${validConfigs.length} valid configs for load balancing`, this.verbose)
 
       // Sort configs by order (lower numbers first), with undefined order treated as highest priority (0)
       validConfigs.sort((a, b) => {
@@ -67,21 +124,120 @@ export class ProxyServer {
       }))
     }
     else {
-      // Create a single stub endpoint for Claude Code compatibility
-      this.endpoints = [{
-        config: {
-          name: 'proxy-server',
-          baseUrl: 'http://localhost:2333',
-          apiKey: this.proxyApiKey,
-          model: 'claude-3-haiku-20240307',
-        } as ClaudeConfig,
-        isHealthy: true,
-        lastCheck: 0,
-        failureCount: 0,
-      }]
+      // Non-load balancer mode - but still need to handle transformer configs
+      if (this.enableTransform) {
+        // Filter for transformer-enabled configs - they MUST have real API credentials
+        const transformerConfigs = configs.filter((c) => {
+          const hasTransformerEnabled = 'transformerEnabled' in c && c.transformerEnabled === true
+          const hasApiCredentials = c.baseUrl && c.apiKey
+
+          if (hasTransformerEnabled && !hasApiCredentials) {
+            throw new Error(`Configuration "${c.name}" has transformerEnabled=true but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
+          }
+
+          return hasTransformerEnabled
+        })
+
+        if (transformerConfigs.length > 0) {
+          // Use transformer-enabled configs
+          this.endpoints = transformerConfigs.map(config => ({
+            config,
+            isHealthy: true,
+            lastCheck: 0,
+            failureCount: 0,
+          }))
+        }
+        else {
+          throw new Error('No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled: true.')
+        }
+      }
+      else {
+        throw new Error('No processing mode enabled. Please enable either load balancing (enableLoadBalance: true) or transformers (enableTransform: true).')
+      }
     }
 
     displayVerbose(`Initialized with ${this.endpoints.length} endpoint(s)`, this.verbose)
+  }
+
+  private async formatUniversalResponse(
+    responseBody: string,
+    statusCode: number,
+    headers: any,
+    res: http.ServerResponse,
+  ): Promise<string | null> {
+    // First check if this is a streaming response and handle it
+    const streamingResult = await handleStreamingResponse(responseBody, statusCode, headers, res)
+    if (streamingResult === null) {
+      // SSE response was already sent
+      return null
+    }
+
+    try {
+      // Check if this is OpenAI format that needs conversion to Anthropic
+      if (isOpenAIFormat(responseBody)) {
+        try {
+          const openaiResponse = JSON.parse(responseBody)
+          const anthropicResponse = convertOpenAIResponseToAnthropic(openaiResponse)
+          return JSON.stringify(anthropicResponse)
+        }
+        catch (conversionError) {
+          // If conversion fails, continue with original response
+          if (this.debug) {
+            fileLogger.error('OPENAI_CONVERSION_ERROR', 'Failed to convert OpenAI response to Anthropic format', {
+              error: conversionError instanceof Error ? conversionError.message : 'Unknown error',
+              originalBody: responseBody,
+            })
+          }
+        }
+      }
+
+      // Set HTTP status code if response is not ok (non-2xx status codes) and headers not sent
+      if (statusCode >= 400 && !res.headersSent) {
+        res.statusCode = statusCode
+      }
+
+      // For non-streaming responses, check if empty first
+      if (!responseBody.trim()) {
+        return JSON.stringify({
+          error: {
+            message: 'Empty response from upstream',
+            type: 'empty_response',
+          },
+        })
+      }
+
+      // Try to parse as JSON to validate
+      const parsedBody = JSON.parse(responseBody)
+
+      // Return the parsed and re-stringified JSON to ensure consistency
+      return JSON.stringify(parsedBody)
+    }
+    catch (parseError) {
+      // If response is not valid JSON, wrap it in a standard format
+      if (this.debug) {
+        fileLogger.error('RESPONSE_FORMAT_ERROR', 'Failed to parse response as JSON', {
+          originalBody: responseBody,
+          statusCode,
+          parseError: parseError instanceof Error ? parseError.message : 'Unknown error',
+        })
+      }
+
+      // Return a standardized error response for non-streaming content
+      return JSON.stringify({
+        error: {
+          message: 'Invalid response format from upstream',
+          type: 'format_error',
+          originalResponse: responseBody,
+        },
+      })
+    }
+  }
+
+  private getAgent(isHttps: boolean): http.Agent | https.Agent | undefined {
+    if (this.proxyUrl) {
+      return isHttps ? this.httpsAgent : this.httpAgent
+    }
+    return undefined
   }
 
   async initialize(): Promise<void> {
@@ -116,8 +272,8 @@ export class ProxyServer {
         const featureText = features.length > 0 ? ` (${features.join(' + ')})` : ''
         displaySuccess(`🚀 Proxy server started on port ${port}${featureText}`)
 
-        // Start health checks only if load balancing is enabled
-        if (this.enableLoadBalance) {
+        // Start health checks only if load balancing is enabled and health checks are enabled
+        if (this.enableLoadBalance && this.healthCheckEnabled) {
           this.startHealthChecks()
         }
         resolve()
@@ -132,6 +288,18 @@ export class ProxyServer {
 
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     try {
+      // Log incoming request if debug is enabled
+      if (this.debug) {
+        fileLogger.info('INCOMING_REQUEST', 'Received HTTP request', {
+          method: req.method || 'UNKNOWN',
+          url: req.url || '/',
+          userAgent: req.headers['user-agent'] || 'unknown',
+          contentType: req.headers['content-type'] || 'unknown',
+          origin: req.headers.origin || 'unknown',
+          headers: req.headers,
+        })
+      }
+
       // Handle CORS preflight requests
       if (req.method === 'OPTIONS') {
         res.writeHead(200, {
@@ -141,24 +309,21 @@ export class ProxyServer {
           'Access-Control-Max-Age': '86400',
         })
         res.end()
+
+        if (this.debug) {
+          fileLogger.info('CORS_PREFLIGHT', 'Handled CORS preflight request', {
+            method: req.method || 'OPTIONS',
+            origin: req.headers.origin || 'unknown',
+            requestHeaders: req.headers['access-control-request-headers'] || 'none',
+            response: 'CORS preflight response sent',
+          })
+        }
         return
       }
 
       displayVerbose(`Handling ${req.method} ${req.url}`, this.verbose)
 
-      // Check if transformer mode is enabled and if we have a matching transformer
-      if (this.enableTransform) {
-        const requestPath = req.url || '/'
-        const transformer = this.transformerService.findTransformerByPath(requestPath)
-
-        if (transformer) {
-          displayVerbose(`Found transformer for ${requestPath}: ${transformer.name}`, this.verbose)
-          await this.handleTransformerRequest(req, res)
-          return
-        }
-      }
-
-      // Fall back to load balancer mode (or direct proxy if load balancing is disabled)
+      // Handle requests - either through load balancer or transformer-only mode
       if (this.enableLoadBalance) {
         const endpoint = this.getNextHealthyEndpoint()
         if (!endpoint) {
@@ -173,8 +338,27 @@ export class ProxyServer {
         }
         await this.proxyRequest(req, res, endpoint)
       }
+      else if (this.enableTransform) {
+        // Transformer-only mode - use the first transformer-enabled endpoint
+        const transformerEndpoint = this.endpoints.find(e =>
+          'transformerEnabled' in e.config && e.config.transformerEnabled === true,
+        )
+
+        if (!transformerEndpoint) {
+          res.writeHead(503, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            error: {
+              message: 'No transformer-enabled endpoints available',
+              type: 'service_unavailable',
+            },
+          }))
+          return
+        }
+
+        await this.proxyRequest(req, res, transformerEndpoint)
+      }
       else {
-        // If neither transformer nor load balancer handles the request, return error
+        // No load balancing or transformers enabled
         res.writeHead(404, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({
           error: {
@@ -186,138 +370,69 @@ export class ProxyServer {
     }
     catch (error) {
       displayError(`⚠️ Request handling error: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      res.writeHead(500, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({
+
+      // Log detailed request handling error
+      if (this.debug) {
+        fileLogger.error('REQUEST_HANDLING_ERROR', 'Exception caught in main request handler', {
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorStack: error instanceof Error ? error.stack : undefined,
+          method: req.method || 'UNKNOWN',
+          url: req.url || '/',
+          userAgent: req.headers['user-agent'] || 'unknown',
+          contentType: req.headers['content-type'] || 'unknown',
+          origin: req.headers.origin || 'unknown',
+        })
+      }
+
+      const errorResponse = {
         error: {
           message: 'Internal server error',
           type: 'internal_error',
         },
-      }))
+      }
+
+      // Log detailed error response
+      if (this.debug) {
+        fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 500 error response due to request handling error', {
+          statusCode: 500,
+          errorType: 'internal_error',
+          originalError: error instanceof Error ? error.message : 'Unknown error',
+          responseBody: errorResponse,
+        })
+      }
+
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(errorResponse))
     }
-  }
-
-  private async handleTransformerRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    const requestPath = req.url || '/'
-
-    // Find appropriate transformer based on request path
-    const transformer = this.transformerService.findTransformerByPath(requestPath)
-
-    if (!transformer) {
-      res.writeHead(404, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({
-        error: {
-          message: `No transformer found for endpoint: ${requestPath}`,
-          type: 'not_found',
-        },
-      }))
-      return
-    }
-
-    // Collect request body
-    const chunks: Buffer[] = []
-    req.on('data', chunk => chunks.push(chunk))
-
-    req.on('end', () => {
-      void (async () => {
-        try {
-          const body = Buffer.concat(chunks)
-          let requestData: any = {}
-
-          if (body.length > 0) {
-            try {
-              requestData = JSON.parse(body.toString())
-            }
-            catch {
-              res.writeHead(400, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({
-                error: {
-                  message: 'Invalid JSON in request body',
-                  type: 'invalid_request',
-                },
-              }))
-              return
-            }
-          }
-
-          // Transform request if transformer supports it
-          let transformedRequest = requestData
-          if (transformer.transformRequestOut) {
-            transformedRequest = await transformer.transformRequestOut(requestData)
-          }
-
-          // For demonstration, we'll echo back the transformed request
-          // In a real implementation, you would forward this to the actual provider
-          const response = {
-            id: `req_${Date.now()}`,
-            object: transformer.name === 'anthropic' ? 'message' : 'chat.completion',
-            created: Math.floor(Date.now() / 1000),
-            model: transformedRequest.model || 'default-model',
-            choices: transformer.name === 'anthropic'
-              ? undefined
-              : [
-                  {
-                    index: 0,
-                    message: {
-                      role: 'assistant',
-                      content: 'This is a mock response from the transformer proxy. In a real implementation, this would be forwarded to the actual LLM provider.',
-                    },
-                    finish_reason: 'stop',
-                  },
-                ],
-            // Anthropic format
-            type: transformer.name === 'anthropic' ? 'message' : undefined,
-            role: transformer.name === 'anthropic' ? 'assistant' : undefined,
-            content: transformer.name === 'anthropic'
-              ? [
-                  {
-                    type: 'text',
-                    text: 'This is a mock response from the transformer proxy. In a real implementation, this would be forwarded to the actual LLM provider.',
-                  },
-                ]
-              : undefined,
-            stop_reason: transformer.name === 'anthropic' ? 'end_turn' : undefined,
-            usage: {
-              prompt_tokens: 10,
-              completion_tokens: 20,
-              total_tokens: 30,
-              // Anthropic format
-              input_tokens: transformer.name === 'anthropic' ? 10 : undefined,
-              output_tokens: transformer.name === 'anthropic' ? 20 : undefined,
-            },
-          }
-
-          res.writeHead(200, {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key',
-          })
-          res.end(JSON.stringify(response))
-        }
-        catch (error) {
-          displayError(`⚠️ Transformer error: ${error instanceof Error ? error.message : 'Unknown error'}`)
-          res.writeHead(500, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({
-            error: {
-              message: 'Transformer processing failed',
-              type: 'transformer_error',
-            },
-          }))
-        }
-      })()
-    })
   }
 
   private getNextHealthyEndpoint(): EndpointStatus | null {
-    const healthyEndpoints = this.endpoints.filter(e => e.isHealthy)
+    const now = Date.now()
 
-    if (healthyEndpoints.length === 0) {
+    // Filter out banned endpoints and unhealthy endpoints
+    const availableEndpoints = this.endpoints.filter((e) => {
+      // If health checks are disabled, check if ban has expired
+      if (!this.healthCheckEnabled && e.bannedUntil) {
+        if (now < e.bannedUntil) {
+          return false // Still banned
+        }
+        else {
+          // Ban expired, mark as healthy
+          e.isHealthy = true
+          e.bannedUntil = undefined
+        }
+      }
+
+      return e.isHealthy
+    })
+
+    if (availableEndpoints.length === 0) {
       return null
     }
 
-    // Simple round-robin selection among healthy endpoints
-    const endpoint = healthyEndpoints[this.currentIndex % healthyEndpoints.length]
-    this.currentIndex = (this.currentIndex + 1) % healthyEndpoints.length
+    // Simple round-robin selection among available endpoints
+    const endpoint = availableEndpoints[this.currentIndex % availableEndpoints.length]
+    this.currentIndex = (this.currentIndex + 1) % availableEndpoints.length
 
     return endpoint
   }
@@ -327,8 +442,6 @@ export class ProxyServer {
     res: http.ServerResponse,
     endpoint: EndpointStatus,
   ): Promise<void> {
-    const targetUrl = new URL(req.url || '/', endpoint.config.baseUrl)
-
     // Collect request body
     const chunks: Buffer[] = []
     req.on('data', chunk => chunks.push(chunk))
@@ -337,6 +450,412 @@ export class ProxyServer {
       void (async () => {
         try {
           const body = Buffer.concat(chunks)
+          let requestData: any = {}
+          let bodyText: string | undefined
+
+          // Parse request body once and cache the string representation
+          if (body.length > 0) {
+            try {
+              bodyText = body.toString()
+              requestData = JSON.parse(bodyText)
+
+              // Log request body if debug is enabled
+              if (this.debug) {
+                fileLogger.info('INCOMING_REQUEST', 'Received request body for transformation', {
+                  bodySize: body.length,
+                  model: requestData.model,
+                  messageCount: requestData.messages?.length || 0,
+                  hasTools: requestData.tools ? requestData.tools.length : 0,
+                  body: requestData,
+                })
+              }
+            }
+            catch {
+              // If we can't parse JSON, just continue with regular proxy
+              displayVerbose('Could not parse request JSON for transformer check', this.verbose)
+              if (this.debug) {
+                fileLogger.info('REQUEST_PARSE_ERROR', 'Received non-JSON request body', {
+                  bodySize: body.length,
+                  contentType: req.headers['content-type'] || 'unknown',
+                  body: bodyText || body.toString(),
+                })
+              }
+            }
+          }
+
+          // Check if this endpoint has transformer enabled and we have transformer service
+          if (this.enableTransform && 'transformerEnabled' in endpoint.config && endpoint.config.transformerEnabled) {
+            displayVerbose(`Checking for transformer for endpoint: ${endpoint.config.baseUrl}`, this.verbose)
+            const transformer = this.transformerService.findTransformerByDomain(endpoint.config.baseUrl)
+
+            if (transformer) {
+              // Find the transformer name for logging
+              const transformerName = Array.from(this.transformerService.getAllTransformers().entries())
+                .find(([, t]) => t === transformer)?.[0] || 'unknown'
+              displayVerbose(`Found transformer for domain ${endpoint.config.baseUrl}: ${transformerName}`, this.verbose)
+
+              // Create provider for transformer using the real external API credentials
+              // The endpoint.config should contain the actual API credentials for the external service
+              const provider: LLMProvider = {
+                name: endpoint.config.name || 'unknown',
+                baseUrl: endpoint.config.baseUrl || `https://${transformer.domain}`,
+                apiKey: endpoint.config.apiKey || '',
+                model: endpoint.config.model || '',
+              }
+
+              // Validate that we have proper credentials for the transformer
+              if (!provider.baseUrl || !provider.apiKey) {
+                throw new Error(`Transformer-enabled endpoint "${endpoint.config.name}" requires both baseUrl and apiKey for the external API`)
+              }
+
+              // Step 1: Normalize request (Claude → Intermediate format with config)
+              if (!transformer.normalizeRequest) {
+                throw new Error(`Transformer ${transformerName} is missing normalizeRequest method`)
+              }
+              const normalizeResult = await transformer.normalizeRequest(requestData, provider)
+
+              // Step 2: Format request (Intermediate → Provider-specific format)
+              let finalRequest = normalizeResult.body
+              if (transformer.formatRequest) {
+                finalRequest = await transformer.formatRequest(normalizeResult.body)
+                displayVerbose(`Request formatted by ${transformer.domain || 'transformer'}`, this.verbose)
+
+                if (this.debug) {
+                  fileLogger.logTransform('FORMAT_REQUEST', transformerName, normalizeResult.body, finalRequest)
+                }
+              }
+              else {
+                displayVerbose(`Request normalized by ${transformer.domain || 'transformer'}`, this.verbose)
+
+                if (this.debug) {
+                  fileLogger.logTransform('NORMALIZE_REQUEST', transformerName, requestData, finalRequest)
+                }
+              }
+
+              // Cache the stringified request
+              const requestBody = JSON.stringify(finalRequest)
+
+              // Log the final transformed request body to file logger
+              if (this.debug) {
+                fileLogger.info('TRANSFORM_COMPLETE', 'Request transformation completed', {
+                  transformerName,
+                  originalModel: requestData.model,
+                  targetProvider: provider.name,
+                  bodySize: requestBody.length,
+                  body: finalRequest,
+                })
+              }
+
+              const targetUrl = normalizeResult.config.url
+              const headers = {
+                ...normalizeResult.config.headers,
+                'Content-Length': Buffer.byteLength(requestBody).toString(),
+                'User-Agent': req.headers['user-agent'] || 'start-claude-proxy',
+              }
+
+              if (this.debug) {
+                fileLogger.info('OUTBOUND_REQUEST', 'Sending transformed request to external API', {
+                  transformerName,
+                  targetProvider: provider.name,
+                  originalUrl: req.url,
+                  transformerUrl: targetUrl.toString(),
+                  method: req.method || 'POST',
+                  headers,
+                  body: finalRequest,
+                })
+              }
+
+              const isHttps = targetUrl.protocol === 'https:'
+              const httpModule = isHttps ? https : http
+
+              const options = {
+                method: req.method || 'POST',
+                headers,
+                timeout: 30000,
+                agent: this.getAgent(isHttps),
+              }
+
+              const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
+                // Log proxy response if debug is enabled
+                if (this.debug) {
+                  fileLogger.info('TRANSFORM_RESPONSE', 'Received response from external API via transformer', {
+                    statusCode: proxyRes.statusCode || 0,
+                    statusMessage: proxyRes.statusMessage || 'Unknown',
+                    transformerName,
+                    targetProvider: provider.name,
+                    targetUrl: targetUrl.toString(),
+                    headers: proxyRes.headers,
+                  })
+                }
+
+                // Prepare initial response headers (but don't send yet)
+                const initialResponseHeaders = { ...proxyRes.headers }
+                delete initialResponseHeaders.connection
+                delete initialResponseHeaders['transfer-encoding']
+
+                // Add CORS headers
+                initialResponseHeaders['Access-Control-Allow-Origin'] = '*'
+                initialResponseHeaders['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+                initialResponseHeaders['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, x-api-key'
+
+                // Intercept response body for transformation and logging
+                let rawResponseBody = ''
+                const passThrough = new PassThrough()
+
+                // Collect response data
+                passThrough.on('data', (chunk) => {
+                  rawResponseBody += chunk.toString()
+                })
+
+                passThrough.on('end', () => {
+                  void (async () => {
+                    try {
+                      // Log raw response if debug is enabled
+                      if (this.debug) {
+                        fileLogger.info('EXTERNAL_API_RESPONSE', 'Raw response from external API', {
+                          transformerName,
+                          targetProvider: provider.name,
+                          statusCode: proxyRes.statusCode || 0,
+                          body: rawResponseBody,
+                        })
+                      }
+
+                      let finalResponseBody = rawResponseBody
+                      let finalResponseHeaders = { ...initialResponseHeaders }
+
+                      // Apply formatResponse transformation if available
+                      if (transformer.formatResponse) {
+                        try {
+                          // Create a Response object from the raw response for transformation
+                          const responseForTransformation = new Response(rawResponseBody, {
+                            status: proxyRes.statusCode || 200,
+                            statusText: proxyRes.statusMessage || 'OK',
+                            headers: proxyRes.headers as HeadersInit,
+                          })
+
+                          // Apply the transformer's formatResponse method
+                          const transformedResponse = await transformer.formatResponse(responseForTransformation)
+
+                          // Extract the transformed body and headers
+                          finalResponseBody = await transformedResponse.text()
+
+                          // Update headers from transformed response
+                          const transformedHeaders: Record<string, string> = {}
+                          transformedResponse.headers.forEach((value, key) => {
+                            transformedHeaders[key] = value
+                          })
+                          finalResponseHeaders = { ...finalResponseHeaders, ...transformedHeaders }
+
+                          // Log transformation if debug is enabled
+                          if (this.debug) {
+                            fileLogger.info('TRANSFORM_RESPONSE_OUTPUT', 'Response transformed by formatResponse', {
+                              transformerName,
+                              statusCode: proxyRes.statusCode || 0,
+                              originalBodySize: rawResponseBody.length,
+                              transformedBodySize: finalResponseBody.length,
+                              originalBody: rawResponseBody,
+                              transformedBody: finalResponseBody,
+                            })
+                          }
+                        }
+                        catch (transformError) {
+                          // Log transformation error if debug is enabled
+                          if (this.debug) {
+                            fileLogger.error('TRANSFORM_RESPONSE_ERROR', 'Failed to transform response with formatResponse', {
+                              transformerName,
+                              statusCode: proxyRes.statusCode || 0,
+                              error: transformError instanceof Error ? transformError.message : 'Unknown error',
+                              originalBody: rawResponseBody,
+                            })
+                          }
+                          // Continue with original response on transformation error
+                        }
+                      }
+                      else if (this.debug) {
+                        // Log that no formatResponse transformation is available (debug only)
+                        fileLogger.info('TRANSFORM_RESPONSE_SKIPPED', 'No formatResponse method available', {
+                          transformerName,
+                          hasFormatResponse: false,
+                          originalBodySize: rawResponseBody.length,
+                        })
+                      }
+
+                      // Apply universal response formatting after transformer formatResponse
+                      const formattedFinalResponseBody = await this.formatUniversalResponse(
+                        finalResponseBody,
+                        proxyRes.statusCode || 200,
+                        finalResponseHeaders,
+                        res,
+                      )
+
+                      // For streaming responses, formatUniversalResponse handles everything
+                      if (formattedFinalResponseBody === null) {
+                        // Response already sent via SSE
+                        return
+                      }
+
+                      // Now send headers with final transformed headers
+                      if (!res.headersSent) {
+                        res.writeHead(proxyRes.statusCode || 200, finalResponseHeaders)
+                      }
+
+                      // Send the final response (transformed or original) to client
+                      res.end(formattedFinalResponseBody)
+                    }
+                    catch (error) {
+                      // If anything goes wrong, send the original response with universal formatting
+                      if (this.debug) {
+                        fileLogger.error('RESPONSE_PROCESSING_ERROR', 'Error processing response', {
+                          transformerName,
+                          error: error instanceof Error ? error.message : 'Unknown error',
+                        })
+                      }
+
+                      // Apply universal response formatting to the fallback response too
+                      const formattedFallbackResponse = await this.formatUniversalResponse(
+                        rawResponseBody,
+                        proxyRes.statusCode || 200,
+                        initialResponseHeaders,
+                        res,
+                      )
+
+                      // Send fallback headers if not already sent
+                      if (!res.headersSent) {
+                        res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
+                      }
+
+                      res.end(formattedFallbackResponse)
+                    }
+                  })()
+                })
+
+                // Pipe the response through our processing stream (but don't pipe to res yet)
+                proxyRes.pipe(passThrough)
+
+                // Mark endpoint as healthy on successful response
+                if (proxyRes.statusCode && proxyRes.statusCode < 500) {
+                  this.markEndpointHealthy(endpoint)
+                }
+                else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
+                  this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
+                }
+              })
+
+              proxyReq.on('error', (error) => {
+                this.markEndpointUnhealthy(endpoint, error.message)
+
+                // Log proxy error if debug is enabled
+                if (this.debug) {
+                  fileLogger.error('TRANSFORM_REQUEST_FAILED', `External API request failed via transformer`, {
+                    transformerName,
+                    targetProvider: provider.name,
+                    targetUrl: targetUrl.toString(),
+                    errorMessage: error.message,
+                    endpointName: endpoint.config.name,
+                  })
+                }
+
+                if (!res.headersSent) {
+                  const errorResponse = {
+                    error: {
+                      message: `Transformer proxy request failed: ${error.message}`,
+                      type: 'proxy_error',
+                    },
+                  }
+
+                  // Log detailed proxy error response
+                  if (this.debug) {
+                    fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 502 error response due to transformer request failure', {
+                      statusCode: 502,
+                      errorType: 'proxy_error',
+                      transformerName,
+                      targetProvider: provider.name,
+                      targetUrl: targetUrl.toString(),
+                      originalError: error.message,
+                      endpointName: endpoint.config.name,
+                      responseBody: errorResponse,
+                    })
+                  }
+
+                  res.writeHead(502, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify(errorResponse))
+                }
+              })
+
+              proxyReq.on('timeout', () => {
+                this.markEndpointUnhealthy(endpoint, 'Request timeout')
+
+                // Log timeout error
+                if (this.debug) {
+                  fileLogger.error('TRANSFORM_REQUEST_TIMEOUT', 'Transformer request timed out', {
+                    transformerName,
+                    targetProvider: provider.name,
+                    targetUrl: targetUrl.toString(),
+                    endpointName: endpoint.config.name,
+                    timeoutMs: 30000,
+                  })
+                }
+
+                proxyReq.destroy()
+
+                // Send timeout error response if headers haven't been sent
+                if (!res.headersSent) {
+                  const errorResponse = {
+                    error: {
+                      message: 'Request timeout',
+                      type: 'timeout_error',
+                    },
+                  }
+
+                  if (this.debug) {
+                    fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 504 error response due to timeout', {
+                      statusCode: 504,
+                      errorType: 'timeout_error',
+                      transformerName,
+                      targetProvider: provider.name,
+                      responseBody: errorResponse,
+                    })
+                  }
+
+                  res.writeHead(504, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify(errorResponse))
+                }
+              })
+
+              // Send the transformed request body
+              proxyReq.write(requestBody)
+              proxyReq.end()
+              return
+            }
+          }
+
+          // Regular proxy request (no transformation)
+          // Check if this endpoint has API credentials for regular requests
+          if (!endpoint.config.baseUrl || !endpoint.config.apiKey) {
+            displayVerbose(`Endpoint ${endpoint.config.name} has no API credentials, skipping`, this.verbose)
+            this.markEndpointUnhealthy(endpoint, 'Missing API credentials')
+
+            // Try next endpoint in rotation
+            const nextEndpoint = this.getNextHealthyEndpoint()
+            if (nextEndpoint && nextEndpoint !== endpoint) {
+              displayVerbose(`Retrying with next endpoint: ${nextEndpoint.config.name}`, this.verbose)
+              void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, nextEndpoint)
+              return
+            }
+
+            // No healthy endpoints available
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              error: {
+                message: 'No endpoints with API credentials available',
+                type: 'service_unavailable',
+              },
+            }))
+            return
+          }
+
+          // Construct target URL for non-transformer endpoints
+          const targetUrl = new URL(req.url || '/', endpoint.config.baseUrl)
 
           // Prepare headers for the upstream request
           const headers = { ...req.headers }
@@ -354,25 +873,83 @@ export class ProxyServer {
           delete headers['transfer-encoding']
           delete headers.upgrade
 
+          const isHttps = targetUrl.protocol === 'https:'
+          const httpModule = isHttps ? https : http
+
           const options = {
             method: req.method,
             headers,
             timeout: 30000, // 30 second timeout
+            agent: this.getAgent(isHttps),
           }
 
-          const isHttps = targetUrl.protocol === 'https:'
-          const httpModule = isHttps ? https : http
-
           const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
-          // Forward status and headers
-            const responseHeaders = { ...proxyRes.headers }
-            delete responseHeaders.connection
-            delete responseHeaders['transfer-encoding']
+            // Log proxy response if debug is enabled
+            if (this.debug) {
+              fileLogger.info('REGULAR_RESPONSE', 'Received response from external API (direct proxy)', {
+                statusCode: proxyRes.statusCode || 0,
+                statusMessage: proxyRes.statusMessage || 'Unknown',
+                endpointName: endpoint.config.name,
+                targetUrl: targetUrl.toString(),
+                headers: proxyRes.headers,
+              })
+            }
 
-            res.writeHead(proxyRes.statusCode || 200, responseHeaders)
+            // Prepare response headers (but don't send yet)
+            const initialResponseHeaders = { ...proxyRes.headers }
+            delete initialResponseHeaders.connection
+            delete initialResponseHeaders['transfer-encoding']
 
-            // Forward response body
-            proxyRes.pipe(res)
+            // Don't send headers yet - wait for universal formatting to complete
+
+            // Intercept response body for universal formatting and optional logging
+            let rawResponseBody = ''
+            const passThrough = new PassThrough()
+
+            // Intercept data chunks
+            passThrough.on('data', (chunk) => {
+              rawResponseBody += chunk.toString()
+            })
+
+            passThrough.on('end', () => {
+              void (async () => {
+                // Apply universal response formatting
+                const formattedResponseBody = await this.formatUniversalResponse(
+                  rawResponseBody,
+                  proxyRes.statusCode || 200,
+                  initialResponseHeaders,
+                  res,
+                )
+
+                // For streaming responses, formatUniversalResponse handles everything
+                if (formattedResponseBody === null) {
+                // Response already sent via SSE
+                  return
+                }
+
+                // Log the raw response body from external API if debug enabled
+                if (this.debug) {
+                  fileLogger.info('REGULAR_API_RESPONSE', 'Raw response from external API (direct proxy)', {
+                    endpointName: endpoint.config.name,
+                    targetUrl: targetUrl.toString(),
+                    statusCode: proxyRes.statusCode || 0,
+                    body: rawResponseBody,
+                    formattedBody: formattedResponseBody,
+                  })
+                }
+
+                // Send headers with final formatted headers
+                if (!res.headersSent) {
+                  res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
+                }
+
+                // Send formatted response
+                res.end(formattedResponseBody)
+              })()
+            })
+
+            // Pipe the response through our processing stream
+            proxyRes.pipe(passThrough)
 
             // Mark endpoint as healthy on successful response
             if (proxyRes.statusCode && proxyRes.statusCode < 500) {
@@ -385,6 +962,16 @@ export class ProxyServer {
 
           proxyReq.on('error', (error) => {
             this.markEndpointUnhealthy(endpoint, error.message)
+
+            // Log proxy error if debug is enabled
+            if (this.debug) {
+              fileLogger.error('REGULAR_REQUEST_FAILED', `Direct proxy request failed`, {
+                targetUrl: targetUrl.toString(),
+                endpointName: endpoint.config.name,
+                errorMessage: error.message,
+                method: req.method || 'GET',
+              })
+            }
 
             // For retry, we need to create a new request instead of reusing the consumed one
             if (!res.headersSent) {
@@ -408,7 +995,41 @@ export class ProxyServer {
 
           proxyReq.on('timeout', () => {
             this.markEndpointUnhealthy(endpoint, 'Request timeout')
+
+            // Log timeout error
+            if (this.debug) {
+              fileLogger.error('REGULAR_REQUEST_TIMEOUT', 'Regular proxy request timed out', {
+                targetUrl: targetUrl.toString(),
+                endpointName: endpoint.config.name,
+                timeoutMs: 30000,
+                method: req.method || 'GET',
+              })
+            }
+
             proxyReq.destroy()
+
+            // Send timeout error response if headers haven't been sent
+            if (!res.headersSent) {
+              const errorResponse = {
+                error: {
+                  message: 'Request timeout',
+                  type: 'timeout_error',
+                },
+              }
+
+              if (this.debug) {
+                fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 504 error response due to timeout', {
+                  statusCode: 504,
+                  errorType: 'timeout_error',
+                  endpointName: endpoint.config.name,
+                  targetUrl: targetUrl.toString(),
+                  responseBody: errorResponse,
+                })
+              }
+
+              res.writeHead(504, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify(errorResponse))
+            }
           })
 
           // Send the request body
@@ -421,14 +1042,40 @@ export class ProxyServer {
         catch (error) {
           this.markEndpointUnhealthy(endpoint, error instanceof Error ? error.message : 'Unknown error')
 
+          // Log detailed error information
+          if (this.debug) {
+            fileLogger.error('PROXY_REQUEST_EXCEPTION', 'Exception caught during proxy request processing', {
+              errorMessage: error instanceof Error ? error.message : 'Unknown error',
+              errorStack: error instanceof Error ? error.stack : undefined,
+              endpointName: endpoint.config.name,
+              endpointUrl: endpoint.config.baseUrl,
+              method: req.method || 'UNKNOWN',
+              url: req.url || '/',
+              hasTransformer: this.enableTransform && 'transformerEnabled' in endpoint.config && endpoint.config.transformerEnabled,
+            })
+          }
+
           if (!res.headersSent) {
-            res.writeHead(500, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({
+            const errorResponse = {
               error: {
                 message: 'Proxy request failed',
                 type: 'proxy_error',
               },
-            }))
+            }
+
+            // Log detailed proxy error response
+            if (this.debug) {
+              fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 500 error response due to proxy request exception', {
+                statusCode: 500,
+                errorType: 'proxy_error',
+                endpointName: endpoint.config.name,
+                originalError: error instanceof Error ? error.message : 'Unknown error',
+                responseBody: errorResponse,
+              })
+            }
+
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify(errorResponse))
           }
         }
       })()
@@ -461,25 +1108,83 @@ export class ProxyServer {
     delete headers['transfer-encoding']
     delete headers.upgrade
 
+    const isHttps = targetUrl.protocol === 'https:'
+    const httpModule = isHttps ? https : http
+
     const options = {
       method,
       headers,
       timeout: 30000, // 30 second timeout
+      agent: this.getAgent(isHttps),
     }
 
-    const isHttps = targetUrl.protocol === 'https:'
-    const httpModule = isHttps ? https : http
-
     const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
-      // Forward status and headers
-      const responseHeaders = { ...proxyRes.headers }
-      delete responseHeaders.connection
-      delete responseHeaders['transfer-encoding']
+      // Log retry proxy response if debug is enabled
+      if (this.debug) {
+        fileLogger.info('RETRY_RESPONSE', 'Received response from retry attempt', {
+          statusCode: proxyRes.statusCode || 0,
+          statusMessage: proxyRes.statusMessage || 'Unknown',
+          endpointName: endpoint.config.name,
+          targetUrl: targetUrl.toString(),
+          headers: proxyRes.headers,
+        })
+      }
 
-      res.writeHead(proxyRes.statusCode || 200, responseHeaders)
+      // Prepare response headers (but don't send yet)
+      const initialResponseHeaders = { ...proxyRes.headers }
+      delete initialResponseHeaders.connection
+      delete initialResponseHeaders['transfer-encoding']
 
-      // Forward response body
-      proxyRes.pipe(res)
+      // Don't send headers yet - wait for universal formatting to complete
+
+      // Intercept response body for universal formatting and optional logging
+      let rawResponseBody = ''
+      const passThrough = new PassThrough()
+
+      // Intercept data chunks
+      passThrough.on('data', (chunk) => {
+        rawResponseBody += chunk.toString()
+      })
+
+      passThrough.on('end', () => {
+        void (async () => {
+          // Apply universal response formatting
+          const formattedResponseBody = await this.formatUniversalResponse(
+            rawResponseBody,
+            proxyRes.statusCode || 200,
+            initialResponseHeaders,
+            res,
+          )
+
+          // For streaming responses, formatUniversalResponse handles everything
+          if (formattedResponseBody === null) {
+          // Response already sent via SSE
+            return
+          }
+
+          // Log the raw response body from external API if debug enabled
+          if (this.debug) {
+            fileLogger.info('RETRY_API_RESPONSE', 'Raw response from retry attempt', {
+              endpointName: endpoint.config.name,
+              targetUrl: targetUrl.toString(),
+              statusCode: proxyRes.statusCode || 0,
+              body: rawResponseBody,
+              formattedBody: formattedResponseBody,
+            })
+          }
+
+          // Send headers with final formatted headers
+          if (!res.headersSent) {
+            res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
+          }
+
+          // Send formatted response
+          res.end(formattedResponseBody)
+        })()
+      })
+
+      // Pipe the response through our processing stream
+      proxyRes.pipe(passThrough)
 
       // Mark endpoint as healthy on successful response
       if (proxyRes.statusCode && proxyRes.statusCode < 500) {
@@ -492,6 +1197,16 @@ export class ProxyServer {
 
     proxyReq.on('error', (error) => {
       this.markEndpointUnhealthy(endpoint, error.message)
+
+      // Log retry proxy error if debug is enabled
+      if (this.debug) {
+        fileLogger.error('RETRY_REQUEST_FAILED', `Retry attempt failed`, {
+          targetUrl: targetUrl.toString(),
+          endpointName: endpoint.config.name,
+          errorMessage: error.message,
+          method,
+        })
+      }
 
       // No more retries - send error response
       if (!res.headersSent) {
@@ -507,7 +1222,41 @@ export class ProxyServer {
 
     proxyReq.on('timeout', () => {
       this.markEndpointUnhealthy(endpoint, 'Request timeout')
+
+      // Log timeout error
+      if (this.debug) {
+        fileLogger.error('RETRY_REQUEST_TIMEOUT', 'Retry request timed out', {
+          targetUrl: targetUrl.toString(),
+          endpointName: endpoint.config.name,
+          timeoutMs: 30000,
+          method,
+        })
+      }
+
       proxyReq.destroy()
+
+      // Send timeout error response if headers haven't been sent
+      if (!res.headersSent) {
+        const errorResponse = {
+          error: {
+            message: 'Request timeout',
+            type: 'timeout_error',
+          },
+        }
+
+        if (this.debug) {
+          fileLogger.error('PROXY_ERROR_RESPONSE', 'Sending 504 error response due to retry timeout', {
+            statusCode: 504,
+            errorType: 'timeout_error',
+            endpointName: endpoint.config.name,
+            targetUrl: targetUrl.toString(),
+            responseBody: errorResponse,
+          })
+        }
+
+        res.writeHead(504, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify(errorResponse))
+      }
     })
 
     // Send the request body
@@ -529,21 +1278,39 @@ export class ProxyServer {
     endpoint.failureCount++
     endpoint.lastError = error
     endpoint.lastCheck = Date.now()
+
+    // If health checks are disabled, ban the endpoint for a duration
+    if (!this.healthCheckEnabled) {
+      endpoint.bannedUntil = Date.now() + (this.failedEndpointBanDurationSeconds * 1000)
+      displayVerbose(`Endpoint ${endpoint.config.name} banned until ${new Date(endpoint.bannedUntil).toLocaleTimeString()}`, this.verbose)
+    }
   }
 
   private startHealthChecks(): void {
-    // Check unhealthy endpoints every 30 seconds
+    // Only start if health checks are enabled
+    if (!this.healthCheckEnabled) {
+      displayVerbose('Health checks disabled', this.verbose)
+      return
+    }
+
+    // Check unhealthy endpoints at configured interval
     this.healthCheckInterval = setInterval(() => {
       void this.performHealthChecks()
-    }, 30000)
+    }, this.healthCheckIntervalMs)
+
+    displayVerbose(`Health checks started with ${this.healthCheckIntervalMs}ms interval`, this.verbose)
   }
 
   private async performHealthChecks(): Promise<void> {
+    if (!this.healthCheckEnabled) {
+      return
+    }
+
     const unhealthyEndpoints = this.endpoints.filter(e => !e.isHealthy)
 
     for (const endpoint of unhealthyEndpoints) {
-      // Only check if it's been at least 30 seconds since last check
-      if (Date.now() - endpoint.lastCheck < 30000) {
+      // Only check if it's been at least the configured interval since last check
+      if (Date.now() - endpoint.lastCheck < this.healthCheckIntervalMs) {
         continue
       }
 
@@ -570,6 +1337,9 @@ export class ProxyServer {
         }],
       })
 
+      const isHttps = healthUrl.protocol === 'https:'
+      const httpModule = isHttps ? https : http
+
       const options = {
         method: 'POST',
         headers: {
@@ -578,10 +1348,8 @@ export class ProxyServer {
           'Content-Length': Buffer.byteLength(healthCheckBody),
         },
         timeout: 10000,
+        agent: this.getAgent(isHttps),
       }
-
-      const isHttps = healthUrl.protocol === 'https:'
-      const httpModule = isHttps ? https : http
 
       const req = httpModule.request(healthUrl, options, (res) => {
         if (res.statusCode && res.statusCode < 500) {
@@ -653,6 +1421,12 @@ export class ProxyServer {
       return
     }
 
+    // Skip initial health checks if health checking is disabled
+    if (!this.healthCheckEnabled) {
+      displaySuccess('🔧 Proxy ready - health checks disabled, using ban system for failures')
+      return
+    }
+
     let hasShownQuietMessage = false
 
     for (let i = 0; i < this.endpoints.length; i++) {
@@ -689,7 +1463,7 @@ export class ProxyServer {
 
         // If first endpoint failed, try the next one
         if (i === 0) {
-          displayWarning(`First endpoint failed, trying alternatives...`)
+          displayWarning('First endpoint failed, trying alternatives...')
           continue
         }
       }
@@ -718,6 +1492,9 @@ export class ProxyServer {
         }],
       })
 
+      const isHttps = healthUrl.protocol === 'https:'
+      const httpModule = isHttps ? https : http
+
       const options = {
         method: 'POST',
         headers: {
@@ -726,10 +1503,8 @@ export class ProxyServer {
           'Content-Length': Buffer.byteLength(healthCheckBody),
         },
         timeout: 15000, // 15 second timeout for initial check
+        agent: this.getAgent(isHttps),
       }
-
-      const isHttps = healthUrl.protocol === 'https:'
-      const httpModule = isHttps ? https : http
 
       const req = httpModule.request(healthUrl, options, (res) => {
         if (res.statusCode && res.statusCode < 500) {
@@ -771,16 +1546,16 @@ export class ProxyServer {
     return this.transformerService.removeTransformer(name)
   }
 
-  listTransformers(): { name: string, hasEndpoint: boolean, endpoint?: string }[] {
-    const transformers: { name: string, hasEndpoint: boolean, endpoint?: string }[] = []
+  listTransformers(): { name: string, hasDomain: boolean, domain?: string }[] {
+    const transformers: { name: string, hasDomain: boolean, domain?: string }[] = []
     const entries = Array.from(this.transformerService.getAllTransformers().entries())
 
     for (const [name, transformer] of entries) {
       if (typeof transformer === 'object') {
         transformers.push({
           name,
-          hasEndpoint: !!transformer.endPoint,
-          endpoint: transformer.endPoint,
+          hasDomain: !!transformer.domain,
+          domain: transformer.domain,
         })
       }
     }

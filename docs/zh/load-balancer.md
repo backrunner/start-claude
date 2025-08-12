@@ -1,26 +1,45 @@
-# 负载均衡器指南
+# 负载均衡器和代理指南
 
-负载均衡器功能允许您在多个 Claude API 端点之间分发请求，以提高可靠性和性能。
+增强的代理服务器提供跨多个 Claude API 端点的负载均衡，具有智能健康监控、自动故障转移、转换器支持和可配置的系统设置。
 
 ## 概述
 
-负载均衡器：
+代理服务器：
 
 - **分发请求** - 使用轮询算法在多个健康端点之间分发请求
 - **健康监控** - 自动检测和处理不健康的端点
 - **故障转移支持** - 主端点失败时切换到备用端点
+- **转换器处理** - 支持不同 API 格式之间的转换
 - **优先级排序** - 遵循配置顺序进行端点优先级排序
 - **代理服务器** - 默认运行在 2333 端口
 
 ## 快速开始
 
 ```bash
-# 使用所有可用配置启动负载均衡器
+# 使用所有可用配置启动代理服务器
 start-claude --balance
 
-# 使用特定配置启动负载均衡器
+# 使用特定配置启动代理服务器
 start-claude --balance config1 config2 config3
+
+# 启动代理服务器但不显示详细输出（简化模式）
+start-claude config1
 ```
+
+## 新的行为变化
+
+### 负载均衡控制
+
+- **只有在通过 `--balance` 标志或配置设置明确请求时才启用负载均衡**
+- `--balance` 标志**启用负载均衡**并显示详细的端点信息和可用转换器
+- 没有 `--balance` 时，代理模式仅运行转换器支持（多个端点之间无负载均衡）
+- 如需要，可使用系统设置默认启用负载均衡
+
+### 转换器要求
+
+- **启用转换器的配置现在需要 API 凭据**（`baseUrl` 和 `apiKey`）
+- 这确保转换器具有将请求转发到外部 API 的必要凭据
+- 启用 `--balance` 时，转换器配置参与负载均衡
 
 ## 工作原理
 
@@ -277,7 +296,7 @@ start-claude --balance --verbose
 ```dockerfile
 # Dockerfile
 FROM node:18-alpine
-RUN npm install -g start-claude
+RUN pnpm add -g start-claude
 COPY config.json /root/.start-claude/config.json
 EXPOSE 2333
 CMD ["start-claude", "--balance"]

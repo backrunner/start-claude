@@ -22,6 +22,20 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*", "tests/**/*", "rollup.config.ts", "vitest.config.ts"],
-  "exclude": ["node_modules", ".history", "bin"]
+  "include": [
+    "src/cli/**/*",
+    "src/commands/**/*",
+    "src/config/**/*",
+    "src/core/**/*",
+    "src/services/**/*",
+    "src/storage/**/*",
+    "src/types/**/*",
+    "src/transformers/**/*",
+    "src/utils/**/*",
+    "tests/**/*",
+    "scripts/**/*",
+    "rollup.config.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": ["node_modules", "src/manager/**/*", ".history", "bin"]
 }

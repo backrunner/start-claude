@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '@/core/types'
+import type { ClaudeConfig } from '@/config/types'
 import { spawn } from 'node:child_process'
 import { accessSync } from 'node:fs'
 import process from 'node:process'
@@ -52,7 +52,10 @@ describe('claude', () => {
 
   beforeEach(async () => {
     // Reset process.env
-    process.env = {}
+    process.env = {
+      ...process.env,
+      NODE_ENV: 'test',
+    }
 
     mockSpawn.mockReturnValue(mockClaudeProcess as any)
     mockAccessSync.mockImplementation(() => undefined) // File exists

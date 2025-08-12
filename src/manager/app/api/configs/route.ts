@@ -1,0 +1,197 @@
+import type { NextRequest } from 'next/server'
+import type { ClaudeConfig } from '@/config/types'
+import { NextResponse } from 'next/server'
+import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
+import { ConfigManager } from '../../../../config/manager'
+
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+const configManager = new ConfigManager()
+
+function getConfigs(): ClaudeConfig[] {
+  try {
+    const configFile = configManager.load()
+    return configFile.configs || []
+  }
+  catch (error) {
+    console.error('Error reading configs:', error)
+    return []
+  }
+}
+
+function getSettings(): any {
+  try {
+    const configFile = configManager.load()
+    return configFile.settings || { overrideClaudeCommand: false }
+  }
+  catch (error) {
+    console.error('Error reading settings:', error)
+    return { overrideClaudeCommand: false }
+  }
+}
+
+function saveConfigs(configs: ClaudeConfig[], settings?: any): void {
+  try {
+    const configFile = configManager.load()
+    const updatedConfigFile = {
+      ...configFile,
+      configs,
+      settings: settings || configFile.settings,
+    }
+
+    configManager.save(updatedConfigFile)
+  }
+  catch (error) {
+    console.error('Error saving configs:', error)
+    throw error
+  }
+}
+
+export async function GET(): Promise<NextResponse> {
+  try {
+    const configs = getConfigs()
+    const settings = getSettings()
+    return NextResponse.json({ configs, settings })
+  }
+  catch (error) {
+    console.error('GET /api/configs error:', error)
+    return NextResponse.json({ error: 'Failed to fetch configs' }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  try {
+    const body = await request.json()
+
+    // Validate the request body
+    const validationResult = configCreateRequestSchema.safeParse(body)
+    if (!validationResult.success) {
+      return NextResponse.json({
+        error: 'Validation failed',
+        details: validationResult.error.issues,
+      }, { status: 400 })
+    }
+
+    const { config } = validationResult.data
+
+    if (!config.name) {
+      return NextResponse.json({ error: 'Configuration name is required' }, { status: 400 })
+    }
+
+    const configs = getConfigs()
+    const existingIndex = configs.findIndex(c => c.name === config.name)
+
+    if (existingIndex >= 0) {
+      // Validate the updated config before saving
+      const updatedConfigResult = claudeConfigSchema.safeParse({
+        ...configs[existingIndex],
+        ...config,
+      })
+
+      if (!updatedConfigResult.success) {
+        return NextResponse.json({
+          error: 'Invalid configuration data',
+          details: updatedConfigResult.error.issues,
+        }, { status: 400 })
+      }
+
+      configs[existingIndex] = updatedConfigResult.data
+    }
+    else {
+      // Calculate the next order value as max existing order + 1
+      const maxOrder = configs.length === 0 ? 0 : Math.max(...configs.map(c => c.order ?? 0))
+
+      // Validate new config
+      const newConfigResult = claudeConfigSchema.safeParse({
+        ...config,
+        order: config.order ?? (maxOrder + 1),
+        enabled: config.enabled ?? true,
+      })
+
+      if (!newConfigResult.success) {
+        return NextResponse.json({
+          error: 'Invalid configuration data',
+          details: newConfigResult.error.issues,
+        }, { status: 400 })
+      }
+
+      configs.push(newConfigResult.data)
+    }
+
+    saveConfigs(configs)
+    return NextResponse.json({ success: true, configs })
+  }
+  catch (error) {
+    console.error('POST /api/configs error:', error)
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
+    }
+    return NextResponse.json({ error: 'Failed to save config' }, { status: 500 })
+  }
+}
+
+export async function PUT(request: NextRequest): Promise<NextResponse> {
+  try {
+    const body = await request.json()
+
+    // Validate the request body
+    const validationResult = configUpdateRequestSchema.safeParse(body)
+    if (!validationResult.success) {
+      return NextResponse.json({
+        error: 'Validation failed',
+        details: validationResult.error.issues,
+      }, { status: 400 })
+    }
+
+    const { configs } = validationResult.data
+
+    // Validate each config individually
+    const validatedConfigs: ClaudeConfig[] = []
+    for (const config of configs) {
+      const configValidation = claudeConfigSchema.safeParse(config)
+      if (!configValidation.success) {
+        return NextResponse.json({
+          error: `Invalid configuration "${config.name}": ${configValidation.error.issues.map(i => i.message).join(', ')}`,
+        }, { status: 400 })
+      }
+      validatedConfigs.push(configValidation.data)
+    }
+
+    saveConfigs(validatedConfigs)
+    return NextResponse.json({ success: true, configs: validatedConfigs })
+  }
+  catch (error) {
+    console.error('PUT /api/configs error:', error)
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
+    }
+    return NextResponse.json({ error: 'Failed to update configs' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest): Promise<NextResponse> {
+  try {
+    const { searchParams } = new URL(request.url)
+    const name = searchParams.get('name')
+
+    if (!name) {
+      return NextResponse.json({ error: 'Config name is required' }, { status: 400 })
+    }
+
+    const configs = getConfigs()
+    const filteredConfigs = configs.filter(c => c.name !== name)
+
+    if (filteredConfigs.length === configs.length) {
+      return NextResponse.json({ error: 'Config not found' }, { status: 404 })
+    }
+
+    saveConfigs(filteredConfigs)
+    return NextResponse.json({ success: true, configs: filteredConfigs })
+  }
+  catch (error) {
+    console.error('DELETE /api/configs error:', error)
+    return NextResponse.json({ error: 'Failed to delete config' }, { status: 500 })
+  }
+}

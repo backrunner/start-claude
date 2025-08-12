@@ -12,7 +12,11 @@ const external = [
   'node:process',
   'node:child_process',
   'node:util',
+  'node:http',
+  'node:https',
   '@aws-sdk/client-s3',
+  'next/server',
+  'next',
 ]
 
 const extensions = ['.js', '.ts']
@@ -38,11 +42,6 @@ const config = {
   plugins: [
     typescript({
       tsconfig: './tsconfig.build.json',
-      exclude: [
-        'src/**/*.test.ts',
-        'tests/**',
-        'node_modules/**',
-      ],
     }),
     nodeResolve({
       extensions,

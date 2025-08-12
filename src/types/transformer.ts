@@ -1,4 +1,4 @@
-import type { LLMProvider, UnifiedChatRequest } from './llm'
+import type { LLMChatRequest, LLMProvider } from './llm'
 
 export interface TransformerOptions {
   [key: string]: any
@@ -16,19 +16,23 @@ export interface TransformerContext {
 }
 
 export interface Transformer {
-  transformRequestIn?: (
-    request: UnifiedChatRequest,
+  // Convert LLMChatRequest to intermediate format (Claude → Unified)
+  normalizeRequest?: (
+    request: LLMChatRequest,
     provider: LLMProvider
   ) => Promise<Record<string, any>>
-  transformResponseIn?: (response: Response, context?: TransformerContext) => Promise<Response>
 
-  // 将请求格式转换为通用的格式
-  transformRequestOut?: (request: any) => Promise<UnifiedChatRequest>
-  // 将相应格式转换为通用的格式
-  transformResponseOut?: (response: Response) => Promise<Response>
+  // Convert intermediate format to provider-specific format (Unified → Provider)
+  formatRequest?: (request: Record<string, any>) => Promise<Record<string, any>>
 
-  endPoint?: string
-  name?: string
+  // Convert provider response back to unified format
+  normalizeResponse?: (response: Response, context?: TransformerContext) => Promise<Response>
+
+  // Additional response transformation for the provider
+  formatResponse?: (response: Response) => Promise<Response>
+
+  domain?: string // Domain this transformer should handle (e.g., 'api.openai.com')
+  isDefault?: boolean // Whether this transformer is the default fallback
   auth?: (request: any, provider: LLMProvider) => Promise<any>
 }
 
@@ -44,6 +48,7 @@ export interface ProxyMode {
   enableTransform?: boolean
   transformers?: string[]
   verbose?: boolean
+  debug?: boolean
 }
 
 export interface ProxyConfig {

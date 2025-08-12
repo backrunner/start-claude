@@ -1,56 +1,33 @@
 import type { ClaudeConfig, ConfigFile } from './types'
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-
-const CONFIG_DIR = path.join(os.homedir(), '.start-claude')
-const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
+import { ConfigFileManager } from './file-manager'
 
 export class ConfigManager {
-  private ensureConfigDir(): void {
-    if (!fs.existsSync(CONFIG_DIR)) {
-      fs.mkdirSync(CONFIG_DIR, { recursive: true })
-    }
+  private autoSyncCallback?: () => Promise<void>
+  private configFileManager: ConfigFileManager
+
+  constructor() {
+    // Auto-sync callback will be set by S3SyncManager when needed
+    this.configFileManager = ConfigFileManager.getInstance()
   }
 
-  private getDefaultConfigFile(): ConfigFile {
-    return {
-      configs: [],
-      settings: {
-        overrideClaudeCommand: false,
-      },
-    }
+  setAutoSyncCallback(callback: (() => Promise<void>) | null): void {
+    this.autoSyncCallback = callback || undefined
   }
 
   load(): ConfigFile {
-    this.ensureConfigDir()
-
-    if (!fs.existsSync(CONFIG_FILE)) {
-      const defaultConfig = this.getDefaultConfigFile()
-      this.save(defaultConfig)
-      return defaultConfig
-    }
-
-    try {
-      const content = fs.readFileSync(CONFIG_FILE, 'utf-8')
-      const config = JSON.parse(content) as ConfigFile
-
-      if (config.configs === undefined)
-        config.configs = []
-      if (config.settings === undefined)
-        config.settings = { overrideClaudeCommand: false }
-
-      return config
-    }
-    catch (error) {
-      console.error('Error loading config:', error)
-      return this.getDefaultConfigFile()
-    }
+    return this.configFileManager.load()
   }
 
   save(config: ConfigFile): void {
-    this.ensureConfigDir()
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2))
+    this.configFileManager.save(config)
+
+    // Trigger auto-sync if callback is set
+    if (this.autoSyncCallback) {
+      // Run async without blocking
+      this.autoSyncCallback().catch((error) => {
+        console.error('Auto-sync failed:', error)
+      })
+    }
   }
 
   addConfig(config: ClaudeConfig): void {

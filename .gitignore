@@ -159,3 +159,6 @@ $RECYCLE.BIN/
 temp
 bin
 .claude
+
+# Package manager lock files
+.pnpm-debug.log*

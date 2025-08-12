@@ -1,0 +1,7 @@
+packages:
+  - src/manager
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver

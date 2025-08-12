@@ -1,6 +1,6 @@
 import type { ConfigService } from '../services/config'
+
 import type { Transformer, TransformerConstructor } from '../types/transformer'
-import * as Module from 'node:module'
 import { displayVerbose } from '../utils/ui'
 
 interface TransformerConfig {
@@ -22,11 +22,11 @@ export class TransformerService {
 
   registerTransformer(name: string, transformer: Transformer): void {
     this.transformers.set(name, transformer)
+    const domainInfo = transformer.domain ? ` (domain: ${transformer.domain})` : ''
+    const defaultInfo = transformer.isDefault ? ' [DEFAULT]' : ''
+
     displayVerbose(
-      `register transformer: ${name}${transformer.endPoint
-        ? ` (endpoint: ${transformer.endPoint})`
-        : ' (no endpoint)'
-      }`,
+      `register transformer: ${name}${domainInfo}${defaultInfo}`,
       this.verbose,
     )
   }
@@ -39,28 +39,12 @@ export class TransformerService {
     return new Map(this.transformers)
   }
 
-  getTransformersWithEndpoint(): { name: string, transformer: Transformer }[] {
+  getTransformersWithDomain(): { name: string, transformer: Transformer }[] {
     const result: { name: string, transformer: Transformer }[] = []
     const entries = Array.from(this.transformers.entries())
 
     for (const [name, transformer] of entries) {
-      if (typeof transformer === 'object' && transformer.endPoint) {
-        result.push({ name, transformer })
-      }
-    }
-
-    return result
-  }
-
-  getTransformersWithoutEndpoint(): {
-    name: string
-    transformer: Transformer
-  }[] {
-    const result: { name: string, transformer: Transformer }[] = []
-    const entries = Array.from(this.transformers.entries())
-
-    for (const [name, transformer] of entries) {
-      if (typeof transformer === 'object' && !transformer.endPoint) {
+      if (typeof transformer === 'object' && transformer.domain) {
         result.push({ name, transformer })
       }
     }
@@ -81,30 +65,38 @@ export class TransformerService {
     options?: any
   }): Promise<boolean> {
     try {
-      // @ts-expect-error - Monkey patching module loader for dynamic transformer loading
-      const originalLoad = Module._load
-      // @ts-expect-error - Monkey patching module loader for dynamic transformer loading
-      Module._load = function (request: string, _parent: any, _isMain: boolean) {
-        if (request === 'claude-code-router') {
-          return {
-            displayVerbose: (msg: string) => displayVerbose(msg, true),
+      if (config.path) {
+        // Use require.cache manipulation instead of Module._load override
+        const originalRequire = module.constructor.prototype.require
+
+        // Temporarily override require for the specific module loading
+        module.constructor.prototype.require = function (id: string) {
+          if (id === 'claude-code-router') {
+            return {
+              displayVerbose: (msg: string) => displayVerbose(msg, true),
+            }
+          }
+          return originalRequire.call(this, id)
+        }
+
+        try {
+          // eslint-disable-next-line ts/no-require-imports
+          const module = require(require.resolve(config.path))
+          if (module) {
+            // eslint-disable-next-line new-cap
+            const instance = new module(config.options)
+            if (!instance.name) {
+              throw new Error(
+                `Transformer instance from ${config.path} does not have a name property.`,
+              )
+            }
+            this.registerTransformer(instance.name, instance)
+            return true
           }
         }
-        return originalLoad.call(Module, request, _parent, _isMain)
-      }
-      if (config.path) {
-        // eslint-disable-next-line ts/no-require-imports
-        const module = require(require.resolve(config.path))
-        if (module) {
-          // eslint-disable-next-line new-cap
-          const instance = new module(config.options)
-          if (!instance.name) {
-            throw new Error(
-              `Transformer instance from ${config.path} does not have a name property.`,
-            )
-          }
-          this.registerTransformer(instance.name, instance)
-          return true
+        finally {
+          // Always restore the original require
+          module.constructor.prototype.require = originalRequire
         }
       }
       return false
@@ -127,29 +119,22 @@ export class TransformerService {
 
   private async registerDefaultTransformersInternal(): Promise<void> {
     try {
-      // Default transformers can be registered here
-      // For now, we'll implement basic OpenAI-compatible transformers
-      this.registerTransformer('openai', {
-        name: 'openai',
-        endPoint: '/v1/chat/completions',
-        transformRequestOut: async (request: any) => {
-          // Transform OpenAI format to unified format
-          return {
-            model: request.model || 'gpt-3.5-turbo',
-            messages: request.messages || [],
-            max_tokens: request.max_tokens,
-            temperature: request.temperature,
-            top_p: request.top_p,
-            stream: request.stream,
-            tools: request.tools,
-            tool_choice: request.tool_choice,
-            stop_sequences: request.stop,
-          }
-        },
-        transformResponseOut: async (response: Response) => {
-          return response
-        },
-      })
+      // Register OpenAI as the default transformer (fallback)
+      const { OpenaiTransformer } = await import('../transformers/openai')
+      const openaiTransformer = new OpenaiTransformer()
+      this.registerTransformer('openai', openaiTransformer)
+
+      // Register OpenRouter transformer
+      const { OpenrouterTransformer } = await import('../transformers/openrouter')
+      const openrouterTransformer = new OpenrouterTransformer()
+      this.registerTransformer('openrouter', openrouterTransformer)
+
+      // Register Gemini transformer
+      const { GeminiTransformer } = await import('../transformers/gemini')
+      const geminiTransformer = new GeminiTransformer()
+      this.registerTransformer('gemini', geminiTransformer)
+
+      displayVerbose('Default transformers registered: OpenAI (default), OpenRouter, Gemini', this.verbose)
     }
     catch (error) {
       displayVerbose(`transformer register error: ${error instanceof Error ? error.message : String(error)}`, this.verbose)
@@ -165,25 +150,55 @@ export class TransformerService {
     }
   }
 
-  // Find transformer by endpoint
-  findTransformerByEndpoint(endpoint: string): Transformer | null {
-    const entries = Array.from(this.transformers.entries())
-    for (const [, transformer] of entries) {
-      if (typeof transformer === 'object' && transformer.endPoint === endpoint) {
-        return transformer
-      }
+  // Find transformer by endpoint domain from config baseUrl
+  findTransformerByDomain(baseUrl?: string): Transformer | null {
+    if (!baseUrl) {
+      return null
     }
-    return null
-  }
 
-  // Find transformer by request path
-  findTransformerByPath(path: string): Transformer | null {
-    const entries = Array.from(this.transformers.entries())
-    for (const [, transformer] of entries) {
-      if (typeof transformer === 'object' && transformer.endPoint && path.startsWith(transformer.endPoint)) {
-        return transformer
+    try {
+      const url = new URL(baseUrl)
+      const hostname = url.hostname
+      displayVerbose(`Looking for transformer for hostname: ${hostname}`, this.verbose)
+
+      const entries = Array.from(this.transformers.entries())
+
+      // First try to find exact domain match
+      for (const [name, transformer] of entries) {
+        if (typeof transformer === 'object' && transformer.domain) {
+          // Check exact match first
+          if (transformer.domain === hostname) {
+            displayVerbose(`Found transformer by exact domain match: ${name} for ${hostname}`, this.verbose)
+            return transformer
+          }
+
+          // Check if hostname contains the transformer domain (for subdomains)
+          if (hostname.includes(transformer.domain)) {
+            displayVerbose(`Found transformer by domain substring match: ${name} (${transformer.domain}) for ${hostname}`, this.verbose)
+            return transformer
+          }
+
+          // Check if transformer domain contains hostname (for cases like api.openrouter.ai vs openrouter.ai)
+          if (transformer.domain.includes(hostname.replace(/^api\./, ''))) {
+            displayVerbose(`Found transformer by root domain match: ${name} (${transformer.domain}) for ${hostname}`, this.verbose)
+            return transformer
+          }
+        }
       }
+
+      // If no domain match found, look for default transformer
+      for (const [name, transformer] of entries) {
+        if (typeof transformer === 'object' && transformer.isDefault === true) {
+          displayVerbose(`Using default transformer: ${name} for ${hostname}`, this.verbose)
+          return transformer
+        }
+      }
+
+      return null
     }
-    return null
+    catch {
+      displayVerbose(`Failed to parse baseUrl ${baseUrl} for transformer matching`, this.verbose)
+      return null
+    }
   }
 }

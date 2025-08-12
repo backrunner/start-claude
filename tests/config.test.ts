@@ -1,7 +1,6 @@
-import type { ClaudeConfig } from '@/core/types'
+import type { ClaudeConfig } from '@/config/types'
 import fs from 'node:fs'
 import os from 'node:os'
-import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the file system operations
@@ -10,28 +9,35 @@ vi.mock('node:os', () => ({
   default: {
     homedir: vi.fn().mockReturnValue('/home/user'),
   },
+  homedir: vi.fn().mockReturnValue('/home/user'),
+}))
+
+// Mock the UI functions
+vi.mock('@/utils/ui', () => ({
+  displayInfo: vi.fn(),
+  displaySuccess: vi.fn(),
+  displayWarning: vi.fn(),
 }))
 
 const mockFs = vi.mocked(fs)
-const mockOs = vi.mocked(os)
 
 describe('configManager', () => {
   let ConfigManager: any
   let configManager: any
-  let mockConfigDir: string
 
   beforeEach(async () => {
     const homeDir = '/home/user'
-    mockConfigDir = path.join(homeDir, '.start-claude')
 
-    mockOs.homedir.mockReturnValue(homeDir)
+    vi.mocked(os.homedir).mockReturnValue(homeDir)
     mockFs.existsSync.mockReturnValue(false)
     mockFs.mkdirSync.mockImplementation(() => undefined)
     mockFs.readFileSync.mockReturnValue('{}')
     mockFs.writeFileSync.mockImplementation(() => undefined)
+    mockFs.copyFileSync.mockImplementation(() => undefined)
+    mockFs.appendFileSync.mockImplementation(() => undefined)
 
     // Import ConfigManager after mocks are set up
-    const configModule = await import('@/core/config')
+    const configModule = await import('@/config/manager')
     ConfigManager = configModule.ConfigManager
     configManager = new ConfigManager()
   })
@@ -47,18 +53,19 @@ describe('configManager', () => {
       const config = configManager.load()
 
       expect(config).toEqual({
+        version: 1,
         configs: [],
         settings: {
           overrideClaudeCommand: false,
         },
       })
-      expect(mockFs.mkdirSync).toHaveBeenCalledWith(mockConfigDir, { recursive: true })
     })
 
     it('should load existing config file', () => {
       const mockConfig = {
+        version: 1,
         configs: [
-          { name: 'test', baseUrl: 'https://api.test.com', isDefault: true },
+          { name: 'test', baseUrl: 'https://api.test.com', isDefault: true, enabled: true },
         ],
         settings: { overrideClaudeCommand: true },
       }
@@ -74,28 +81,60 @@ describe('configManager', () => {
     it('should handle corrupted config file', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue('invalid json')
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockFs.copyFileSync.mockImplementation(() => undefined)
 
       const config = configManager.load()
 
       expect(config).toEqual({
+        version: 1,
         configs: [],
         settings: {
           overrideClaudeCommand: false,
         },
       })
-      expect(consoleSpy).toHaveBeenCalled()
-      consoleSpy.mockRestore()
+      expect(mockFs.copyFileSync).toHaveBeenCalled() // Backup created
+    })
+
+    it('should migrate legacy config file without version', () => {
+      const legacyConfig = {
+        configs: [
+          { name: 'test', baseUrl: 'https://api.test.com', isDefault: true },
+        ],
+        settings: {
+          overrideClaudeCommand: true,
+          s3Sync: {
+            bucket: 'test-bucket',
+            region: 'us-east-1',
+            accessKeyId: 'key',
+            secretAccessKey: 'secret',
+            key: 'config.json',
+          },
+        },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(legacyConfig))
+      mockFs.appendFileSync.mockImplementation(() => undefined)
+
+      const config = configManager.load()
+
+      expect(config.version).toBe(1)
+      expect(config.configs).toEqual([
+        { name: 'test', baseUrl: 'https://api.test.com', isDefault: true, enabled: true },
+      ])
+      expect(config.settings.overrideClaudeCommand).toBe(true)
+      expect(config.settings.s3Sync).toEqual(legacyConfig.settings.s3Sync)
     })
 
     it('should ensure configs and settings exist in loaded config', () => {
-      const incompleteConfig = {}
+      const incompleteConfig = { version: 1 }
 
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(incompleteConfig))
 
       const config = configManager.load()
 
+      expect(config.version).toBe(1)
       expect(config.configs).toEqual([])
       expect(config.settings).toEqual({ overrideClaudeCommand: false })
     })
@@ -137,8 +176,9 @@ describe('configManager', () => {
 
   describe('getConfig', () => {
     it('should return configuration by name', () => {
-      const testConfig = { name: 'test', baseUrl: 'https://api.test.com', isDefault: false }
+      const testConfig = { name: 'test', baseUrl: 'https://api.test.com', isDefault: false, enabled: true }
       const mockConfigData = {
+        version: 1,
         configs: [testConfig],
         settings: { overrideClaudeCommand: false },
       }
@@ -168,12 +208,13 @@ describe('configManager', () => {
 
   describe('getDefaultConfig', () => {
     it('should return default configuration', () => {
-      const defaultConfig = { name: 'default', isDefault: true }
+      const defaultConfig = { name: 'default', isDefault: true, enabled: true }
       const mockConfigData = {
+        version: 1,
         configs: [
-          { name: 'test1', isDefault: false },
+          { name: 'test1', isDefault: false, enabled: true },
           defaultConfig,
-          { name: 'test2', isDefault: false },
+          { name: 'test2', isDefault: false, enabled: true },
         ],
         settings: { overrideClaudeCommand: false },
       }
@@ -188,9 +229,10 @@ describe('configManager', () => {
 
     it('should return undefined when no default configuration exists', () => {
       const mockConfigData = {
+        version: 1,
         configs: [
-          { name: 'test1', isDefault: false },
-          { name: 'test2', isDefault: false },
+          { name: 'test1', isDefault: false, enabled: true },
+          { name: 'test2', isDefault: false, enabled: true },
         ],
         settings: { overrideClaudeCommand: false },
       }
@@ -275,10 +317,11 @@ describe('configManager', () => {
   describe('listConfigs', () => {
     it('should return all configurations', () => {
       const configs = [
-        { name: 'test1', isDefault: false },
-        { name: 'test2', isDefault: true },
+        { name: 'test1', isDefault: false, enabled: true },
+        { name: 'test2', isDefault: true, enabled: true },
       ]
       const mockConfigData = {
+        version: 1,
         configs,
         settings: { overrideClaudeCommand: false },
       }
@@ -328,6 +371,7 @@ describe('configManager', () => {
   describe('saveConfigFile', () => {
     it('should save complete config file', () => {
       const configFile = {
+        version: 1,
         configs: [{ name: 'test', isDefault: true }],
         settings: {
           overrideClaudeCommand: true,
@@ -345,7 +389,7 @@ describe('configManager', () => {
 
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
         expect.stringContaining('config.json'),
-        JSON.stringify(configFile, null, 2),
+        expect.stringContaining('"version": 1'),
       )
     })
   })
@@ -353,7 +397,8 @@ describe('configManager', () => {
   describe('getConfigFile', () => {
     it('should return complete config file', () => {
       const mockConfigData = {
-        configs: [{ name: 'test', isDefault: true }],
+        version: 1,
+        configs: [{ name: 'test', isDefault: true, enabled: true }],
         settings: {
           overrideClaudeCommand: false,
           s3Sync: {
@@ -383,7 +428,7 @@ describe('configManager', () => {
         isDefault: false,
       }
 
-      expect(() => configManager.addConfig(config)).not.toThrow()
+      expect(() => configManager.addConfig(config)).toThrow('Config at index 0 must have a valid name')
     })
 
     it('should handle config with all optional fields', () => {
@@ -483,6 +528,7 @@ describe('configManager', () => {
 
     it('should preserve s3Sync settings when updating other settings', () => {
       const existingSettings = {
+        version: 1,
         configs: [],
         settings: {
           overrideClaudeCommand: false,
@@ -562,8 +608,10 @@ describe('configManager', () => {
         profileType: 'official',
         httpProxy: 'http://proxy:8080',
         isDefault: false,
+        enabled: true,
       }
       const mockConfigData = {
+        version: 1,
         configs: [configWithProfileType],
         settings: { overrideClaudeCommand: false },
       }
@@ -579,11 +627,12 @@ describe('configManager', () => {
 
     it('should handle mixed profileType configurations in list', () => {
       const configs = [
-        { name: 'default-config', profileType: 'default', baseUrl: 'https://api.test.com', isDefault: false },
-        { name: 'official-config', profileType: 'official', httpProxy: 'http://proxy:8080', isDefault: false },
-        { name: 'legacy-config', baseUrl: 'https://api.legacy.com', isDefault: true }, // no profileType
+        { name: 'default-config', profileType: 'default', baseUrl: 'https://api.test.com', isDefault: false, enabled: true },
+        { name: 'official-config', profileType: 'official', httpProxy: 'http://proxy:8080', isDefault: false, enabled: true },
+        { name: 'legacy-config', baseUrl: 'https://api.legacy.com', isDefault: true, enabled: true }, // no profileType
       ]
       const mockConfigData = {
+        version: 1,
         configs,
         settings: { overrideClaudeCommand: false },
       }
