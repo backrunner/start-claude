@@ -4,6 +4,7 @@ import process from 'node:process'
 import { ProxyServer } from '../core/proxy'
 import { S3SyncManager } from '../storage/s3-sync'
 import { fileLogger } from '../utils/file-logger'
+import { checkAndHandleExistingProxy, removeLockFile, setupProxyCleanup } from '../utils/proxy-lock'
 import { displayError, displayInfo, displaySuccess } from '../utils/ui'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveBaseConfig } from './common'
@@ -28,25 +29,50 @@ export async function handleProxyMode(
     }
   }
 
+  // Check if proxy server is already running
+  const shouldStartNewProxy = await checkAndHandleExistingProxy()
+  if (!shouldStartNewProxy) {
+    // Proxy server is already running, just start Claude Code with existing proxy
+    const baseConfig = resolveBaseConfig(configManager, options, configArg, forcedConfigs || configManager.listConfigs())
+    const claudeArgs = buildClaudeArgs(options, baseConfig)
+    const filteredArgs = filterProcessArgs(configArg)
+    const allArgs = [...claudeArgs, ...filteredArgs]
+
+    const cliOverrides = {
+      ...buildCliOverrides(options),
+      apiKey: 'sk-claude-proxy-server', // Use default proxy API key
+      baseUrl: 'http://localhost:2333', // Use proxy server's URL
+    }
+
+    displaySuccess('🔄 Using existing proxy server')
+
+    // Start Claude Code with the existing proxy server configuration
+    const exitCode = await startClaude(baseConfig, allArgs, cliOverrides)
+    process.exit(exitCode)
+  }
+
+  // Setup cleanup handlers for lock file
+  setupProxyCleanup()
+
   // Get configurations for proxy mode - use forced configs or all configs
   const configs = forcedConfigs || configManager.listConfigs()
 
-  // Include configs that either have API credentials OR have transformer enabled
+  // Include configs that have complete API credentials (baseUrl, apiKey, and model) OR have transformer enabled
   const proxyableConfigs = configs.filter((c) => {
-    const hasApiCredentials = c.baseUrl && c.apiKey
+    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && c.model
     const hasTransformerEnabled = c.transformerEnabled === true
 
-    if (hasTransformerEnabled && !hasApiCredentials) {
-      displayInfo(`Configuration "${c.name}" is transformer-enabled but missing baseUrl/apiKey - including for transformer fallback`)
+    if (hasTransformerEnabled && !hasCompleteApiCredentials) {
+      displayInfo(`Configuration "${c.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) - including for transformer fallback`)
     }
 
-    return hasApiCredentials || hasTransformerEnabled
+    return hasCompleteApiCredentials || hasTransformerEnabled
   })
 
   if (proxyableConfigs.length === 0) {
     displayError('No configurations found for proxy mode')
     displayInfo('Proxy mode requires configurations with either:')
-    displayInfo('  - baseUrl and apiKey (for direct API calls)')
+    displayInfo('  - baseUrl, apiKey, and model (for direct API calls)')
     displayInfo('  - transformerEnabled: true (for transformer processing)')
     process.exit(1)
   }
@@ -55,15 +81,15 @@ export async function handleProxyMode(
   if (options.balance) {
     displayInfo(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
     proxyableConfigs.forEach((c) => {
-      const hasApi = c.baseUrl && c.apiKey
+      const hasCompleteApi = c.baseUrl && c.apiKey && c.model
       const hasTransformer = c.transformerEnabled === true
 
       let status = ''
-      if (hasApi && hasTransformer) {
-        status = ' (API + transformer)'
+      if (hasCompleteApi && hasTransformer) {
+        status = ' (complete API + transformer)'
       }
-      else if (hasApi) {
-        status = ' (API only)'
+      else if (hasCompleteApi) {
+        status = ' (complete API only)'
       }
       else if (hasTransformer) {
         status = ' (transformer only - needs fallback endpoints)'
@@ -150,7 +176,7 @@ export async function handleProxyMode(
     displayInfo('')
 
     // Determine proxy mode and show appropriate message
-    const apiConfigs = proxyableConfigs.filter(c => c.baseUrl && c.apiKey)
+    const apiConfigs = proxyableConfigs.filter(c => c.baseUrl && c.apiKey && c.model)
     const transformerConfigs = proxyableConfigs.filter(c => c.transformerEnabled === true)
 
     if (apiConfigs.length > 0 && transformerConfigs.length > 0) {
@@ -187,6 +213,7 @@ export async function handleProxyMode(
       void (async () => {
         displayInfo('\nShutting down proxy server...')
         await proxyServer.stop()
+        removeLockFile() // Clean up lock file
         process.exit(0)
       })()
     }
@@ -199,6 +226,7 @@ export async function handleProxyMode(
 
     // When Claude Code exits, stop the proxy server
     await proxyServer.stop()
+    removeLockFile() // Clean up lock file
     process.exit(exitCode)
   }
   catch (error) {

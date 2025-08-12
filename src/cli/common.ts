@@ -507,27 +507,27 @@ export function resolveBaseConfig(
       displayError(`Configuration "${configName}" not found`)
       process.exit(1)
     }
-    if (!balanceableConfigs.includes(baseConfig)) {
+    if (!balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
       const hasTransformer = 'transformerEnabled' in baseConfig && baseConfig.transformerEnabled === true
-      const missingApiCredentials = !baseConfig.baseUrl || !baseConfig.apiKey
+      const missingCompleteApiCredentials = !baseConfig.baseUrl || !baseConfig.apiKey || !baseConfig.model
 
-      if (hasTransformer && missingApiCredentials) {
-        displayWarning(`Configuration "${configName}" is transformer-enabled but missing baseUrl/apiKey for API calls`)
+      if (hasTransformer && missingCompleteApiCredentials) {
+        displayWarning(`Configuration "${baseConfig.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) for API calls`)
         displayInfo('Using it for settings and transformer processing only')
       }
-      else if (missingApiCredentials) {
-        displayWarning(`Configuration "${configName}" is not included in load balancing (missing baseUrl or apiKey)`)
+      else if (missingCompleteApiCredentials) {
+        displayWarning(`Configuration "${baseConfig.name}" is not included in load balancing (missing baseUrl, apiKey, or model)`)
         displayInfo('Using it for other settings only, load balancing will use available endpoints')
       }
       else {
-        displayWarning(`Configuration "${configName}" is not included in load balancing`)
+        displayWarning(`Configuration "${baseConfig.name}" is not included in load balancing`)
         displayInfo('Using it for other settings only, load balancing will use available endpoints')
       }
     }
   }
   else {
     baseConfig = configManager.getDefaultConfig()
-    if (!baseConfig || !balanceableConfigs.includes(baseConfig)) {
+    if (!baseConfig || !balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
       baseConfig = balanceableConfigs[0]
     }
   }
