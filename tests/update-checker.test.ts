@@ -1,6 +1,7 @@
 import * as childProcess from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../src/utils/update-checker'
+import type { UpdateResult } from '../src/utils/update-checker'
 
 // Mock the package.json version
 vi.mock('../package.json', () => ({
@@ -134,7 +135,7 @@ describe('updateChecker', () => {
   })
 
   describe('performAutoUpdate', () => {
-    it('should return true on successful update', async () => {
+    it('should return success true on successful update', async () => {
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
           callback(null, 'success', '')
@@ -143,7 +144,7 @@ describe('updateChecker', () => {
       })
 
       const result = await performAutoUpdate()
-      expect(result).toBe(true)
+      expect(result).toEqual({ success: true })
       expect(mockExec).toHaveBeenCalledWith(
         'pnpm add -g start-claude@latest',
         { timeout: 30000 },
@@ -151,7 +152,7 @@ describe('updateChecker', () => {
       )
     })
 
-    it('should return false on update failure with error in stderr', async () => {
+    it('should return success false with error message on update failure with error in stderr', async () => {
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
           callback(null, '', 'error: failed to install')
@@ -160,10 +161,10 @@ describe('updateChecker', () => {
       })
 
       const result = await performAutoUpdate()
-      expect(result).toBe(false)
+      expect(result).toEqual({ success: false, error: 'error: failed to install' })
     })
 
-    it('should return false on command execution error', async () => {
+    it('should return success false with error message on command execution error', async () => {
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
           callback(new Error('Command failed'), '', '')
@@ -172,7 +173,7 @@ describe('updateChecker', () => {
       })
 
       const result = await performAutoUpdate()
-      expect(result).toBe(false)
+      expect(result).toEqual({ success: false, error: 'Command failed' })
     })
   })
 

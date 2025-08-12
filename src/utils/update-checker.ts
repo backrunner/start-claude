@@ -65,28 +65,39 @@ function compareVersions(current: string, latest: string): number {
   return 0
 }
 
-export async function performAutoUpdate(): Promise<boolean> {
+export interface UpdateResult {
+  success: boolean
+  error?: string
+}
+
+export async function performAutoUpdate(): Promise<UpdateResult> {
   try {
-    const result = await new Promise<{ stderr: string }>((resolve, reject) => {
+    const result = await new Promise<{ stdout: string, stderr: string }>((resolve, reject) => {
       exec('pnpm add -g start-claude@latest', { timeout: 30000 }, (error, stdout, stderr) => {
         if (error) {
           reject(error)
         }
         else {
-          resolve({ stderr })
+          resolve({ stdout, stderr })
         }
       })
     })
 
     // Check if the update was successful
     if (result.stderr && (result.stderr.includes('error') || result.stderr.includes('failed'))) {
-      return false
+      return {
+        success: false,
+        error: result.stderr.trim(),
+      }
     }
 
-    return true
+    return { success: true }
   }
-  catch {
-    return false
+  catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred during update',
+    }
   }
 }
 

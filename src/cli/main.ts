@@ -1,6 +1,6 @@
 import type { ProgramOptions } from './common'
-import process from 'node:process'
 
+import process from 'node:process'
 import { Command } from 'commander'
 import inquirer from 'inquirer'
 import { name, version } from '../../package.json'
@@ -11,8 +11,8 @@ import { handleEditConfigCommand } from '../commands/edit-config'
 import { handleManagerCommand } from '../commands/manager'
 import { handleOverrideCommand } from '../commands/override'
 import { handleS3DownloadCommand, handleS3SetupCommand, handleS3StatusCommand, handleS3SyncCommand, handleS3UploadCommand } from '../commands/s3'
-import { ConfigManager } from '../config/manager'
 
+import { ConfigManager } from '../config/manager'
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/ui'
@@ -122,9 +122,9 @@ program
 
       if (updateAnswer.autoUpdate) {
         displayInfo('⏳ Updating start-claude...')
-        const updateSuccess = await performAutoUpdate()
+        const updateResult = await performAutoUpdate()
 
-        if (updateSuccess) {
+        if (updateResult.success) {
           displaySuccess(`✅ Successfully updated to version ${updateInfo.latestVersion}!`)
           displayInfo('🔄 Relaunching with new version...')
 
@@ -136,7 +136,10 @@ program
         }
         else {
           displayError('❌ Failed to auto-update. Please run manually:')
-          displayInfo(updateInfo.updateCommand)
+          displayError(updateInfo.updateCommand)
+          if (updateResult.error) {
+            displayError(`Error details: ${updateResult.error}`)
+          }
           displayWarning('⚠️ Continuing with current version...')
         }
       }
