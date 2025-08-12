@@ -10,6 +10,7 @@ import { HttpsProxyAgent } from 'https-proxy-agent'
 import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
 import { fileLogger } from '../utils/file-logger'
+import { handleStreamingResponse } from '../utils/sse'
 import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/ui'
 
 const log = console.log
@@ -162,22 +163,15 @@ export class ProxyServer {
     statusCode: number,
     headers: any,
     res: http.ServerResponse,
-  ): string {
+  ): string | null {
+    // First check if this is a streaming response and handle it
+    const streamingResult = handleStreamingResponse(responseBody, statusCode, headers, res)
+    if (streamingResult === null) {
+      // SSE response was already sent
+      return null
+    }
+
     try {
-      // Check if it's a streaming response by looking at headers first
-      const contentType = headers['content-type'] || headers['Content-Type'] || ''
-      const isStream = contentType.includes('text/event-stream') || responseBody.startsWith('data: ')
-
-      if (isStream) {
-        // For streaming responses, set the appropriate headers only if not already sent
-        if (!res.headersSent) {
-          res.setHeader('Content-Type', 'text/event-stream')
-          res.setHeader('Cache-Control', 'no-cache')
-          res.setHeader('Connection', 'keep-alive')
-        }
-        return responseBody
-      }
-
       // Set HTTP status code if response is not ok (non-2xx status codes) and headers not sent
       if (statusCode >= 400 && !res.headersSent) {
         res.statusCode = statusCode
@@ -207,19 +201,6 @@ export class ProxyServer {
           statusCode,
           parseError: parseError instanceof Error ? parseError.message : 'Unknown error',
         })
-      }
-
-      // For streaming responses that failed to parse, return as-is
-      const contentType = headers['content-type'] || headers['Content-Type'] || ''
-      const isStream = contentType.includes('text/event-stream') || responseBody.startsWith('data: ')
-
-      if (isStream) {
-        if (!res.headersSent) {
-          res.setHeader('Content-Type', 'text/event-stream')
-          res.setHeader('Cache-Control', 'no-cache')
-          res.setHeader('Connection', 'keep-alive')
-        }
-        return responseBody
       }
 
       // Return a standardized error response for non-streaming content
@@ -681,12 +662,18 @@ export class ProxyServer {
                       }
 
                       // Apply universal response formatting after transformer formatResponse
-                      finalResponseBody = this.formatUniversalResponse(
+                      const formattedFinalResponseBody = this.formatUniversalResponse(
                         finalResponseBody,
                         proxyRes.statusCode || 200,
                         finalResponseHeaders,
                         res,
                       )
+
+                      // For streaming responses, formatUniversalResponse handles everything
+                      if (formattedFinalResponseBody === null) {
+                        // Response already sent via SSE
+                        return
+                      }
 
                       // Now send headers with final transformed headers
                       if (!res.headersSent) {
@@ -694,7 +681,7 @@ export class ProxyServer {
                       }
 
                       // Send the final response (transformed or original) to client
-                      res.end(finalResponseBody)
+                      res.end(formattedFinalResponseBody)
                     }
                     catch (error) {
                       // If anything goes wrong, send the original response with universal formatting
@@ -913,6 +900,12 @@ export class ProxyServer {
                 initialResponseHeaders,
                 res,
               )
+
+              // For streaming responses, formatUniversalResponse handles everything
+              if (formattedResponseBody === null) {
+                // Response already sent via SSE
+                return
+              }
 
               // Log the raw response body from external API if debug enabled
               if (this.debug) {
@@ -1140,6 +1133,12 @@ export class ProxyServer {
           initialResponseHeaders,
           res,
         )
+
+        // For streaming responses, formatUniversalResponse handles everything
+        if (formattedResponseBody === null) {
+          // Response already sent via SSE
+          return
+        }
 
         // Log the raw response body from external API if debug enabled
         if (this.debug) {

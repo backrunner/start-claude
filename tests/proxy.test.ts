@@ -1058,7 +1058,7 @@ describe('proxyServer', () => {
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
       const result = formatUniversalResponse(streamingResponse, 200, headers, mockRes)
 
-      expect(result).toBe(streamingResponse) // Streaming responses should be returned as-is
+      expect(result).toBe(null) // Streaming responses should return null (already sent)
       expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
       expect(mockRes.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-cache')
       expect(mockRes.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive')
@@ -1076,7 +1076,7 @@ describe('proxyServer', () => {
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
       const result = formatUniversalResponse(streamingResponse, 200, headers, mockRes)
 
-      expect(result).toBe(streamingResponse) // Should detect streaming by content pattern
+      expect(result).toBe(null) // Should detect streaming by content pattern and return null
       expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
       expect(mockRes.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-cache')
       expect(mockRes.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive')
@@ -1094,7 +1094,7 @@ describe('proxyServer', () => {
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
       const result = formatUniversalResponse(streamingResponse, 200, headers, mockRes)
 
-      expect(result).toBe(streamingResponse) // Should still return response
+      expect(result).toBe(null) // Should still handle streaming response
       expect(mockRes.setHeader).not.toHaveBeenCalled() // Should not try to set headers
     })
 
@@ -1110,7 +1110,7 @@ describe('proxyServer', () => {
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
       const result = formatUniversalResponse(malformedStreamingResponse, 200, headers, mockRes)
 
-      expect(result).toBe(malformedStreamingResponse) // Should return original streaming response even if malformed
+      expect(result).toBe(null) // Should return null for streaming response
       expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
     })
 
