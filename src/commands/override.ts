@@ -1,6 +1,8 @@
 import { OverrideManager } from '../cli/override'
 import { ConfigManager } from '../config/manager'
 import { displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/ui'
+import boxen from 'boxen'
+import chalk from 'chalk'
 
 export async function handleOverrideCommand(): Promise<void> {
   displayWelcome()
@@ -77,10 +79,22 @@ export async function handleOverrideDisableCommand(): Promise<void> {
     return
   }
 
-  const success = overrideManager.disableOverride()
-  if (success) {
+  const result = overrideManager.disableOverride()
+  if (result.success) {
     displaySuccess('Claude command override disabled')
     displayInfo('The original "claude" command will be used')
+
+    const shellInfo = overrideManager.getShellInfo()
+    if (shellInfo.platform !== 'windows' && result.cleanupCommand) {
+      console.log(boxen(chalk.gray(result.cleanupCommand), {
+        title: 'Immediate cleanup (optional)',
+        titleAlignment: 'left',
+        padding: 1,
+        borderStyle: 'round',
+        borderColor: 'gray',
+      }))
+      displayWarning('Note: The disable will take effect after restarting your terminal')
+    }
 
     // Update settings
     configManager.updateSettings({ overrideClaudeCommand: false })

@@ -63,6 +63,10 @@ export class OverrideManager {
     return process.platform === 'win32'
   }
 
+  private getCurrentUnixShell(): string | null {
+    return process.env.SHELL?.split('/').pop() ?? null
+  }
+
   private detectWindowsShell(): string | null {
     // Check for PowerShell (Core or Windows PowerShell)
     if (process.env.PSModulePath) {
@@ -93,7 +97,7 @@ export class OverrideManager {
     }
 
     // Unix-like systems
-    const shell = process.env.SHELL?.split('/').pop()
+    const shell = this.getCurrentUnixShell()
     if (shell && UNIX_SHELLS[shell]) {
       return UNIX_SHELLS[shell]
     }
@@ -259,23 +263,40 @@ export class OverrideManager {
     }
   }
 
-  disableOverride(): boolean {
+  disableOverride(): { success: boolean, cleanupCommand?: string } {
     const shellConfig = this.getShellConfig()
     if (!shellConfig) {
-      return false
+      return { success: false }
     }
 
     try {
       // Remove the script directory
       this.removeScriptDirectory()
 
+      // Get cleanup command for current session PATH and alias on Unix systems
+      let cleanupCommand: string | undefined
+      if (!this.isWindows()) {
+        const pathCleanup = this.cleanupCurrentSessionPath()
+        const aliasCleanup = this.cleanupCurrentSessionAlias()
+
+        if (pathCleanup && aliasCleanup) {
+          cleanupCommand = `${pathCleanup}; ${aliasCleanup}`
+        }
+        else if (pathCleanup) {
+          cleanupCommand = pathCleanup
+        }
+        else if (aliasCleanup) {
+          cleanupCommand = aliasCleanup
+        }
+      }
+
       if (!fs.existsSync(shellConfig.path)) {
-        return true
+        return { success: true, cleanupCommand }
       }
 
       // For CMD, just delete the batch file (already handled by removeScriptDirectory)
       if (this.isWindows() && this.detectWindowsShell() === 'cmd') {
-        return true
+        return { success: true, cleanupCommand }
       }
 
       // For other shells, remove both PATH export and alias lines
@@ -291,10 +312,49 @@ export class OverrideManager {
 
       const newContent = filteredLines.join('\n')
       fs.writeFileSync(shellConfig.path, newContent, 'utf-8')
-      return true
+      return { success: true, cleanupCommand }
     }
     catch {
-      return false
+      return { success: false }
+    }
+  }
+
+  private cleanupCurrentSessionPath(): string | null {
+    try {
+      const currentPath = process.env.PATH || ''
+      const overridePath = path.join(os.homedir(), '.start-claude', 'bin')
+
+      // Remove the override path from current PATH
+      const pathParts = currentPath.split(':')
+      const cleanedParts = pathParts.filter(part => part !== overridePath)
+      const cleanedPath = cleanedParts.join(':')
+
+      // Return the export command for the shell to execute
+      const shell = this.getCurrentUnixShell()
+      if (shell === 'fish') {
+        return `set -x PATH ${cleanedParts.map(p => `"${p}"`).join(' ')}`
+      }
+      else {
+        return `export PATH="${cleanedPath}"`
+      }
+    }
+    catch {
+      return null
+    }
+  }
+
+  private cleanupCurrentSessionAlias(): string | null {
+    try {
+      const shell = this.getCurrentUnixShell()
+      if (shell === 'fish') {
+        return 'functions -e claude'
+      }
+      else {
+        return 'unalias claude 2>/dev/null || true'
+      }
+    }
+    catch {
+      return null
     }
   }
 
@@ -322,7 +382,7 @@ export class OverrideManager {
     }
 
     // Unix-like systems
-    const shell = process.env.SHELL?.split('/').pop() ?? null
+    const shell = this.getCurrentUnixShell()
     const shellConfig = this.getShellConfig()
 
     return {

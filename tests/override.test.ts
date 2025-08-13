@@ -30,7 +30,7 @@ describe('overrideManager', () => {
     expectedZshPath = path.join(homeDir, '.zshrc')
 
     mockOs.homedir.mockReturnValue(homeDir)
-    mockProcess.env = { SHELL: '/bin/zsh', NODE_ENV: 'test' }
+    mockProcess.env = { SHELL: '/bin/zsh', NODE_ENV: 'test', PATH: '/usr/local/bin:/usr/bin:/bin' }
     ;(mockProcess as any).platform = 'linux'
     mockFs.existsSync.mockReturnValue(true)
     mockFs.readFileSync.mockReturnValue('')
@@ -208,7 +208,9 @@ alias claude="start-claude"
 
         const result = overrideManager.disableOverride()
 
-        expect(result).toBe(true)
+        expect(result.success).toBe(true)
+        expect(result.cleanupCommand).toContain('export PATH=')
+        expect(result.cleanupCommand).not.toContain('.start-claude/bin')
         expect(mockFs.rmSync).toHaveBeenCalledWith(
           expect.stringContaining('.start-claude/bin'),
           { recursive: true, force: true },
@@ -221,12 +223,56 @@ alias claude="start-claude"
         expect(writtenContent).toContain('# other content')
       })
 
+      it('should return cleanup command for bash shell', () => {
+        mockProcess.env = { SHELL: '/bin/bash', NODE_ENV: 'test' }
+        mockFs.readFileSync.mockReturnValue('# content')
+
+        const result = overrideManager.disableOverride()
+
+        expect(result.success).toBe(true)
+        expect(result.cleanupCommand).toMatch(/^export PATH=".*"$/)
+        expect(result.cleanupCommand).not.toContain('.start-claude/bin')
+      })
+
+      it('should return cleanup command for fish shell', () => {
+        mockProcess.env = { SHELL: '/usr/local/bin/fish', NODE_ENV: 'test' }
+        mockFs.readFileSync.mockReturnValue('# content')
+
+        const result = overrideManager.disableOverride()
+
+        expect(result.success).toBe(true)
+        expect(result.cleanupCommand).toMatch(/^set -x PATH .*/)
+        expect(result.cleanupCommand).not.toContain('.start-claude/bin')
+      })
+
+      it('should not return cleanup command on Windows', () => {
+        ;(mockProcess as any).platform = 'win32'
+        mockProcess.env = { PSModulePath: 'C:\\Program Files\\PowerShell\\Modules', NODE_ENV: 'test' }
+
+        const result = overrideManager.disableOverride()
+
+        expect(result.success).toBe(true)
+        expect(result.cleanupCommand).toBeUndefined()
+      })
+
+      it('should handle cleanup command generation errors gracefully', () => {
+        // Mock a scenario where PATH cleanup fails
+        const originalEnv = mockProcess.env
+        mockProcess.env = { ...originalEnv, PATH: undefined }
+
+        const result = overrideManager.disableOverride()
+
+        expect(result.success).toBe(true)
+        expect(result.cleanupCommand).toBe('export PATH=""')
+      })
+
       it('should return true when config file does not exist', () => {
         mockFs.existsSync.mockReturnValue(false)
 
         const result = overrideManager.disableOverride()
 
-        expect(result).toBe(true)
+        expect(result.success).toBe(true)
+        expect(result.cleanupCommand).toContain('export PATH=')
       })
 
       it('should return false when shell is not supported', () => {
@@ -234,7 +280,8 @@ alias claude="start-claude"
 
         const result = overrideManager.disableOverride()
 
-        expect(result).toBe(false)
+        expect(result.success).toBe(false)
+        expect(result.cleanupCommand).toBeUndefined()
       })
 
       it('should handle write errors gracefully', () => {
@@ -244,7 +291,28 @@ alias claude="start-claude"
 
         const result = overrideManager.disableOverride()
 
-        expect(result).toBe(false)
+        expect(result.success).toBe(false)
+        expect(result.cleanupCommand).toBeUndefined()
+      })
+
+      it('should properly filter override path from complex PATH', () => {
+        const complexPath = '/usr/local/bin:/home/user/.start-claude/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+        mockProcess.env = { ...mockProcess.env, PATH: complexPath }
+
+        const result = overrideManager.disableOverride()
+
+        expect(result.success).toBe(true)
+        expect(result.cleanupCommand).toBe('export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"')
+      })
+
+      it('should handle PATH with no override path', () => {
+        const cleanPath = '/usr/local/bin:/usr/bin:/bin'
+        mockProcess.env = { ...mockProcess.env, PATH: cleanPath }
+
+        const result = overrideManager.disableOverride()
+
+        expect(result.success).toBe(true)
+        expect(result.cleanupCommand).toBe(`export PATH="${cleanPath}"`)
       })
     })
 
@@ -354,8 +422,10 @@ alias claude="start-claude"
       })
 
       it('should delete script directory when disabling', () => {
-        overrideManager.disableOverride()
+        const result = overrideManager.disableOverride()
 
+        expect(result.success).toBe(true)
+        expect(result.cleanupCommand).toBeUndefined()
         expect(mockFs.rmSync).toHaveBeenCalledWith(
           expect.stringContaining('.start-claude/bin'),
           { recursive: true, force: true },
