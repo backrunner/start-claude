@@ -2,6 +2,7 @@ import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import * as process from 'node:process'
 import { displayError, displayInfo, displayWarning } from './ui'
 
 const PROXY_PORT = 2333
@@ -10,14 +11,14 @@ const LOCK_FILE = path.join(os.tmpdir(), 'start-claude-proxy.lock')
 /**
  * Check if a port is already in use
  */
-function isPortInUse(port: number): Promise<boolean> {
+async function isPortInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer()
-    
+
     server.listen(port, () => {
       server.close(() => resolve(false))
     })
-    
+
     server.on('error', () => {
       resolve(true)
     })
@@ -30,7 +31,8 @@ function isPortInUse(port: number): Promise<boolean> {
 function createLockFile(): void {
   try {
     fs.writeFileSync(LOCK_FILE, process.pid.toString(), 'utf8')
-  } catch (error) {
+  }
+  catch (error) {
     displayWarning(`Warning: Could not create proxy lock file: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
@@ -43,7 +45,8 @@ export function removeLockFile(): void {
     if (fs.existsSync(LOCK_FILE)) {
       fs.unlinkSync(LOCK_FILE)
     }
-  } catch (error) {
+  }
+  catch {
     // Silently ignore lock file removal errors
   }
 }
@@ -56,7 +59,8 @@ function isProcessRunning(pid: number): boolean {
     // Sending signal 0 checks if process exists without affecting it
     process.kill(pid, 0)
     return true
-  } catch {
+  }
+  catch {
     return false
   }
 }
@@ -67,7 +71,7 @@ function isProcessRunning(pid: number): boolean {
  */
 export async function checkAndHandleExistingProxy(): Promise<boolean> {
   const portInUse = await isPortInUse(PROXY_PORT)
-  
+
   if (!portInUse) {
     // Port is free, clean up any stale lock file and proceed
     removeLockFile()
@@ -79,17 +83,18 @@ export async function checkAndHandleExistingProxy(): Promise<boolean> {
   if (fs.existsSync(LOCK_FILE)) {
     try {
       const pidStr = fs.readFileSync(LOCK_FILE, 'utf8').trim()
-      const pid = parseInt(pidStr, 10)
-      
-      if (!isNaN(pid) && isProcessRunning(pid)) {
+      const pid = Number.parseInt(pidStr, 10)
+
+      if (!Number.isNaN(pid) && isProcessRunning(pid)) {
         displayInfo(`🔄 Proxy server is already running (PID: ${pid}) on port ${PROXY_PORT}`)
         displayInfo('Connecting to existing proxy server...')
         return false // Don't start a new server, use existing one
-      } else {
+      }
+      else {
         // Stale lock file, remove it and try to start server
         displayWarning('Found stale proxy lock file, cleaning up...')
         removeLockFile()
-        
+
         // Double-check port is still in use after cleanup
         const stillInUse = await isPortInUse(PROXY_PORT)
         if (stillInUse) {
@@ -97,11 +102,12 @@ export async function checkAndHandleExistingProxy(): Promise<boolean> {
           displayError('Please stop the other process or choose a different port')
           return false
         }
-        
+
         createLockFile()
         return true
       }
-    } catch (error) {
+    }
+    catch (error) {
       displayWarning(`Warning: Could not read proxy lock file: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
@@ -116,7 +122,7 @@ export async function checkAndHandleExistingProxy(): Promise<boolean> {
  * Setup cleanup handlers for the lock file
  */
 export function setupProxyCleanup(): void {
-  const cleanup = () => {
+  const cleanup = (): void => {
     removeLockFile()
     process.exit(0)
   }

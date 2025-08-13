@@ -57,8 +57,8 @@ describe('overrideManager', () => {
 
     describe('isOverrideActive', () => {
       it('should return true when script exists', () => {
-        mockFs.existsSync.mockImplementation((path) => 
-          path.toString().includes('.start-claude/bin/claude')
+        mockFs.existsSync.mockImplementation(path =>
+          path.toString().includes('.start-claude/bin/claude'),
         )
         mockFs.readFileSync.mockReturnValue('# no alias')
 
@@ -68,8 +68,8 @@ describe('overrideManager', () => {
       })
 
       it('should return true when PATH export exists in shell config', () => {
-        mockFs.existsSync.mockImplementation((path) => 
-          !path.toString().includes('.start-claude/bin/claude')
+        mockFs.existsSync.mockImplementation(path =>
+          !path.toString().includes('.start-claude/bin/claude'),
         )
         mockFs.readFileSync.mockReturnValue('export PATH="$HOME/.start-claude/bin:$PATH"')
 
@@ -79,8 +79,8 @@ describe('overrideManager', () => {
       })
 
       it('should return true when alias exists in shell config', () => {
-        mockFs.existsSync.mockImplementation((path) => 
-          !path.toString().includes('.start-claude/bin/claude')
+        mockFs.existsSync.mockImplementation(path =>
+          !path.toString().includes('.start-claude/bin/claude'),
         )
         mockFs.readFileSync.mockReturnValue('alias claude="start-claude"')
 
@@ -90,8 +90,8 @@ describe('overrideManager', () => {
       })
 
       it('should return false when neither script nor aliases exist', () => {
-        mockFs.existsSync.mockImplementation((path) => 
-          !path.toString().includes('.start-claude/bin/claude')
+        mockFs.existsSync.mockImplementation(path =>
+          !path.toString().includes('.start-claude/bin/claude'),
         )
         mockFs.readFileSync.mockReturnValue('# some other content')
 
@@ -117,8 +117,8 @@ describe('overrideManager', () => {
       })
 
       it('should handle read errors gracefully but still check script', () => {
-        mockFs.existsSync.mockImplementation((path) => 
-          path.toString().includes('.start-claude/bin/claude')
+        mockFs.existsSync.mockImplementation(path =>
+          path.toString().includes('.start-claude/bin/claude'),
         )
         mockFs.readFileSync.mockImplementation(() => {
           throw new Error('Read error')
@@ -144,7 +144,7 @@ describe('overrideManager', () => {
         )
         expect(mockFs.chmodSync).toHaveBeenCalledWith(
           expect.stringContaining('.start-claude/bin/claude'),
-          0o755
+          0o755,
         )
         expect(mockFs.writeFileSync).toHaveBeenCalledWith(
           expectedZshPath,
@@ -211,10 +211,10 @@ alias claude="start-claude"
         expect(result).toBe(true)
         expect(mockFs.rmSync).toHaveBeenCalledWith(
           expect.stringContaining('.start-claude/bin'),
-          { recursive: true, force: true }
+          { recursive: true, force: true },
         )
-        const writtenContent = mockFs.writeFileSync.mock.calls.find(call => 
-          call[0] === expectedZshPath
+        const writtenContent = mockFs.writeFileSync.mock.calls.find(call =>
+          call[0] === expectedZshPath,
         )?.[1] as string
         expect(writtenContent).not.toContain('claude')
         expect(writtenContent).not.toContain('.start-claude')
@@ -358,7 +358,7 @@ alias claude="start-claude"
 
         expect(mockFs.rmSync).toHaveBeenCalledWith(
           expect.stringContaining('.start-claude/bin'),
-          { recursive: true, force: true }
+          { recursive: true, force: true },
         )
       })
     })

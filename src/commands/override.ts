@@ -22,7 +22,7 @@ export async function handleOverrideCommand(): Promise<void> {
 
   if (isActive) {
     displayInfo('Claude command override is already enabled')
-    displayInfo('Use "start-claude override-disable" to disable it')
+    displayInfo('Use "start-claude override disable" to disable it')
     return
   }
 
