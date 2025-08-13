@@ -187,8 +187,17 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Config not found' }, { status: 404 })
     }
 
-    saveConfigs(filteredConfigs)
-    return NextResponse.json({ success: true, configs: filteredConfigs })
+    // Re-order remaining configs to create a continuous sequence
+    // Sort by current order first, then reassign sequential order values
+    const reorderedConfigs = filteredConfigs
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((config, index) => ({
+        ...config,
+        order: index,
+      }))
+
+    saveConfigs(reorderedConfigs)
+    return NextResponse.json({ success: true, configs: reorderedConfigs })
   }
   catch (error) {
     console.error('DELETE /api/configs error:', error)
