@@ -258,6 +258,11 @@ function findExecutable(command: string, env: NodeJS.ProcessEnv): string | null 
   const extensions = process.platform === 'win32' ? ['.cmd', '.ps1'] : ['']
 
   for (const dir of pathDirs) {
+    // Skip .start-claude directory to avoid infinite loop
+    if (dir.includes('.start-claude')) {
+      continue
+    }
+
     for (const ext of extensions) {
       const fullPath = path.join(dir, command + ext)
       try {
