@@ -3,7 +3,7 @@ import type { ClaudeConfig } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
 import inquirer from 'inquirer'
-import { displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/ui'
+import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/ui'
 
 export interface ProgramOptions {
   config?: string
@@ -310,8 +310,6 @@ export async function resolveConfig(
     const configs = configManager.listConfigs()
 
     if (configs.length === 0) {
-      displayWelcome()
-
       // Check if S3 sync is configured and try to download first
       config = await handleS3EmptyConfigDownload(configManager, s3SyncManager)
       if (config) {
@@ -329,7 +327,6 @@ export async function resolveConfig(
       }
 
       if (!config) {
-        displayWelcome()
         displayInfo('Choose a configuration to use:')
 
         const answers = await inquirer.prompt([
