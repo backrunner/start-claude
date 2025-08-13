@@ -139,7 +139,7 @@ export class OverrideManager {
 
   private removeScriptDirectory(): boolean {
     try {
-      const scriptDir = path.join(os.homedir(), '.start-claude')
+      const scriptDir = path.join(os.homedir(), '.start-claude', 'bin')
       if (fs.existsSync(scriptDir)) {
         fs.rmSync(scriptDir, { recursive: true, force: true })
       }

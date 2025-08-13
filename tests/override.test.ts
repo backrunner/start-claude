@@ -210,7 +210,7 @@ alias claude="start-claude"
 
         expect(result).toBe(true)
         expect(mockFs.rmSync).toHaveBeenCalledWith(
-          expect.stringContaining('.start-claude'),
+          expect.stringContaining('.start-claude/bin'),
           { recursive: true, force: true }
         )
         const writtenContent = mockFs.writeFileSync.mock.calls.find(call => 
@@ -357,7 +357,7 @@ alias claude="start-claude"
         overrideManager.disableOverride()
 
         expect(mockFs.rmSync).toHaveBeenCalledWith(
-          expect.stringContaining('.start-claude'),
+          expect.stringContaining('.start-claude/bin'),
           { recursive: true, force: true }
         )
       })
