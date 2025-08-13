@@ -623,6 +623,65 @@ describe('claude', () => {
   })
 
   describe('findExecutable', () => {
+    it('should skip .start-claude directory to avoid infinite loop', async () => {
+      // Mock that .start-claude wrapper exists but should be skipped
+      const realClaudePath = '/usr/local/bin/claude'
+
+      let accessCallCount = 0
+      mockAccessSync.mockImplementation((path) => {
+        accessCallCount++
+        const pathStr = path.toString()
+
+        // Skip the wrapper script in .start-claude directory
+        if (pathStr.includes('.start-claude')) {
+          // This should not be called due to directory skip logic
+          throw new Error('Should have been skipped')
+        }
+
+        // Return the real Claude executable
+        if (pathStr === realClaudePath) {
+          return undefined // File exists
+        }
+
+        throw new Error('Not found')
+      })
+
+      // Mock PATH that includes .start-claude directory first
+      const originalPlatform = process.platform
+      const originalEnv = process.env
+
+      // Set up environment to include .start-claude in PATH
+      process.env = {
+        ...originalEnv,
+        PATH: `/home/user/.start-claude/bin:/usr/local/bin:${originalEnv.PATH || ''}`,
+      }
+
+      try {
+        const promise = startClaude(mockConfig)
+
+        const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+        if (closeCallback) {
+          closeCallback(0)
+        }
+
+        await promise
+
+        // Should find the real Claude Code, not the wrapper
+        expect(mockSpawn).toHaveBeenCalledWith(
+          realClaudePath,
+          expect.any(Array),
+          expect.any(Object),
+        )
+
+        // Verify that .start-claude directory was properly skipped
+        expect(accessCallCount).toBeGreaterThan(0)
+      }
+      finally {
+        process.env = originalEnv
+        Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true })
+      }
+    })
+
     it('should handle Windows platform specific paths', async () => {
       // Mock Windows environment
       Object.defineProperty(process, 'platform', { value: 'win32', writable: true })
