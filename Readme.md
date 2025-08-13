@@ -1,5 +1,7 @@
 # start-claude
 
+**[English](README.md) | [中文](README_zh.md)**
+
 A powerful CLI tool to manage and start Claude Code with different configurations. Easily manage multiple Claude configurations, sync them across devices with S3, and switch between them with a beautiful, interactive interface.
 
 ## Features
@@ -43,17 +45,17 @@ start-claude manager
 
 ## Documentation
 
-| 📖 English Documentation                            | 📖 中文文档                                    |
-| --------------------------------------------------- | ---------------------------------------------- |
-| **[Installation Guide](docs/en/installation.md)**   | **[安装指南](docs/zh/installation.md)**        |
-| **[Quick Start Guide](docs/en/quick-start.md)**     | **[快速开始](docs/zh/quick-start.md)**         |
-| **[Configuration Guide](docs/en/configuration.md)** | **[配置指南](docs/zh/configuration.md)**       |
-| **[CLI Reference](docs/en/cli-reference.md)**       | **[CLI 参考](docs/zh/cli-reference.md)**       |
-| **[Web Manager Guide](docs/en/manager.md)**         | **[Web 管理器指南](docs/zh/manager.md)**       |
-| **[Transformer Guide](docs/en/transformer.md)**     | **[转换器指南](docs/zh/transformer.md)**       |
-| **[Load Balancer Guide](docs/en/load-balancer.md)** | **[负载均衡器指南](docs/zh/load-balancer.md)** |
-| **[S3 Sync Guide](docs/en/s3-sync.md)**             | **[S3 同步指南](docs/zh/s3-sync.md)**          |
-| **[Development Guide](docs/en/development.md)**     | **[开发指南](docs/zh/development.md)**         |
+| 📖 English Documentation                            |
+| --------------------------------------------------- |
+| **[Installation Guide](docs/en/installation.md)**   |
+| **[Quick Start Guide](docs/en/quick-start.md)**     |
+| **[Configuration Guide](docs/en/configuration.md)** |
+| **[CLI Reference](docs/en/cli-reference.md)**       |
+| **[Web Manager Guide](docs/en/manager.md)**         |
+| **[Transformer Guide](docs/en/transformer.md)**     |
+| **[Load Balancer Guide](docs/en/load-balancer.md)** |
+| **[S3 Sync Guide](docs/en/s3-sync.md)**             |
+| **[Development Guide](docs/en/development.md)**     |
 
 ## Basic Usage
 
