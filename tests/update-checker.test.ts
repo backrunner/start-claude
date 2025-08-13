@@ -1,7 +1,6 @@
 import * as childProcess from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../src/utils/update-checker'
-import type { UpdateResult } from '../src/utils/update-checker'
 
 // Mock the package.json version
 vi.mock('../package.json', () => ({
