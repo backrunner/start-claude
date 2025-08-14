@@ -46,6 +46,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           secretAccessKey: initialSettings.s3Sync.secretAccessKey || '',
           key: initialSettings.s3Sync.key || 'configs.json',
           endpointUrl: initialSettings.s3Sync.endpointUrl || '',
+          remoteConfigCheckIntervalMinutes: initialSettings.s3Sync.remoteConfigCheckIntervalMinutes || 60,
         }
       : undefined,
   })
@@ -115,7 +116,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
     }))
   }
 
-  const handleS3Change = (field: keyof NonNullable<SystemSettings['s3Sync']>, value: string): void => {
+  const handleS3Change = (field: keyof NonNullable<SystemSettings['s3Sync']>, value: string | number): void => {
     setSettings(prev => ({
       ...prev,
       s3Sync: {
@@ -136,6 +137,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           secretAccessKey: '',
           key: 'configs.json',
           endpointUrl: '',
+          remoteConfigCheckIntervalMinutes: 60,
         },
       }))
     }
@@ -463,6 +465,29 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                             </p>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Remote Check Interval */}
+                      <div>
+                        <Label htmlFor="checkInterval" className="font-medium flex items-center gap-2">
+                          <Timer className="h-3 w-3" />
+                          Check Interval
+                        </Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            id="checkInterval"
+                            type="number"
+                            min="5"
+                            max="1440"
+                            className="w-20"
+                            value={settings.s3Sync.remoteConfigCheckIntervalMinutes || 60}
+                            onChange={e => handleS3Change('remoteConfigCheckIntervalMinutes', Number(e.target.value))}
+                          />
+                          <span className="text-sm text-muted-foreground">minutes</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          How often to check for remote configuration updates (5-1440 minutes)
+                        </p>
                       </div>
                     </div>
                   </div>

@@ -121,6 +121,7 @@ export class ProxyServer {
     if (this.enableLoadBalance) {
       // Include configs that either have API credentials OR transformer enabled
       // Note: transformer-enabled configs MUST have real external API credentials
+      console.log('configs', configs)
       const validConfigs = configs.filter((c) => {
         const hasApiCredentials = c.baseUrl && c.apiKey
         const hasTransformerEnabled = 'transformerEnabled' in c && c.transformerEnabled === true
@@ -128,6 +129,10 @@ export class ProxyServer {
         if (hasTransformerEnabled && !hasApiCredentials) {
           throw new Error(`Configuration "${c.name}" has transformerEnabled=true but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
         }
+
+        console.log('c', c)
+        console.log('hasApiCredentials', hasApiCredentials)
+        console.log('hasTransformerEnabled', hasTransformerEnabled)
 
         return hasApiCredentials || hasTransformerEnabled
       })
@@ -1629,53 +1634,43 @@ export class ProxyServer {
 
     let hasShownQuietMessage = false
 
-    // For Speed First strategy, perform multiple rounds of health checks to collect baseline data
-    const rounds = this.loadBalancerStrategy === 'Speed First' ? 3 : 1
+    // Perform health checks on all endpoints
+    for (let i = 0; i < this.endpoints.length; i++) {
+      const endpoint = this.endpoints[i]
+      const configName = endpoint.config.name || endpoint.config.baseUrl
 
-    for (let round = 0; round < rounds; round++) {
-      if (round > 0) {
-        displayVerbose(`Speed First: Collecting baseline data (round ${round + 1}/${rounds})`, this.verbose)
-        // Small delay between rounds to avoid overwhelming endpoints
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      }
-
-      for (let i = 0; i < this.endpoints.length; i++) {
-        const endpoint = this.endpoints[i]
-        const configName = endpoint.config.name || endpoint.config.baseUrl
-
-        try {
-          if (i === 0 && !hasShownQuietMessage && round === 0) {
-            displayGrey('🔍 Testing endpoints...')
-            hasShownQuietMessage = true
-          }
-          await this.initialHealthCheck(endpoint)
-
-          // For the first round, if first endpoint is healthy, we can proceed (legacy behavior)
-          // For Speed First rounds, continue collecting data from all endpoints
-          if (i === 0 && round === 0 && this.loadBalancerStrategy !== 'Speed First') {
-            return
-          }
+      try {
+        if (i === 0 && !hasShownQuietMessage) {
+          displayGrey('🔍 Testing endpoints...')
+          hasShownQuietMessage = true
         }
-        catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        await this.initialHealthCheck(endpoint)
 
-          // Parse HTTP status code from error message if available
-          const statusMatch = errorMessage.match(/status (\d+)/)
-          const statusCode = statusMatch ? statusMatch[1] : null
+        // For Speed First strategy, test all endpoints to collect timing data
+        // For other strategies, can return early after first successful endpoint
+        if (i === 0 && this.loadBalancerStrategy !== 'Speed First') {
+          return
+        }
+      }
+      catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-          if (statusCode) {
-            displayError(`❌ ${configName} - HTTP ${statusCode}: ${this.getStatusMessage(statusCode)}`)
-          }
-          else {
-            displayError(`❌ ${configName} - ${errorMessage}`)
-          }
+        // Parse HTTP status code from error message if available
+        const statusMatch = errorMessage.match(/status (\d+)/)
+        const statusCode = statusMatch ? statusMatch[1] : null
 
-          this.markEndpointUnhealthy(endpoint, errorMessage)
+        if (statusCode) {
+          displayError(`❌ ${configName} - HTTP ${statusCode}: ${this.getStatusMessage(statusCode)}`)
+        }
+        else {
+          displayError(`❌ ${configName} - ${errorMessage}`)
+        }
 
-          // If first endpoint failed, try the next one (only in first round)
-          if (i === 0 && round === 0) {
-            displayWarning('First endpoint failed, trying alternatives...')
-          }
+        this.markEndpointUnhealthy(endpoint, errorMessage)
+
+        // If first endpoint failed, try the next one
+        if (i === 0) {
+          displayWarning('First endpoint failed, trying alternatives...')
         }
       }
     }

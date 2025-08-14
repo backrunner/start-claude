@@ -80,6 +80,7 @@ export interface SystemSettings {
     secretAccessKey: string
     key: string
     endpointUrl?: string
+    remoteConfigCheckIntervalMinutes?: number // Default: 60 (1 hour)
   }
 }
 

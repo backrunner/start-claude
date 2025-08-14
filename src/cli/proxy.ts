@@ -61,7 +61,7 @@ export async function handleProxyMode(
 
   // Include configs that have complete API credentials (baseUrl, apiKey, and model) OR have transformer enabled
   const proxyableConfigs = configs.filter((c) => {
-    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && c.model
+    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && (c.transformerEnabled ? c.model : true)
     const hasTransformerEnabled = c.transformerEnabled === true
 
     if (hasTransformerEnabled && !hasCompleteApiCredentials) {

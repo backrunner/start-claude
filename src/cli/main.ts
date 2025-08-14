@@ -236,28 +236,33 @@ overrideCmd
 program
   .command('s3-setup')
   .description('Setup S3 sync configuration')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3SetupCommand)
 
 program
   .command('s3-sync')
   .description('Sync configurations with S3')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3SyncCommand)
 
 program
   .command('s3-upload')
   .description('Upload local configurations to S3')
   .option('-f, --force', 'Force overwrite remote configurations')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3UploadCommand)
 
 program
   .command('s3-download')
   .description('Download configurations from S3')
   .option('-f, --force', 'Force overwrite local configurations')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3DownloadCommand)
 
 program
   .command('s3-status')
   .description('Show S3 sync status')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3StatusCommand)
 
 program

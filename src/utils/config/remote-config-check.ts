@@ -15,7 +15,7 @@ const CHECK_CACHE_KEY = 'remote-config-check'
 
 /**
  * Check for remote config updates with rate limiting
- * Only checks once per day unless forced
+ * Checks based on configured interval (default: 1 hour) unless forced
  */
 export async function checkRemoteConfigUpdates(
   s3SyncManager: S3SyncManager,
@@ -33,13 +33,21 @@ export async function checkRemoteConfigUpdates(
       }
     }
 
-    // Get cached check time to implement daily check limit
+    displayVerbose(`S3 sync status: ${s3SyncManager.getS3Status()}`, options.verbose)
+
+    // Get configured check interval (default: 60 minutes)
+    const settings = s3SyncManager.getSystemSettings()
+    const checkIntervalMinutes = settings.s3Sync?.remoteConfigCheckIntervalMinutes || 60
+    displayVerbose(`Remote config check interval: ${checkIntervalMinutes} minutes`, options.verbose)
+
+    // Get cached check time to implement check limit
     const lastCheck = getCachedCheckTime()
-    const oneDayAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000))
+    const intervalAgo = new Date(now.getTime() - (checkIntervalMinutes * 60 * 1000))
 
     // Skip if we've checked recently and not forcing
-    if (!options.force && lastCheck && lastCheck > oneDayAgo) {
-      displayVerbose('Remote config check skipped (already checked today)', options.verbose)
+    if (!options.force && lastCheck && lastCheck > intervalAgo) {
+      const nextCheckTime = new Date(lastCheck.getTime() + (checkIntervalMinutes * 60 * 1000))
+      displayVerbose(`Remote config check skipped (checked recently, next check: ${nextCheckTime.toLocaleTimeString()})`, options.verbose)
       return {
         hasRemoteUpdate: false,
         lastCheckTime: lastCheck,
@@ -56,6 +64,7 @@ export async function checkRemoteConfigUpdates(
 
     if (hasUpdate) {
       displayInfo('✨ Remote configuration updated successfully')
+      displayVerbose('Remote config update completed', options.verbose)
     }
     else {
       displayVerbose('No remote config updates found', options.verbose)
@@ -90,14 +99,17 @@ export async function silentRemoteConfigCheck(
       return false
     }
 
-    displayVerbose('Performing silent remote config check...', options.verbose)
+    displayVerbose(`Starting silent remote config check for ${s3SyncManager.getS3Status()}`, options.verbose)
 
     // Use the auto-sync method which is designed to be silent
     const syncResult = await s3SyncManager.checkAutoSync()
 
     if (syncResult) {
-      displayVerbose('Silent config check completed', options.verbose)
+      displayVerbose('Silent config check completed successfully', options.verbose)
       return true
+    }
+    else {
+      displayVerbose('Silent config check completed - no sync needed', options.verbose)
     }
 
     return false
