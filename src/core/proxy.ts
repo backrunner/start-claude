@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '../config/types'
+import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { LLMProvider } from '../types/llm'
 import type { ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
 import { Buffer } from 'node:buffer'
@@ -9,12 +9,18 @@ import { HttpProxyAgent } from 'http-proxy-agent'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
-import { fileLogger } from '../utils/file-logger'
-import { convertOpenAIResponseToAnthropic, isOpenAIFormat } from '../utils/openai-to-anthropic'
-import { handleStreamingResponse } from '../utils/sse'
-import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/ui'
+import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/cli/ui'
+import { fileLogger } from '../utils/logging/file-logger'
+import { convertOpenAIResponseToAnthropic, isOpenAIFormat } from '../utils/network/openai-to-anthropic'
+import { handleStreamingResponse } from '../utils/network/sse'
 
 const log = console.log
+
+interface ResponseTiming {
+  startTime: number
+  firstTokenTime?: number // Time when first chunk/response data received
+  duration?: number // Total duration from start to first token
+}
 
 interface EndpointStatus {
   config: ClaudeConfig
@@ -23,6 +29,11 @@ interface EndpointStatus {
   failureCount: number
   lastError?: string
   bannedUntil?: number // Timestamp when ban expires
+  // Speed First mode timing data
+  responseTimes: number[] // Array of recent response times (ms)
+  averageResponseTime: number // Calculated average response time
+  lastResponseTime?: number // Most recent response time
+  totalRequests: number // Total number of requests sent to this endpoint
 }
 
 export class ProxyServer {
@@ -44,6 +55,15 @@ export class ProxyServer {
   private proxyUrl?: string
   private httpAgent?: http.Agent
   private httpsAgent?: https.Agent
+  // Load balancer strategy configuration
+  private loadBalancerStrategy: LoadBalancerStrategy = 'Fallback'
+  private speedFirstConfig: {
+    responseTimeWindowMs: number
+    minSamples: number
+  } = {
+    responseTimeWindowMs: 300000, // 5 minutes
+    minSamples: 2,
+  }
 
   constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode, systemSettings?: any, proxyUrl?: string) {
     this.proxyMode = proxyMode || {}
@@ -76,6 +96,15 @@ export class ProxyServer {
       this.healthCheckIntervalMs = systemSettings.balanceMode.healthCheck?.intervalMs || 30000
       this.healthCheckEnabled = systemSettings.balanceMode.healthCheck?.enabled !== false
       this.failedEndpointBanDurationSeconds = systemSettings.balanceMode.failedEndpoint?.banDurationSeconds || 300
+      this.loadBalancerStrategy = systemSettings.balanceMode.strategy || 'Fallback'
+
+      // Configure Speed First mode if specified
+      if (this.loadBalancerStrategy === 'Speed First' && systemSettings.balanceMode.speedFirst) {
+        this.speedFirstConfig = {
+          responseTimeWindowMs: systemSettings.balanceMode.speedFirst.responseTimeWindowMs || 300000,
+          minSamples: systemSettings.balanceMode.speedFirst.minSamples || 3,
+        }
+      }
     }
 
     // Initialize services
@@ -92,6 +121,7 @@ export class ProxyServer {
     if (this.enableLoadBalance) {
       // Include configs that either have API credentials OR transformer enabled
       // Note: transformer-enabled configs MUST have real external API credentials
+      console.log('configs', configs)
       const validConfigs = configs.filter((c) => {
         const hasApiCredentials = c.baseUrl && c.apiKey
         const hasTransformerEnabled = 'transformerEnabled' in c && c.transformerEnabled === true
@@ -99,6 +129,10 @@ export class ProxyServer {
         if (hasTransformerEnabled && !hasApiCredentials) {
           throw new Error(`Configuration "${c.name}" has transformerEnabled=true but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
         }
+
+        console.log('c', c)
+        console.log('hasApiCredentials', hasApiCredentials)
+        console.log('hasTransformerEnabled', hasTransformerEnabled)
 
         return hasApiCredentials || hasTransformerEnabled
       })
@@ -121,6 +155,9 @@ export class ProxyServer {
         isHealthy: true,
         lastCheck: 0,
         failureCount: 0,
+        responseTimes: [],
+        averageResponseTime: 0,
+        totalRequests: 0,
       }))
     }
     else {
@@ -145,6 +182,9 @@ export class ProxyServer {
             isHealthy: true,
             lastCheck: 0,
             failureCount: 0,
+            responseTimes: [],
+            averageResponseTime: 0,
+            totalRequests: 0,
           }))
         }
         else {
@@ -264,10 +304,12 @@ export class ProxyServer {
 
       this.server.listen(port, () => {
         const features = []
-        if (this.enableLoadBalance)
-          features.push('Load Balancer')
-        if (this.enableTransform)
+        if (this.enableLoadBalance) {
+          features.push(`Load Balancer (${this.loadBalancerStrategy})`)
+        }
+        if (this.enableTransform) {
           features.push('Transformer')
+        }
 
         const featureText = features.length > 0 ? ` (${features.join(' + ')})` : ''
         displaySuccess(`🚀 Proxy server started on port ${port}${featureText}`)
@@ -430,11 +472,317 @@ export class ProxyServer {
       return null
     }
 
-    // Simple round-robin selection among available endpoints
+    // Apply load balancer strategy
+    switch (this.loadBalancerStrategy) {
+      case 'Fallback':
+        return this.selectEndpointFallback(availableEndpoints)
+      case 'Polling':
+        return this.selectEndpointPolling(availableEndpoints)
+      case 'Speed First':
+        return this.selectEndpointSpeedFirst(availableEndpoints)
+      default:
+        displayWarning(`Unknown load balancer strategy: ${String(this.loadBalancerStrategy)}, falling back to Fallback mode`)
+        return this.selectEndpointFallback(availableEndpoints)
+    }
+  }
+
+  /**
+   * Fallback strategy: Use priority order, round-robin within same priority level
+   */
+  private selectEndpointFallback(availableEndpoints: EndpointStatus[]): EndpointStatus {
+    // Group endpoints by priority level (order field)
+    const priorityGroups = new Map<number, EndpointStatus[]>()
+
+    for (const endpoint of availableEndpoints) {
+      const priority = endpoint.config.order ?? 0
+      if (!priorityGroups.has(priority)) {
+        priorityGroups.set(priority, [])
+      }
+      priorityGroups.get(priority)!.push(endpoint)
+    }
+
+    // Get the highest priority (lowest order number) group
+    const sortedPriorities = Array.from(priorityGroups.keys()).sort((a, b) => a - b)
+    const highestPriorityEndpoints = priorityGroups.get(sortedPriorities[0])!
+
+    // Round-robin within the highest priority group
+    const endpoint = highestPriorityEndpoints[this.currentIndex % highestPriorityEndpoints.length]
+    this.currentIndex = (this.currentIndex + 1) % highestPriorityEndpoints.length
+
+    return endpoint
+  }
+
+  /**
+   * Polling strategy: Simple round-robin through all healthy endpoints regardless of priority
+   */
+  private selectEndpointPolling(availableEndpoints: EndpointStatus[]): EndpointStatus {
+    // Simple round-robin selection among all available endpoints
     const endpoint = availableEndpoints[this.currentIndex % availableEndpoints.length]
     this.currentIndex = (this.currentIndex + 1) % availableEndpoints.length
 
     return endpoint
+  }
+
+  /**
+   * Speed First strategy: Select endpoint with fastest average response time
+   */
+  private selectEndpointSpeedFirst(availableEndpoints: EndpointStatus[]): EndpointStatus {
+    // Filter endpoints that have enough samples for reliable average (reduced from 3 to 2)
+    const endpointsWithSamples = availableEndpoints.filter(e => e.responseTimes.length >= Math.max(1, this.speedFirstConfig.minSamples))
+
+    if (endpointsWithSamples.length === 0) {
+      // No endpoints have enough samples yet, fall back to round-robin to gather data
+      displayVerbose('Speed First: Not enough samples, using round-robin to gather data', this.verbose)
+      return this.selectEndpointPolling(availableEndpoints)
+    }
+
+    // Sort by average response time (ascending - fastest first)
+    const sortedBySpeed = endpointsWithSamples.sort((a, b) => a.averageResponseTime - b.averageResponseTime)
+
+    displayVerbose(`Speed First: Selected fastest endpoint ${sortedBySpeed[0].config.name} (avg: ${sortedBySpeed[0].averageResponseTime}ms, samples: ${sortedBySpeed[0].responseTimes.length})`, this.verbose)
+
+    return sortedBySpeed[0]
+  }
+
+  /**
+   * Record response time for Speed First load balancing
+   */
+  private recordResponseTime(endpoint: EndpointStatus, responseTime: number): void {
+    // Add the new response time
+    endpoint.responseTimes.push(responseTime)
+    endpoint.lastResponseTime = responseTime
+    endpoint.totalRequests++
+
+    // Remove old samples to prevent unbounded growth
+    // Note: This is a simplified approach. In practice, we'd store timestamps with each response time
+    // For now, we'll just limit the array size to prevent unbounded growth
+    if (endpoint.responseTimes.length > 100) {
+      endpoint.responseTimes = endpoint.responseTimes.slice(-50) // Keep most recent 50 samples
+    }
+
+    // Recalculate average
+    this.updateAverageResponseTime(endpoint)
+
+    if (this.debug) {
+      fileLogger.info('RESPONSE_TIME_RECORDED', 'Recorded response time for Speed First strategy', {
+        endpointName: endpoint.config.name,
+        responseTime,
+        sampleCount: endpoint.responseTimes.length,
+        newAverage: endpoint.averageResponseTime,
+        totalRequests: endpoint.totalRequests,
+      })
+    }
+  }
+
+  /**
+   * Update the average response time for an endpoint
+   */
+  private updateAverageResponseTime(endpoint: EndpointStatus): void {
+    if (endpoint.responseTimes.length === 0) {
+      endpoint.averageResponseTime = 0
+      return
+    }
+
+    const sum = endpoint.responseTimes.reduce((acc, time) => acc + time, 0)
+    endpoint.averageResponseTime = sum / endpoint.responseTimes.length
+  }
+
+  /**
+   * Start timing a request for Speed First tracking
+   */
+  private startRequestTiming(): ResponseTiming {
+    return {
+      startTime: Date.now(),
+    }
+  }
+
+  /**
+   * Record first token received time for Speed First tracking
+   */
+  private recordFirstToken(timing: ResponseTiming): void {
+    if (!timing.firstTokenTime) {
+      timing.firstTokenTime = Date.now()
+      timing.duration = timing.firstTokenTime - timing.startTime
+    }
+  }
+
+  /**
+   * Prepare response headers by removing hop-by-hop headers
+   */
+  private prepareResponseHeaders(headers: any): any {
+    const cleanHeaders = { ...headers }
+    delete cleanHeaders.connection
+    delete cleanHeaders['transfer-encoding']
+    return cleanHeaders
+  }
+
+  /**
+   * Prepare request headers for upstream request
+   */
+  private prepareRequestHeaders(originalHeaders: http.IncomingHttpHeaders, targetUrl: URL, apiKey: string): any {
+    const headers = { ...originalHeaders }
+    headers['x-api-key'] = apiKey
+    delete headers.authorization
+    headers.host = targetUrl.host
+
+    // Remove hop-by-hop headers
+    delete headers.connection
+    delete headers['proxy-connection']
+    delete headers['transfer-encoding']
+    delete headers.upgrade
+
+    return headers
+  }
+
+  /**
+   * Process response stream and apply formatting
+   */
+  private async processResponseStream(
+    proxyRes: http.IncomingMessage,
+    res: http.ServerResponse,
+    endpoint: EndpointStatus,
+    requestTiming: ResponseTiming | null,
+    context: {
+      isTransformer?: boolean
+      transformer?: any
+      transformerName?: string
+      provider?: any
+      targetUrl?: URL
+    } = {},
+  ): Promise<void> {
+    const initialResponseHeaders = this.prepareResponseHeaders(proxyRes.headers)
+    let rawResponseBody = ''
+    const passThrough = new PassThrough()
+
+    // Collect response data
+    passThrough.on('data', (chunk) => {
+      if (requestTiming) {
+        this.recordFirstToken(requestTiming)
+      }
+      rawResponseBody += chunk.toString()
+    })
+
+    passThrough.on('end', () => {
+      void (async () => {
+        try {
+          // Record response time for Speed First strategy
+          if (requestTiming && requestTiming.duration !== undefined) {
+            this.recordResponseTime(endpoint, requestTiming.duration)
+          }
+
+          let finalResponseBody = rawResponseBody
+          let finalResponseHeaders = { ...initialResponseHeaders }
+
+          // Apply transformer formatResponse if available
+          if (context.isTransformer && context.transformer?.formatResponse) {
+            try {
+              const responseForTransformation = new Response(rawResponseBody, {
+                status: proxyRes.statusCode || 200,
+                statusText: proxyRes.statusMessage || 'OK',
+                headers: proxyRes.headers as HeadersInit,
+              })
+
+              const transformedResponse = await context.transformer.formatResponse(responseForTransformation)
+              finalResponseBody = await transformedResponse.text()
+
+              const transformedHeaders: Record<string, string> = {}
+              transformedResponse.headers.forEach((value: string, key: string) => {
+                transformedHeaders[key] = value
+              })
+              finalResponseHeaders = { ...finalResponseHeaders, ...transformedHeaders }
+
+              if (this.debug) {
+                fileLogger.info('TRANSFORM_RESPONSE_OUTPUT', 'Response transformed by formatResponse', {
+                  transformerName: context.transformerName,
+                  statusCode: proxyRes.statusCode || 0,
+                  originalBodySize: rawResponseBody.length,
+                  transformedBodySize: finalResponseBody.length,
+                  originalBody: rawResponseBody,
+                  transformedBody: finalResponseBody,
+                })
+              }
+            }
+            catch (transformError) {
+              if (this.debug) {
+                fileLogger.error('TRANSFORM_RESPONSE_ERROR', 'Failed to transform response with formatResponse', {
+                  transformerName: context.transformerName,
+                  statusCode: proxyRes.statusCode || 0,
+                  error: transformError instanceof Error ? transformError.message : 'Unknown error',
+                  originalBody: rawResponseBody,
+                })
+              }
+            }
+          }
+
+          // Apply universal response formatting
+          const formattedFinalResponseBody = await this.formatUniversalResponse(
+            finalResponseBody,
+            proxyRes.statusCode || 200,
+            finalResponseHeaders,
+            res,
+          )
+
+          // For streaming responses, formatUniversalResponse handles everything
+          if (formattedFinalResponseBody === null) {
+            return
+          }
+
+          // Log response if debug enabled
+          if (this.debug) {
+            const logType = context.isTransformer ? 'EXTERNAL_API_RESPONSE' : 'REGULAR_API_RESPONSE'
+            const logMessage = context.isTransformer ? 'Raw response from external API' : 'Raw response from external API (direct proxy)'
+
+            fileLogger.info(logType, logMessage, {
+              ...(context.transformerName ? { transformerName: context.transformerName } : {}),
+              ...(context.provider ? { targetProvider: context.provider.name } : {}),
+              endpointName: endpoint.config.name,
+              targetUrl: context.targetUrl?.toString() || endpoint.config.baseUrl,
+              statusCode: proxyRes.statusCode || 0,
+              body: rawResponseBody,
+              formattedBody: formattedFinalResponseBody,
+            })
+          }
+
+          // Send headers and response
+          if (!res.headersSent) {
+            res.writeHead(proxyRes.statusCode || 200, finalResponseHeaders)
+          }
+          res.end(formattedFinalResponseBody)
+        }
+        catch (error) {
+          // Fallback error handling
+          if (this.debug) {
+            fileLogger.error('RESPONSE_PROCESSING_ERROR', 'Error processing response', {
+              ...(context.transformerName ? { transformerName: context.transformerName } : {}),
+              error: error instanceof Error ? error.message : 'Unknown error',
+            })
+          }
+
+          const formattedFallbackResponse = await this.formatUniversalResponse(
+            rawResponseBody,
+            proxyRes.statusCode || 200,
+            initialResponseHeaders,
+            res,
+          )
+
+          if (!res.headersSent) {
+            res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
+          }
+          res.end(formattedFallbackResponse)
+        }
+      })()
+    })
+
+    // Pipe the response through our processing stream
+    proxyRes.pipe(passThrough)
+
+    // Mark endpoint health based on status code
+    if (proxyRes.statusCode && proxyRes.statusCode < 500) {
+      this.markEndpointHealthy(endpoint)
+    }
+    else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
+      this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
+    }
   }
 
   private async proxyRequest(
@@ -442,6 +790,9 @@ export class ProxyServer {
     res: http.ServerResponse,
     endpoint: EndpointStatus,
   ): Promise<void> {
+    // Start timing for Speed First strategy
+    const requestTiming = this.loadBalancerStrategy === 'Speed First' ? this.startRequestTiming() : null
+
     // Collect request body
     const chunks: Buffer[] = []
     req.on('data', chunk => chunks.push(chunk))
@@ -588,157 +939,14 @@ export class ProxyServer {
                   })
                 }
 
-                // Prepare initial response headers (but don't send yet)
-                const initialResponseHeaders = { ...proxyRes.headers }
-                delete initialResponseHeaders.connection
-                delete initialResponseHeaders['transfer-encoding']
-
-                // Add CORS headers
-                initialResponseHeaders['Access-Control-Allow-Origin'] = '*'
-                initialResponseHeaders['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-                initialResponseHeaders['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, x-api-key'
-
-                // Intercept response body for transformation and logging
-                let rawResponseBody = ''
-                const passThrough = new PassThrough()
-
-                // Collect response data
-                passThrough.on('data', (chunk) => {
-                  rawResponseBody += chunk.toString()
+                // Use shared response processing method
+                void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
+                  isTransformer: true,
+                  transformer,
+                  transformerName,
+                  provider,
+                  targetUrl,
                 })
-
-                passThrough.on('end', () => {
-                  void (async () => {
-                    try {
-                      // Log raw response if debug is enabled
-                      if (this.debug) {
-                        fileLogger.info('EXTERNAL_API_RESPONSE', 'Raw response from external API', {
-                          transformerName,
-                          targetProvider: provider.name,
-                          statusCode: proxyRes.statusCode || 0,
-                          body: rawResponseBody,
-                        })
-                      }
-
-                      let finalResponseBody = rawResponseBody
-                      let finalResponseHeaders = { ...initialResponseHeaders }
-
-                      // Apply formatResponse transformation if available
-                      if (transformer.formatResponse) {
-                        try {
-                          // Create a Response object from the raw response for transformation
-                          const responseForTransformation = new Response(rawResponseBody, {
-                            status: proxyRes.statusCode || 200,
-                            statusText: proxyRes.statusMessage || 'OK',
-                            headers: proxyRes.headers as HeadersInit,
-                          })
-
-                          // Apply the transformer's formatResponse method
-                          const transformedResponse = await transformer.formatResponse(responseForTransformation)
-
-                          // Extract the transformed body and headers
-                          finalResponseBody = await transformedResponse.text()
-
-                          // Update headers from transformed response
-                          const transformedHeaders: Record<string, string> = {}
-                          transformedResponse.headers.forEach((value, key) => {
-                            transformedHeaders[key] = value
-                          })
-                          finalResponseHeaders = { ...finalResponseHeaders, ...transformedHeaders }
-
-                          // Log transformation if debug is enabled
-                          if (this.debug) {
-                            fileLogger.info('TRANSFORM_RESPONSE_OUTPUT', 'Response transformed by formatResponse', {
-                              transformerName,
-                              statusCode: proxyRes.statusCode || 0,
-                              originalBodySize: rawResponseBody.length,
-                              transformedBodySize: finalResponseBody.length,
-                              originalBody: rawResponseBody,
-                              transformedBody: finalResponseBody,
-                            })
-                          }
-                        }
-                        catch (transformError) {
-                          // Log transformation error if debug is enabled
-                          if (this.debug) {
-                            fileLogger.error('TRANSFORM_RESPONSE_ERROR', 'Failed to transform response with formatResponse', {
-                              transformerName,
-                              statusCode: proxyRes.statusCode || 0,
-                              error: transformError instanceof Error ? transformError.message : 'Unknown error',
-                              originalBody: rawResponseBody,
-                            })
-                          }
-                          // Continue with original response on transformation error
-                        }
-                      }
-                      else if (this.debug) {
-                        // Log that no formatResponse transformation is available (debug only)
-                        fileLogger.info('TRANSFORM_RESPONSE_SKIPPED', 'No formatResponse method available', {
-                          transformerName,
-                          hasFormatResponse: false,
-                          originalBodySize: rawResponseBody.length,
-                        })
-                      }
-
-                      // Apply universal response formatting after transformer formatResponse
-                      const formattedFinalResponseBody = await this.formatUniversalResponse(
-                        finalResponseBody,
-                        proxyRes.statusCode || 200,
-                        finalResponseHeaders,
-                        res,
-                      )
-
-                      // For streaming responses, formatUniversalResponse handles everything
-                      if (formattedFinalResponseBody === null) {
-                        // Response already sent via SSE
-                        return
-                      }
-
-                      // Now send headers with final transformed headers
-                      if (!res.headersSent) {
-                        res.writeHead(proxyRes.statusCode || 200, finalResponseHeaders)
-                      }
-
-                      // Send the final response (transformed or original) to client
-                      res.end(formattedFinalResponseBody)
-                    }
-                    catch (error) {
-                      // If anything goes wrong, send the original response with universal formatting
-                      if (this.debug) {
-                        fileLogger.error('RESPONSE_PROCESSING_ERROR', 'Error processing response', {
-                          transformerName,
-                          error: error instanceof Error ? error.message : 'Unknown error',
-                        })
-                      }
-
-                      // Apply universal response formatting to the fallback response too
-                      const formattedFallbackResponse = await this.formatUniversalResponse(
-                        rawResponseBody,
-                        proxyRes.statusCode || 200,
-                        initialResponseHeaders,
-                        res,
-                      )
-
-                      // Send fallback headers if not already sent
-                      if (!res.headersSent) {
-                        res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
-                      }
-
-                      res.end(formattedFallbackResponse)
-                    }
-                  })()
-                })
-
-                // Pipe the response through our processing stream (but don't pipe to res yet)
-                proxyRes.pipe(passThrough)
-
-                // Mark endpoint as healthy on successful response
-                if (proxyRes.statusCode && proxyRes.statusCode < 500) {
-                  this.markEndpointHealthy(endpoint)
-                }
-                else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
-                  this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
-                }
               })
 
               proxyReq.on('error', (error) => {
@@ -857,21 +1065,8 @@ export class ProxyServer {
           // Construct target URL for non-transformer endpoints
           const targetUrl = new URL(req.url || '/', endpoint.config.baseUrl)
 
-          // Prepare headers for the upstream request
-          const headers = { ...req.headers }
-
-          // Replace the x-api-key header with the real API key
-          headers['x-api-key'] = endpoint.config.apiKey
-          delete headers.authorization
-
-          // Fix Host header to match the target server
-          headers.host = targetUrl.host
-
-          // Remove hop-by-hop headers
-          delete headers.connection
-          delete headers['proxy-connection']
-          delete headers['transfer-encoding']
-          delete headers.upgrade
+          // Prepare headers for the upstream request using shared method
+          const headers = this.prepareRequestHeaders(req.headers, targetUrl, endpoint.config.apiKey)
 
           const isHttps = targetUrl.protocol === 'https:'
           const httpModule = isHttps ? https : http
@@ -895,69 +1090,11 @@ export class ProxyServer {
               })
             }
 
-            // Prepare response headers (but don't send yet)
-            const initialResponseHeaders = { ...proxyRes.headers }
-            delete initialResponseHeaders.connection
-            delete initialResponseHeaders['transfer-encoding']
-
-            // Don't send headers yet - wait for universal formatting to complete
-
-            // Intercept response body for universal formatting and optional logging
-            let rawResponseBody = ''
-            const passThrough = new PassThrough()
-
-            // Intercept data chunks
-            passThrough.on('data', (chunk) => {
-              rawResponseBody += chunk.toString()
+            // Use shared response processing method
+            void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
+              isTransformer: false,
+              targetUrl,
             })
-
-            passThrough.on('end', () => {
-              void (async () => {
-                // Apply universal response formatting
-                const formattedResponseBody = await this.formatUniversalResponse(
-                  rawResponseBody,
-                  proxyRes.statusCode || 200,
-                  initialResponseHeaders,
-                  res,
-                )
-
-                // For streaming responses, formatUniversalResponse handles everything
-                if (formattedResponseBody === null) {
-                // Response already sent via SSE
-                  return
-                }
-
-                // Log the raw response body from external API if debug enabled
-                if (this.debug) {
-                  fileLogger.info('REGULAR_API_RESPONSE', 'Raw response from external API (direct proxy)', {
-                    endpointName: endpoint.config.name,
-                    targetUrl: targetUrl.toString(),
-                    statusCode: proxyRes.statusCode || 0,
-                    body: rawResponseBody,
-                    formattedBody: formattedResponseBody,
-                  })
-                }
-
-                // Send headers with final formatted headers
-                if (!res.headersSent) {
-                  res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
-                }
-
-                // Send formatted response
-                res.end(formattedResponseBody)
-              })()
-            })
-
-            // Pipe the response through our processing stream
-            proxyRes.pipe(passThrough)
-
-            // Mark endpoint as healthy on successful response
-            if (proxyRes.statusCode && proxyRes.statusCode < 500) {
-              this.markEndpointHealthy(endpoint)
-            }
-            else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
-              this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
-            }
           })
 
           proxyReq.on('error', (error) => {
@@ -1092,21 +1229,8 @@ export class ProxyServer {
   ): Promise<void> {
     const targetUrl = new URL(url, endpoint.config.baseUrl)
 
-    // Prepare headers for the upstream request
-    const headers = { ...originalHeaders }
-
-    // Replace the x-api-key header with the real API key
-    headers['x-api-key'] = endpoint.config.apiKey
-    delete headers.authorization
-
-    // Fix Host header to match the target server
-    headers.host = targetUrl.host
-
-    // Remove hop-by-hop headers
-    delete headers.connection
-    delete headers['proxy-connection']
-    delete headers['transfer-encoding']
-    delete headers.upgrade
+    // Prepare headers for the upstream request using shared method
+    const headers = this.prepareRequestHeaders(originalHeaders, targetUrl, endpoint.config.apiKey!)
 
     const isHttps = targetUrl.protocol === 'https:'
     const httpModule = isHttps ? https : http
@@ -1130,69 +1254,11 @@ export class ProxyServer {
         })
       }
 
-      // Prepare response headers (but don't send yet)
-      const initialResponseHeaders = { ...proxyRes.headers }
-      delete initialResponseHeaders.connection
-      delete initialResponseHeaders['transfer-encoding']
-
-      // Don't send headers yet - wait for universal formatting to complete
-
-      // Intercept response body for universal formatting and optional logging
-      let rawResponseBody = ''
-      const passThrough = new PassThrough()
-
-      // Intercept data chunks
-      passThrough.on('data', (chunk) => {
-        rawResponseBody += chunk.toString()
+      // Use shared response processing method
+      void this.processResponseStream(proxyRes, res, endpoint, null, {
+        isTransformer: false,
+        targetUrl,
       })
-
-      passThrough.on('end', () => {
-        void (async () => {
-          // Apply universal response formatting
-          const formattedResponseBody = await this.formatUniversalResponse(
-            rawResponseBody,
-            proxyRes.statusCode || 200,
-            initialResponseHeaders,
-            res,
-          )
-
-          // For streaming responses, formatUniversalResponse handles everything
-          if (formattedResponseBody === null) {
-          // Response already sent via SSE
-            return
-          }
-
-          // Log the raw response body from external API if debug enabled
-          if (this.debug) {
-            fileLogger.info('RETRY_API_RESPONSE', 'Raw response from retry attempt', {
-              endpointName: endpoint.config.name,
-              targetUrl: targetUrl.toString(),
-              statusCode: proxyRes.statusCode || 0,
-              body: rawResponseBody,
-              formattedBody: formattedResponseBody,
-            })
-          }
-
-          // Send headers with final formatted headers
-          if (!res.headersSent) {
-            res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
-          }
-
-          // Send formatted response
-          res.end(formattedResponseBody)
-        })()
-      })
-
-      // Pipe the response through our processing stream
-      proxyRes.pipe(passThrough)
-
-      // Mark endpoint as healthy on successful response
-      if (proxyRes.statusCode && proxyRes.statusCode < 500) {
-        this.markEndpointHealthy(endpoint)
-      }
-      else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
-        this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
-      }
     })
 
     proxyReq.on('error', (error) => {
@@ -1324,12 +1390,15 @@ export class ProxyServer {
     }
   }
 
-  private async healthCheck(endpoint: EndpointStatus): Promise<void> {
+  private async performHealthCheckRequest(endpoint: EndpointStatus, options: { timeout: number, isInitial?: boolean } = { timeout: 10000 }): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Start timing for Speed First strategy
+      const healthTiming = this.loadBalancerStrategy === 'Speed First' ? this.startRequestTiming() : null
+
       const healthUrl = new URL('/v1/messages', endpoint.config.baseUrl)
 
       const healthCheckBody = JSON.stringify({
-        model: endpoint.config.model || 'claude-3-haiku-20240307',
+        model: endpoint.config.model || 'claude-3-haiku-20241022',
         max_tokens: 10,
         messages: [{
           role: 'user',
@@ -1340,24 +1409,39 @@ export class ProxyServer {
       const isHttps = healthUrl.protocol === 'https:'
       const httpModule = isHttps ? https : http
 
-      const options = {
+      const requestOptions = {
         method: 'POST',
         headers: {
           'x-api-key': endpoint.config.apiKey,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(healthCheckBody),
         },
-        timeout: 10000,
+        timeout: options.timeout,
         agent: this.getAgent(isHttps),
       }
 
-      const req = httpModule.request(healthUrl, options, (res) => {
+      const req = httpModule.request(healthUrl, requestOptions, (res) => {
+        // Record first response timing for health checks
+        if (healthTiming) {
+          this.recordFirstToken(healthTiming)
+        }
+
         if (res.statusCode && res.statusCode < 500) {
-          this.markEndpointHealthy(endpoint)
+          // Record health check response time for Speed First strategy
+          if (healthTiming && healthTiming.duration !== undefined) {
+            this.recordResponseTime(endpoint, healthTiming.duration)
+          }
+
+          // Only mark as healthy if this is not an initial check or if it is an initial check
+          if (!options.isInitial) {
+            this.markEndpointHealthy(endpoint)
+          }
           resolve()
         }
         else {
-          endpoint.lastCheck = Date.now()
+          if (!options.isInitial) {
+            endpoint.lastCheck = Date.now()
+          }
           reject(new Error(`Health check failed with status ${res.statusCode}`))
         }
 
@@ -1366,20 +1450,30 @@ export class ProxyServer {
       })
 
       req.on('error', (error) => {
-        endpoint.lastCheck = Date.now()
+        if (!options.isInitial) {
+          endpoint.lastCheck = Date.now()
+        }
         reject(error)
       })
 
       req.on('timeout', () => {
-        endpoint.lastCheck = Date.now()
+        if (!options.isInitial) {
+          endpoint.lastCheck = Date.now()
+        }
         req.destroy()
-        reject(new Error('Health check timeout'))
+        const timeoutMessage = options.isInitial ? `Health check timeout (${options.timeout / 1000}s)` : 'Health check timeout'
+        reject(new Error(timeoutMessage))
       })
 
       // Send the health check request body
       req.write(healthCheckBody)
       req.end()
     })
+  }
+
+  private async healthCheck(endpoint: EndpointStatus, isInitial = false): Promise<void> {
+    const timeout = isInitial ? 15000 : 10000
+    return this.performHealthCheckRequest(endpoint, { timeout, isInitial })
   }
 
   async stop(): Promise<void> {
@@ -1396,7 +1490,7 @@ export class ProxyServer {
     }
   }
 
-  getStatus(): { total: number, healthy: number, unhealthy: number, endpoints: EndpointStatus[], loadBalance: boolean, transform: boolean, transformers?: string[] } {
+  getStatus(): { total: number, healthy: number, unhealthy: number, endpoints: EndpointStatus[], loadBalance: boolean, transform: boolean, strategy?: LoadBalancerStrategy, transformers?: string[] } {
     const healthy = this.endpoints.filter(e => e.isHealthy).length
     const result = {
       total: this.endpoints.length,
@@ -1406,6 +1500,10 @@ export class ProxyServer {
       loadBalance: this.enableLoadBalance,
       transform: this.enableTransform,
     } as any
+
+    if (this.enableLoadBalance) {
+      result.strategy = this.loadBalancerStrategy
+    }
 
     if (this.enableTransform) {
       result.transformers = Array.from(this.transformerService.getAllTransformers().keys())
@@ -1429,6 +1527,7 @@ export class ProxyServer {
 
     let hasShownQuietMessage = false
 
+    // Perform health checks on all endpoints
     for (let i = 0; i < this.endpoints.length; i++) {
       const endpoint = this.endpoints[i]
       const configName = endpoint.config.name || endpoint.config.baseUrl
@@ -1438,10 +1537,11 @@ export class ProxyServer {
           displayGrey('🔍 Testing endpoints...')
           hasShownQuietMessage = true
         }
-        await this.initialHealthCheck(endpoint)
+        await this.healthCheck(endpoint, true)
 
-        // If first endpoint is healthy, we can proceed
-        if (i === 0) {
+        // For Speed First strategy, test all endpoints to collect timing data
+        // For other strategies, can return early after first successful endpoint
+        if (i === 0 && this.loadBalancerStrategy !== 'Speed First') {
           return
         }
       }
@@ -1464,8 +1564,28 @@ export class ProxyServer {
         // If first endpoint failed, try the next one
         if (i === 0) {
           displayWarning('First endpoint failed, trying alternatives...')
-          continue
         }
+      }
+    }
+
+    // After initial health checks, display Speed First readiness if applicable
+    if (this.loadBalancerStrategy === 'Speed First') {
+      const readyEndpoints = this.endpoints.filter(e => e.isHealthy && e.responseTimes.length > 0)
+      if (readyEndpoints.length > 0) {
+        // Sort by average response time to show initial ranking
+        const sorted = readyEndpoints.sort((a, b) => a.averageResponseTime - b.averageResponseTime)
+        displaySuccess(`🏁 Speed First ready with ${readyEndpoints.length} endpoints (fastest: ${sorted[0].config.name})`)
+
+        // Show sample counts for verification
+        if (this.verbose) {
+          displayVerbose('📊 Speed First endpoint timing data:', this.verbose)
+          for (const endpoint of sorted) {
+            displayVerbose(`   • ${endpoint.config.name}: ${endpoint.responseTimes.length} samples, avg ${endpoint.averageResponseTime.toFixed(1)}ms`, this.verbose)
+          }
+        }
+      }
+      else {
+        displayWarning('⚠️ Speed First: No healthy endpoints with timing data collected')
       }
     }
 
@@ -1477,60 +1597,6 @@ export class ProxyServer {
       displayWarning('⚠️ Load balancer will continue but may not work properly')
       log()
     }
-  }
-
-  private async initialHealthCheck(endpoint: EndpointStatus): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const healthUrl = new URL('/v1/messages', endpoint.config.baseUrl)
-
-      const healthCheckBody = JSON.stringify({
-        model: endpoint.config.model || 'claude-3-haiku-20241022',
-        max_tokens: 10,
-        messages: [{
-          role: 'user',
-          content: 'ping',
-        }],
-      })
-
-      const isHttps = healthUrl.protocol === 'https:'
-      const httpModule = isHttps ? https : http
-
-      const options = {
-        method: 'POST',
-        headers: {
-          'x-api-key': endpoint.config.apiKey,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(healthCheckBody),
-        },
-        timeout: 15000, // 15 second timeout for initial check
-        agent: this.getAgent(isHttps),
-      }
-
-      const req = httpModule.request(healthUrl, options, (res) => {
-        if (res.statusCode && res.statusCode < 500) {
-          resolve()
-        }
-        else {
-          reject(new Error(`Health check failed with status ${res.statusCode}`))
-        }
-
-        // Consume response to free up the socket
-        res.resume()
-      })
-
-      req.on('error', (error) => {
-        reject(error)
-      })
-
-      req.on('timeout', () => {
-        req.destroy()
-        reject(new Error('Health check timeout (15s)'))
-      })
-
-      // Send the health check request body
-      req.write(healthCheckBody)
-      req.end()
-    })
   }
 
   // Transformer management methods

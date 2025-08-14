@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import open from 'open'
-import { displayError, displayInfo, displaySuccess } from '../utils/ui'
+import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
 
 export class ManagerServer {
   private childProcess: ChildProcess | null = null

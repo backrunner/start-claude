@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { WebSocketServer } from 'ws'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -11,14 +12,11 @@ let wsServer: any = null
 const activeConnections = new Set<any>()
 
 // Initialize WebSocket server if not already created
-function initWebSocketServer() {
+function initWebSocketServer(): any {
   if (wsServer)
     return wsServer
 
   try {
-    // Use ws library for WebSocket server
-    const { WebSocketServer } = require('ws')
-
     wsServer = new WebSocketServer({
       port: 3001, // Use separate port for WebSocket
       host: 'localhost',
@@ -64,7 +62,7 @@ function initWebSocketServer() {
 }
 
 // HTTP endpoint to get WebSocket connection info
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   try {
     // Initialize WebSocket server
     const server = initWebSocketServer()
@@ -87,7 +85,7 @@ export async function GET() {
 }
 
 // Function to broadcast shutdown message to all connected clients
-export function broadcastShutdown() {
+export function broadcastShutdown(): void {
   console.log(`Broadcasting shutdown to ${activeConnections.size} connections`)
 
   if (activeConnections.size === 0) {

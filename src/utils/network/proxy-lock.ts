@@ -2,8 +2,8 @@ import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import * as process from 'node:process'
-import { displayError, displayInfo, displayWarning } from './ui'
+import process from 'node:process'
+import { displayError, displayInfo, displayWarning } from '../cli/ui'
 
 const PROXY_PORT = 2333
 const LOCK_FILE = path.join(os.tmpdir(), 'start-claude-proxy.lock')

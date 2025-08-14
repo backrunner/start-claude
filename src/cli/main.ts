@@ -14,11 +14,12 @@ import { handleS3DownloadCommand, handleS3SetupCommand, handleS3StatusCommand, h
 
 import { ConfigManager } from '../config/manager'
 import { S3SyncManager } from '../storage/s3-sync'
-import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
-import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/ui'
-import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/update-checker'
+import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/detection'
+import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/cli/ui'
+import { checkRemoteConfigUpdates } from '../utils/config/remote-config-check'
+import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
 import { startClaude } from './claude'
-import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveConfig } from './common'
+import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStrategy, resolveConfig } from './common'
 import { handleProxyMode } from './proxy'
 
 const program = new Command()
@@ -33,7 +34,7 @@ program
 program
   .option('--config <name>', 'Use specific configuration')
   .option('--list', 'List all configurations')
-  .option('--balance', 'Start a proxy server with load balancing on port 2333')
+  .option('--balance [strategy]', 'Start a proxy server with load balancing on port 2333. Strategies: fallback (priority-based), polling (round-robin), speedfirst (fastest response)')
   .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
   .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
   .option('--disallowedTools <tools>', 'Comma-separated list of disallowed tools', value => value.split(','))
@@ -49,6 +50,7 @@ program
   .option('--resume', 'Resume previous session')
   .option('--continue', 'Continue previous session')
   .option('--check-updates', 'Force check for updates')
+  .option('--force-config-check', 'Force check for remote config updates (bypass interval limit)')
   .option('--dangerously-skip-permissions', 'Skip permission checks (dangerous)')
   .option('-e, --env <key=value>', 'Set environment variable', (value, previous: string[] = []) => [...previous, value])
   .option('--proxy <url>', 'Set HTTPS proxy for requests')
@@ -69,9 +71,16 @@ program
     // Display verbose mode status if enabled
     displayVerbose('Verbose mode enabled', options.verbose)
 
-    // Check if balance mode should be enabled by default (unless explicitly disabled)
-    let shouldUseProxy = options.balance === true
+    // Parse balance strategy from CLI options
+    const balanceConfig = parseBalanceStrategy(options.balance)
+    let shouldUseProxy = balanceConfig.enabled
+    const cliStrategy = balanceConfig.strategy
     let systemSettings: any = null
+
+    // Display strategy info if CLI strategy was provided
+    if (cliStrategy && typeof options.balance === 'string') {
+      displayInfo(`🎯 Using ${cliStrategy} load balancer strategy`)
+    }
 
     if (!shouldUseProxy && options.balance !== false) {
       try {
@@ -102,12 +111,19 @@ program
           // Use null if we can't get settings
         }
       }
-      await handleProxyMode(configManager, options, configArg, systemSettings)
+      await handleProxyMode(configManager, options, configArg, systemSettings, undefined, cliStrategy)
       return
     }
 
     // Check for updates (rate limited to once per day, unless forced)
     const updateInfo = await checkForUpdates(options.checkUpdates)
+
+    // Check for remote config updates (once per day, unless forced)
+    await checkRemoteConfigUpdates(s3SyncManager, {
+      verbose: options.verbose,
+      force: options.checkUpdates || options.forceConfigCheck,
+    })
+
     if (updateInfo?.hasUpdate) {
       displayWarning(`🔔 Update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}`)
 
@@ -224,28 +240,33 @@ overrideCmd
 program
   .command('s3-setup')
   .description('Setup S3 sync configuration')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3SetupCommand)
 
 program
   .command('s3-sync')
   .description('Sync configurations with S3')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3SyncCommand)
 
 program
   .command('s3-upload')
   .description('Upload local configurations to S3')
   .option('-f, --force', 'Force overwrite remote configurations')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3UploadCommand)
 
 program
   .command('s3-download')
   .description('Download configurations from S3')
   .option('-f, --force', 'Force overwrite local configurations')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3DownloadCommand)
 
 program
   .command('s3-status')
   .description('Show S3 sync status')
+  .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3StatusCommand)
 
 program

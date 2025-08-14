@@ -87,21 +87,45 @@ Configure default load balancing behavior:
   }
   ```
 
-- **Health Check Interval**: Monitoring frequency (10s - 5min)
+- **Load Balancer Strategy**: Choose request distribution method
 
   ```json
-  "healthCheckInterval": 30000
+  "balanceMode": {
+    "strategy": "Speed First"  // "Fallback", "Polling", or "Speed First"
+  }
   ```
 
-- **Ban Duration**: Failed endpoint timeout (1min - 1hour)
+- **Speed First Configuration**: Performance-based routing settings
 
   ```json
-  "banDuration": 300000
+  "balanceMode": {
+    "strategy": "Speed First",
+    "speedFirst": {
+      "responseTimeWindowMs": 300000,  // Time window for averaging
+      "minSamples": 2                  // Minimum samples required
+    }
+  }
   ```
 
-- **Disable Health Checks**: Use simple round-robin only
+- **Health Check Settings**: Monitoring configuration
+
   ```json
-  "disableHealthChecks": true
+  "balanceMode": {
+    "healthCheck": {
+      "enabled": true,
+      "intervalMs": 30000  // Frequency (10s - 5min)
+    }
+  }
+  ```
+
+- **Failed Endpoint Handling**: Banning configuration
+
+  ```json
+  "balanceMode": {
+    "failedEndpoint": {
+      "banDurationSeconds": 300  // Ban duration (1min - 1hour)
+    }
+  }
   ```
 
 ### S3 Sync Settings
@@ -319,7 +343,12 @@ GET http://localhost:2334/api/settings
 PUT http://localhost:2334/api/settings
 {
   "balanceMode": {
-    "enableByDefault": true
+    "enableByDefault": true,
+    "strategy": "Speed First",
+    "speedFirst": {
+      "responseTimeWindowMs": 300000,
+      "minSamples": 2
+    }
   }
 }
 ```

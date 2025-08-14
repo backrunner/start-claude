@@ -2,8 +2,8 @@ import type { ClaudeConfig } from '../config/types'
 import process from 'node:process'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
-import { editConfigInEditor } from '../utils/editor'
-import { displayError, displaySuccess, displayWelcome } from '../utils/ui'
+import { editConfigInEditor } from '../utils/cli/editor'
+import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
 
 export async function handleEditCommand(name: string, options: { useEditor?: boolean }): Promise<void> {
   displayWelcome()

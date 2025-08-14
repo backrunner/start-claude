@@ -3,7 +3,7 @@ import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { checkAndHandleExistingProxy, removeLockFile } from '../src/utils/proxy-lock'
+import { checkAndHandleExistingProxy, removeLockFile } from '../src/utils/network/proxy-lock'
 
 const LOCK_FILE = path.join(os.tmpdir(), 'start-claude-proxy.lock')
 

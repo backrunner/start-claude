@@ -1,8 +1,8 @@
 import inquirer from 'inquirer'
 import { S3SyncManager } from '../storage/s3-sync'
-import { displayError, displayInfo, displayWelcome } from '../utils/ui'
+import { displayError, displayInfo, displayVerbose, displayWelcome } from '../utils/cli/ui'
 
-export async function handleS3SetupCommand(): Promise<void> {
+export async function handleS3SetupCommand(options: { verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
   const s3SyncManager = new S3SyncManager()
@@ -116,10 +116,10 @@ export async function handleS3SetupCommand(): Promise<void> {
     endpointUrl: answers.endpointUrl?.trim() || undefined,
   }
 
-  await s3SyncManager.setupS3Sync(s3Config)
+  await s3SyncManager.setupS3Sync(s3Config, { verbose: options.verbose })
 }
 
-export async function handleS3SyncCommand(): Promise<void> {
+export async function handleS3SyncCommand(options: { verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
   const s3SyncManager = new S3SyncManager()
@@ -128,10 +128,10 @@ export async function handleS3SyncCommand(): Promise<void> {
     return
   }
 
-  await s3SyncManager.syncConfigs()
+  await s3SyncManager.syncConfigs({ verbose: options.verbose })
 }
 
-export async function handleS3UploadCommand(options: { force?: boolean } = {}): Promise<void> {
+export async function handleS3UploadCommand(options: { force?: boolean, verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
   const s3SyncManager = new S3SyncManager()
@@ -141,10 +141,10 @@ export async function handleS3UploadCommand(options: { force?: boolean } = {}): 
   }
 
   // Let S3SyncManager handle timestamp checking and warnings
-  await s3SyncManager.uploadConfigs(options.force || false)
+  await s3SyncManager.uploadConfigs(options.force || false, { verbose: options.verbose })
 }
 
-export async function handleS3DownloadCommand(options: { force?: boolean }): Promise<void> {
+export async function handleS3DownloadCommand(options: { force?: boolean, verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
   const s3SyncManager = new S3SyncManager()
@@ -155,11 +155,24 @@ export async function handleS3DownloadCommand(options: { force?: boolean }): Pro
   }
 
   // Always let S3SyncManager handle timestamp checking and warnings
-  await s3SyncManager.downloadConfigs(options.force || false)
+  await s3SyncManager.downloadConfigs(options.force || false, { silent: false, verbose: options.verbose })
 }
 
-export async function handleS3StatusCommand(): Promise<void> {
+export async function handleS3StatusCommand(options: { verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
   const s3SyncManager = new S3SyncManager()
   displayInfo(`S3 Sync Status: ${s3SyncManager.getS3Status()}`)
+
+  if (options.verbose) {
+    // Additional verbose status information could be added here
+    const settings = s3SyncManager.getSystemSettings()
+    if (settings.s3Sync) {
+      displayVerbose(`S3 Configuration Details:`, options.verbose)
+      displayVerbose(`  Bucket: ${settings.s3Sync.bucket}`, options.verbose)
+      displayVerbose(`  Region: ${settings.s3Sync.region}`, options.verbose)
+      if (settings.s3Sync.endpointUrl) {
+        displayVerbose(`  Endpoint: ${settings.s3Sync.endpointUrl}`, options.verbose)
+      }
+    }
+  }
 }

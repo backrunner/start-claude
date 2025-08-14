@@ -1,6 +1,6 @@
 {
   "name": "@start-claude/manager",
-  "version": "1.0.0",
+  "version": "0.2.1",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",

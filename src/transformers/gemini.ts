@@ -1,10 +1,10 @@
 import type { LLMChatRequest, LLMProvider } from '../types/llm'
 import type { Transformer, TransformerOptions } from '../types/transformer'
+import { createTransformerUrl } from '../utils/network/transformer-url'
 import {
   buildRequestBody,
   formatResponseFromGemini,
-} from '../utils/gemini'
-import { createTransformerUrl } from '../utils/transformer-url'
+} from '../utils/transformer/gemini'
 
 export class GeminiTransformer implements Transformer {
   static TransformerName = 'gemini'

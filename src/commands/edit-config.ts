@@ -1,6 +1,6 @@
-import { ConfigManager } from '../config/manager'
-import { editConfigFileInEditor } from '../utils/editor'
-import { displayError, displayInfo, displaySuccess, displayWelcome } from '../utils/ui'
+import { S3SyncManager } from '../storage/s3-sync'
+import { editConfigFileInEditor } from '../utils/cli/editor'
+import { displayError, displayInfo, displaySuccess, displayWelcome } from '../utils/cli/ui'
 
 export async function handleEditConfigCommand(): Promise<void> {
   displayWelcome()
@@ -20,8 +20,8 @@ export async function handleEditConfigCommand(): Promise<void> {
   displayInfo('Opening configuration file in editor with live reload...')
   displayInfo('Any changes you save will be automatically reloaded and synced.')
 
-  // Initialize ConfigManager for S3 sync
-  const configManager = new ConfigManager()
+  // Initialize S3SyncManager for direct sync without triggering file watcher
+  const s3SyncManager = new S3SyncManager()
 
   const onConfigReload = (config: any): void => {
     try {
@@ -31,12 +31,12 @@ export async function handleEditConfigCommand(): Promise<void> {
         return
       }
 
-      // Load the config through ConfigManager to trigger S3 sync
-      // We do this by reading and re-saving the config file through ConfigManager
-      const configFile = configManager.load()
-
-      // Re-save to trigger auto-sync callback if S3 is configured
-      configManager.save(configFile)
+      // Trigger S3 sync directly without re-saving the config file
+      // This avoids the infinite loop caused by the file watcher
+      s3SyncManager.autoUploadAfterChange().catch((error) => {
+        // Silent fail for auto-sync, but log for debugging
+        displayError(`Auto-sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      })
 
       displaySuccess('✅ Configuration changes detected, validated, and synced!')
     }

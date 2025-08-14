@@ -49,18 +49,28 @@ export interface ClaudeConfig {
 }
 
 /**
+ * Load balancer strategy types
+ */
+export type LoadBalancerStrategy = 'Fallback' | 'Polling' | 'Speed First'
+
+/**
  * System settings interface
  */
 export interface SystemSettings {
   overrideClaudeCommand: boolean
   balanceMode?: {
     enableByDefault: boolean
+    strategy: LoadBalancerStrategy
     healthCheck: {
       enabled: boolean
       intervalMs: number
     }
     failedEndpoint: {
       banDurationSeconds: number
+    }
+    speedFirst?: {
+      responseTimeWindowMs: number // Time window for calculating average response times
+      minSamples: number // Minimum number of samples before reordering
     }
   }
   s3Sync?: {
@@ -70,6 +80,7 @@ export interface SystemSettings {
     secretAccessKey: string
     key: string
     endpointUrl?: string
+    remoteConfigCheckIntervalMinutes?: number // Default: 60 (1 hour)
   }
 }
 

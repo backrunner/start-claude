@@ -1,6 +1,6 @@
 import type { LLMChatRequest, LLMProvider } from '../types/llm'
 import type { Transformer, TransformerOptions } from '../types/transformer'
-import { createTransformerUrl } from '../utils/transformer-url'
+import { createTransformerUrl } from '../utils/network/transformer-url'
 
 export class OpenaiTransformer implements Transformer {
   static TransformerName = 'openai'

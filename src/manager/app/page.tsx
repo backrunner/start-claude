@@ -6,7 +6,7 @@ import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { AlertCircle, Command, Loader2, Plus, Search, Settings, Sparkles } from 'lucide-react'
+import { AlertCircle, Command, Plus, Search, Settings, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ConfigFormModal } from '@/components/config-form-modal'
 import { ConfigList } from '@/components/config-list'
@@ -15,7 +15,7 @@ import { SystemSettingsModal } from '@/components/system-settings-modal'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ShutdownCoordinator } from '@/lib/shutdown-coordinator'
 import { useToast } from '@/lib/use-toast'
@@ -107,7 +107,7 @@ export default function HomePage(): ReactNode {
 
     // WebSocket connection for real-time shutdown
     let ws: WebSocket | null = null
-    let wsReconnectTimeout: NodeJS.Timeout | null = null
+    const wsReconnectTimeout: NodeJS.Timeout | null = null
     let healthCheckInterval: NodeJS.Timeout | null = null
     let useHealthCheck = false
 
@@ -190,31 +190,33 @@ export default function HomePage(): ReactNode {
         })
         return response.ok
       }
-      catch (error) {
+      catch {
         return false
       }
     }
 
-    const startHealthCheck = (): void => {
+    function startHealthCheck(): void {
       if (healthCheckInterval)
         return // Already running
 
       console.log('Starting health check polling (WebSocket fallback)')
-      healthCheckInterval = setInterval(async () => {
-        if (!useHealthCheck) {
-          // WebSocket has reconnected, stop health check
-          if (healthCheckInterval) {
-            clearInterval(healthCheckInterval)
-            healthCheckInterval = null
+      healthCheckInterval = setInterval(() => {
+        void (async () => {
+          if (!useHealthCheck) {
+            // WebSocket has reconnected, stop health check
+            if (healthCheckInterval) {
+              clearInterval(healthCheckInterval)
+              healthCheckInterval = null
+            }
+            return
           }
-          return
-        }
 
-        const isHealthy = await healthCheck()
-        if (!isHealthy) {
-          console.log('Manager server is no longer responding, closing page...')
-          window.close()
-        }
+          const isHealthy = await healthCheck()
+          if (!isHealthy) {
+            console.log('Manager server is no longer responding, closing page...')
+            window.close()
+          }
+        })()
       }, 2000) // Check every 2 seconds
     }
 
@@ -222,7 +224,7 @@ export default function HomePage(): ReactNode {
     void connectWebSocket()
 
     // Add beforeunload listener to catch all page close scenarios
-    const handleBeforeUnload = (event: BeforeUnloadEvent): void => {
+    const handleBeforeUnload = (_event: BeforeUnloadEvent): void => {
       shutdownCoordinator.handleBeforeUnload()
     }
 
@@ -231,7 +233,12 @@ export default function HomePage(): ReactNode {
       shutdownCoordinator.handleUnload()
     }
 
-    window.addEventListener('keydown', handleKeyDown)
+    // Add ESC key listener with wrapper to handle void return requirement
+    const handleKeyDownWrapper = (event: KeyboardEvent): void => {
+      void handleKeyDown(event)
+    }
+
+    window.addEventListener('keydown', handleKeyDownWrapper)
     window.addEventListener('beforeunload', handleBeforeUnload)
     window.addEventListener('unload', handleUnload)
 
@@ -254,7 +261,7 @@ export default function HomePage(): ReactNode {
       }
 
       // Cleanup event listeners
-      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keydown', handleKeyDownWrapper)
       window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('unload', handleUnload)
     }
@@ -614,7 +621,7 @@ export default function HomePage(): ReactNode {
           open={isFormOpen}
           onOpenChange={setIsFormOpen}
           config={editingConfig}
-          onSave={(config): void => { void saveConfig(config) }}
+          onSave={(config) => { void saveConfig(config) }}
           onCancel={() => {
             setIsFormOpen(false)
             setEditingConfig(null)
@@ -632,7 +639,7 @@ export default function HomePage(): ReactNode {
           open={!!deleteConfig}
           onClose={() => setDeleteConfig(null)}
           configName={deleteConfig}
-          onConfirm={(): void => { void handleDeleteConfirm() }}
+          onConfirm={() => { void handleDeleteConfirm() }}
         />
       </div>
     </div>

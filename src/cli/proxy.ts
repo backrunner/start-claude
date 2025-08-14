@@ -1,11 +1,12 @@
 import type { ConfigManager } from '../config/manager'
+import type { LoadBalancerStrategy } from '../config/types'
 import type { ProgramOptions } from './common'
 import process from 'node:process'
 import { ProxyServer } from '../core/proxy'
 import { S3SyncManager } from '../storage/s3-sync'
-import { fileLogger } from '../utils/file-logger'
-import { checkAndHandleExistingProxy, removeLockFile, setupProxyCleanup } from '../utils/proxy-lock'
-import { displayError, displayInfo, displaySuccess } from '../utils/ui'
+import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
+import { fileLogger } from '../utils/logging/file-logger'
+import { checkAndHandleExistingProxy, removeLockFile, setupProxyCleanup } from '../utils/network/proxy-lock'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveBaseConfig } from './common'
 
@@ -18,6 +19,7 @@ export async function handleProxyMode(
   configArg?: string,
   systemSettings?: any,
   forcedConfigs?: any[], // Allow forced configs for transformer mode
+  cliStrategy?: LoadBalancerStrategy, // CLI-specified strategy override
 ): Promise<void> {
   // Check for S3 sync updates at startup
   const s3SyncManager = new S3SyncManager()
@@ -59,7 +61,7 @@ export async function handleProxyMode(
 
   // Include configs that have complete API credentials (baseUrl, apiKey, and model) OR have transformer enabled
   const proxyableConfigs = configs.filter((c) => {
-    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && c.model
+    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && (c.transformerEnabled ? c.model : true)
     const hasTransformerEnabled = c.transformerEnabled === true
 
     if (hasTransformerEnabled && !hasCompleteApiCredentials) {
@@ -106,12 +108,24 @@ export async function handleProxyMode(
     // Set up a proxy configuration that preserves other settings - resolve early for transformer matching
     const baseConfig = resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
 
+    // Override system settings with CLI strategy if provided
+    let effectiveSystemSettings = systemSettings
+    if (cliStrategy) {
+      effectiveSystemSettings = {
+        ...systemSettings,
+        balanceMode: {
+          ...systemSettings?.balanceMode,
+          strategy: cliStrategy,
+        },
+      }
+    }
+
     const proxyServer = new ProxyServer(proxyableConfigs, {
-      enableLoadBalance: options.balance || false,
+      enableLoadBalance: typeof options.balance === 'string' || options.balance === true,
       enableTransform: hasTransformerEnabled,
       debug: options.debug || false,
       verbose: options.verbose || options.debug || false, // Enable verbose by default in debug mode
-    }, systemSettings, options.proxy)
+    }, effectiveSystemSettings, options.proxy)
 
     // Perform initial health checks
     await proxyServer.performInitialHealthChecks()

@@ -37,7 +37,7 @@ start-claude --list            # List all configurations
 - `--api-key <key>` - Override API key for this session
 - `--base-url <url>` - Override base URL for this session
 - `--model <model>` - Override model for this session
-- `--balance` - Start with load balancing enabled
+- `--balance [strategy]` - Start with load balancing enabled. Optional strategy: `fallback`, `polling`, `speedfirst`
 - `-e, --env <key=value>` - Set environment variable
 - `--proxy <url>` - Set HTTPS proxy for requests
 - `-p, --print` - Print output to stdout
@@ -232,22 +232,44 @@ start-claude s3-status        # Shows:
 
 ### Load Balancing & Proxy
 
-#### `start-claude --balance`
+#### `start-claude --balance [strategy]`
 
 Start with load balancing across multiple configurations.
 
 ```bash
-start-claude --balance                    # Use all available configurations
+start-claude --balance                    # Use system default strategy
+start-claude --balance fallback          # Priority-based with failover
+start-claude --balance polling           # Round-robin across all endpoints
+start-claude --balance speedfirst        # Route to fastest endpoint
 start-claude --balance config1 config2   # Use specific configurations
-start-claude --balance --verbose         # Enable detailed health monitoring
+start-claude --balance polling --verbose # Enable detailed health monitoring
 ```
+
+**Load Balancer Strategies:**
+
+- `fallback` - **Priority-based with failover** (default)
+  - Respects endpoint `order` field for priority
+  - Round-robin within same priority level
+  - Falls back to lower priority on failure
+
+- `polling` - **Round-robin distribution**
+  - Ignores priority ordering
+  - Distributes requests evenly across all healthy endpoints
+  - Simple and predictable load distribution
+
+- `speedfirst` - **Performance-based routing**
+  - Routes to fastest responding endpoint
+  - Measures response time from request to first token
+  - Automatically adapts to endpoint performance
+  - Requires multiple samples for reliable routing
 
 **Features:**
 
 - Health monitoring with configurable intervals
 - Automatic endpoint banning on failure
-- Round-robin distribution among healthy endpoints
-- Priority-based failover (based on `order` field)
+- Intelligent request distribution based on chosen strategy
+- Priority-based failover (for fallback strategy)
+- Performance monitoring and adaptation (for speedfirst strategy)
 - Transformer support for different API providers
 
 ### Configuration File Management

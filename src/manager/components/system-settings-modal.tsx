@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { SystemSettings } from '@/config/types'
+import type { LoadBalancerStrategy, SystemSettings } from '@/config/types'
 import { Activity, AlertCircle, Cloud, Database, Globe, Key, Lock, Settings2, Timer, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 
 interface SystemSettingsModalProps {
@@ -24,12 +25,17 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
     overrideClaudeCommand: initialSettings?.overrideClaudeCommand || false,
     balanceMode: {
       enableByDefault: initialSettings?.balanceMode?.enableByDefault || false,
+      strategy: initialSettings?.balanceMode?.strategy || 'Fallback',
       healthCheck: {
         enabled: initialSettings?.balanceMode?.healthCheck?.enabled !== false,
         intervalMs: initialSettings?.balanceMode?.healthCheck?.intervalMs || 30000,
       },
       failedEndpoint: {
         banDurationSeconds: initialSettings?.balanceMode?.failedEndpoint?.banDurationSeconds || 300,
+      },
+      speedFirst: initialSettings?.balanceMode?.speedFirst || {
+        responseTimeWindowMs: 300000,
+        minSamples: 2,
       },
     },
     s3Sync: initialSettings?.s3Sync
@@ -40,6 +46,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           secretAccessKey: initialSettings.s3Sync.secretAccessKey || '',
           key: initialSettings.s3Sync.key || 'configs.json',
           endpointUrl: initialSettings.s3Sync.endpointUrl || '',
+          remoteConfigCheckIntervalMinutes: initialSettings.s3Sync.remoteConfigCheckIntervalMinutes || 60,
         }
       : undefined,
   })
@@ -96,7 +103,20 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
     }))
   }
 
-  const handleS3Change = (field: keyof NonNullable<SystemSettings['s3Sync']>, value: string): void => {
+  const handleSpeedFirstChange = (field: keyof NonNullable<NonNullable<SystemSettings['balanceMode']>['speedFirst']>, value: any): void => {
+    setSettings(prev => ({
+      ...prev,
+      balanceMode: {
+        ...prev.balanceMode!,
+        speedFirst: {
+          ...prev.balanceMode!.speedFirst!,
+          [field]: value,
+        },
+      },
+    }))
+  }
+
+  const handleS3Change = (field: keyof NonNullable<SystemSettings['s3Sync']>, value: string | number): void => {
     setSettings(prev => ({
       ...prev,
       s3Sync: {
@@ -117,6 +137,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           secretAccessKey: '',
           key: 'configs.json',
           endpointUrl: '',
+          remoteConfigCheckIntervalMinutes: 60,
         },
       }))
     }
@@ -176,6 +197,74 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                     onCheckedChange={checked => handleBalanceModeChange('enableByDefault', checked)}
                   />
                 </div>
+
+                {/* Load Balancer Strategy */}
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                  <div className="flex-1">
+                    <Label htmlFor="loadBalancerStrategy" className="font-medium">Load Balancer Strategy</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Choose how requests are distributed across endpoints
+                    </p>
+                  </div>
+                  <Select
+                    value={settings.balanceMode?.strategy || 'Fallback'}
+                    onValueChange={(value: LoadBalancerStrategy) => handleBalanceModeChange('strategy', value)}
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Fallback">Fallback</SelectItem>
+                      <SelectItem value="Polling">Polling</SelectItem>
+                      <SelectItem value="Speed First">Speed First</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Speed First Configuration */}
+                {settings.balanceMode?.strategy === 'Speed First' && (
+                  <div className="space-y-3 p-3 rounded-lg border bg-muted/50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Timer className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                      <Label className="font-medium">Speed First Settings</Label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="speedFirstWindow" className="text-sm font-medium">Time Window</Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            id="speedFirstWindow"
+                            type="number"
+                            min="1"
+                            max="60"
+                            className="w-20"
+                            value={Math.floor((settings.balanceMode?.speedFirst?.responseTimeWindowMs || 300000) / 60000)}
+                            onChange={e => handleSpeedFirstChange('responseTimeWindowMs', Number(e.target.value) * 60000)}
+                          />
+                          <span className="text-sm text-muted-foreground">minutes</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Time window for calculating average response times
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="speedFirstSamples" className="text-sm font-medium">Min Samples</Label>
+                        <Input
+                          id="speedFirstSamples"
+                          type="number"
+                          min="1"
+                          max="20"
+                          className="w-20 mt-1"
+                          value={settings.balanceMode?.speedFirst?.minSamples || 3}
+                          onChange={e => handleSpeedFirstChange('minSamples', Number(e.target.value))}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Minimum samples before using speed-based routing
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-3 p-3 rounded-lg border bg-muted/50">
                   <div className="flex items-center justify-between">
@@ -376,6 +465,29 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                             </p>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Remote Check Interval */}
+                      <div>
+                        <Label htmlFor="checkInterval" className="font-medium flex items-center gap-2">
+                          <Timer className="h-3 w-3" />
+                          Check Interval
+                        </Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            id="checkInterval"
+                            type="number"
+                            min="5"
+                            max="1440"
+                            className="w-20"
+                            value={settings.s3Sync.remoteConfigCheckIntervalMinutes || 60}
+                            onChange={e => handleS3Change('remoteConfigCheckIntervalMinutes', Number(e.target.value))}
+                          />
+                          <span className="text-sm text-muted-foreground">minutes</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          How often to check for remote configuration updates (5-1440 minutes)
+                        </p>
                       </div>
                     </div>
                   </div>

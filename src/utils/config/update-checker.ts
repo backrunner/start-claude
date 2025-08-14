@@ -1,6 +1,6 @@
 import { exec, spawn } from 'node:child_process'
 import process from 'node:process'
-import { version } from '../../package.json'
+import { version } from '../../../package.json'
 import { UpdateCheckCache } from './update-check-cache'
 
 export interface UpdateInfo {

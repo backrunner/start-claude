@@ -51,7 +51,7 @@ describe('editor', () => {
 
   // Basic test to ensure module loads
   it('should import editor module successfully', async () => {
-    const editorModule = await import('@/utils/editor')
+    const editorModule = await import('@/utils/cli/editor')
     expect(editorModule.createConfigInEditor).toBeDefined()
     expect(editorModule.editConfigInEditor).toBeDefined()
   })

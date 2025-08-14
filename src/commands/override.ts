@@ -1,8 +1,8 @@
-import { OverrideManager } from '../cli/override'
-import { ConfigManager } from '../config/manager'
-import { displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/ui'
 import boxen from 'boxen'
 import chalk from 'chalk'
+import { OverrideManager } from '../cli/override'
+import { ConfigManager } from '../config/manager'
+import { displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/cli/ui'
 
 export async function handleOverrideCommand(): Promise<void> {
   displayWelcome()

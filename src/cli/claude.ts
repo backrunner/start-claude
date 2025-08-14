@@ -6,7 +6,7 @@ import { accessSync, constants } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import inquirer from 'inquirer'
-import { displayError, displayInfo, displaySuccess } from '../utils/ui'
+import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
 
 export async function startClaude(config: ClaudeConfig | undefined, args: string[] = [], cliOverrides?: CliOverrides): Promise<number> {
   const env: NodeJS.ProcessEnv = { ...process.env }

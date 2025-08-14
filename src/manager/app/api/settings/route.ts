@@ -19,12 +19,17 @@ function getSettings(): any {
     if (!settings.balanceMode) {
       settings.balanceMode = {
         enableByDefault: false,
+        strategy: 'Fallback',
         healthCheck: {
           enabled: true,
           intervalMs: 30000,
         },
         failedEndpoint: {
           banDurationSeconds: 300,
+        },
+        speedFirst: {
+          responseTimeWindowMs: 300000,
+          minSamples: 2,
         },
       }
     }
@@ -37,12 +42,17 @@ function getSettings(): any {
       overrideClaudeCommand: false,
       balanceMode: {
         enableByDefault: false,
+        strategy: 'Fallback',
         healthCheck: {
           enabled: true,
           intervalMs: 30000,
         },
         failedEndpoint: {
           banDurationSeconds: 300,
+        },
+        speedFirst: {
+          responseTimeWindowMs: 300000,
+          minSamples: 2,
         },
       },
     }

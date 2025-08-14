@@ -1,7 +1,7 @@
 import type { ConfigService } from '../services/config'
 
 import type { Transformer, TransformerConstructor } from '../types/transformer'
-import { displayVerbose } from '../utils/ui'
+import { displayVerbose } from '../utils/cli/ui'
 
 interface TransformerConfig {
   transformers: Array<{
