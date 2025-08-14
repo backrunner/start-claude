@@ -9,10 +9,10 @@ import { HttpProxyAgent } from 'http-proxy-agent'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
-import { fileLogger } from '../utils/file-logger'
-import { convertOpenAIResponseToAnthropic, isOpenAIFormat } from '../utils/openai-to-anthropic'
-import { handleStreamingResponse } from '../utils/sse'
-import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/ui'
+import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/cli/ui'
+import { fileLogger } from '../utils/logging/file-logger'
+import { convertOpenAIResponseToAnthropic, isOpenAIFormat } from '../utils/network/openai-to-anthropic'
+import { handleStreamingResponse } from '../utils/network/sse'
 
 const log = console.log
 

@@ -6,7 +6,8 @@ import { join } from 'node:path'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
-import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/ui'
+import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
+import { displayConflictResolution, resolveConfigConflicts } from '../utils/config/conflict-resolver'
 
 export interface S3Config {
   bucket: string
@@ -26,6 +27,16 @@ export interface S3ObjectInfo {
   lastModified: Date
   size: number
   exists: boolean
+  version?: number
+  configVersion?: number
+}
+
+export interface SyncComparisonResult {
+  shouldSync: boolean
+  reason: string
+  syncDirection: 'upload' | 'download' | 'conflict'
+  hasVersionConflict: boolean
+  hasConfigConflicts: boolean
 }
 
 interface AwsError {
@@ -213,10 +224,17 @@ export class S3SyncManager {
       })
 
       const response = await this.s3Client.send(command)
+
+      // Extract version info from metadata if available
+      const configVersion = response.Metadata?.['config-version']
+        ? Number.parseInt(response.Metadata['config-version'])
+        : undefined
+
       return {
         lastModified: response.LastModified || new Date(),
         size: response.ContentLength || 0,
         exists: true,
+        configVersion,
       }
     }
     catch (error: unknown) {
@@ -257,6 +275,147 @@ export class S3SyncManager {
       second: '2-digit',
       timeZoneName: 'short',
     })
+  }
+
+  /**
+   * Analyzes local and remote configurations to determine sync requirements
+   */
+  private async analyzeSyncRequirements(
+    localConfig: ConfigFile,
+    remoteInfo: S3ObjectInfo,
+    localFileInfo: FileMetadata,
+  ): Promise<SyncComparisonResult> {
+    // If remote doesn't exist, upload local
+    if (!remoteInfo.exists) {
+      return {
+        shouldSync: true,
+        reason: 'Remote configuration does not exist',
+        syncDirection: 'upload',
+        hasVersionConflict: false,
+        hasConfigConflicts: false,
+      }
+    }
+
+    // If local doesn't exist, download remote
+    if (localFileInfo.lastModified.getTime() === 0) {
+      return {
+        shouldSync: true,
+        reason: 'Local configuration does not exist',
+        syncDirection: 'download',
+        hasVersionConflict: false,
+        hasConfigConflicts: false,
+      }
+    }
+
+    // Fetch remote config to compare versions and content
+    let remoteConfig: ConfigFile | null = null
+    try {
+      const s3Config = this.getS3Config()!
+      const command = new GetObjectCommand({
+        Bucket: s3Config.bucket,
+        Key: this.normalizeS3Key(s3Config.key),
+      })
+      const response = await this.s3Client!.send(command)
+      const configData = await response.Body!.transformToString()
+      remoteConfig = JSON.parse(configData)
+    }
+    catch {
+      // If we can't read remote config, fall back to timestamp comparison
+      return this.fallbackTimestampComparison(localFileInfo, remoteInfo)
+    }
+
+    // Compare versions
+    const localVersion = localConfig.version || 1
+    const remoteVersion = remoteConfig?.version || 1
+    const hasVersionConflict = localVersion !== remoteVersion
+
+    // Detect configuration conflicts
+    const conflictResolution = remoteConfig
+      ? resolveConfigConflicts(localConfig, remoteConfig, { autoResolve: true })
+      : { hasConflicts: false, conflicts: [] }
+    const hasConfigConflicts = conflictResolution.hasConflicts
+
+    // Version-based decision making
+    if (localVersion > remoteVersion) {
+      return {
+        shouldSync: true,
+        reason: `Local version (${localVersion}) is newer than remote (${remoteVersion})`,
+        syncDirection: 'upload',
+        hasVersionConflict,
+        hasConfigConflicts,
+      }
+    }
+
+    if (remoteVersion > localVersion) {
+      return {
+        shouldSync: true,
+        reason: `Remote version (${remoteVersion}) is newer than local (${localVersion})`,
+        syncDirection: 'download',
+        hasVersionConflict,
+        hasConfigConflicts,
+      }
+    }
+
+    // Same version - check for conflicts
+    if (hasConfigConflicts) {
+      return {
+        shouldSync: true,
+        reason: 'Configuration conflicts detected requiring smart merge',
+        syncDirection: 'conflict',
+        hasVersionConflict,
+        hasConfigConflicts,
+      }
+    }
+
+    // Same version, no conflicts - check timestamps as tiebreaker
+    const timeDiff = localFileInfo.lastModified.getTime() - remoteInfo.lastModified.getTime()
+    const fiveMinutesMs = 5 * 60 * 1000
+
+    if (Math.abs(timeDiff) < fiveMinutesMs) {
+      return {
+        shouldSync: false,
+        reason: 'Configurations are in sync',
+        syncDirection: 'download',
+        hasVersionConflict,
+        hasConfigConflicts,
+      }
+    }
+
+    return {
+      shouldSync: true,
+      reason: timeDiff > 0 ? 'Local file is newer' : 'Remote file is newer',
+      syncDirection: timeDiff > 0 ? 'upload' : 'download',
+      hasVersionConflict,
+      hasConfigConflicts,
+    }
+  }
+
+  /**
+   * Fallback comparison when remote config can't be parsed
+   */
+  private fallbackTimestampComparison(
+    localFileInfo: FileMetadata,
+    remoteInfo: S3ObjectInfo,
+  ): SyncComparisonResult {
+    const timeDiff = localFileInfo.lastModified.getTime() - remoteInfo.lastModified.getTime()
+
+    if (Math.abs(timeDiff) < 5 * 60 * 1000) {
+      return {
+        shouldSync: false,
+        reason: 'Files are in sync (timestamp comparison)',
+        syncDirection: 'download',
+        hasVersionConflict: false,
+        hasConfigConflicts: false,
+      }
+    }
+
+    return {
+      shouldSync: true,
+      reason: timeDiff > 0 ? 'Local file is newer (timestamp)' : 'Remote file is newer (timestamp)',
+      syncDirection: timeDiff > 0 ? 'upload' : 'download',
+      hasVersionConflict: false,
+      hasConfigConflicts: false,
+    }
   }
 
   async uploadConfigs(force = false): Promise<boolean> {
@@ -306,6 +465,7 @@ export class S3SyncManager {
         Metadata: {
           'upload-timestamp': now.toISOString(),
           'local-modified': localFile.lastModified.toISOString(),
+          'config-version': configFile.version.toString(),
         },
       })
 
@@ -319,7 +479,7 @@ export class S3SyncManager {
     }
   }
 
-  async downloadConfigs(force = false): Promise<boolean> {
+  async downloadConfigs(force = false, options: { silent?: boolean, verbose?: boolean } = {}): Promise<boolean> {
     const s3Config = this.getS3Config()
     if (!s3Config) {
       displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
@@ -335,53 +495,11 @@ export class S3SyncManager {
         return false
       }
 
-      // Get local file info for comparison
+      // Get local config for comparison
+      const localConfig = this.configManager.getConfigFile()
       const localFile = this.getLocalFileInfo()
-      const localConfigs = this.configManager.listConfigs()
 
-      // Check if local configs exist and we're not forcing
-      if (localConfigs.length > 0 && !force) {
-        // Check timestamps and warn if local is newer
-        if (localFile.lastModified > remoteInfo.lastModified) {
-          displayWarning('⚠️  Local file is newer than remote file!')
-          displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
-          displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
-
-          const overwriteAnswer = await inquirer.prompt([
-            {
-              type: 'confirm',
-              name: 'overwrite',
-              message: 'Download older remote file and overwrite local configuration?',
-              default: false,
-            },
-          ])
-
-          if (!overwriteAnswer.overwrite) {
-            displayInfo('Download cancelled.')
-            return false
-          }
-        }
-        else {
-          // Remote is newer or same, show timestamps
-          displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
-          displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
-
-          const overwriteAnswer = await inquirer.prompt([
-            {
-              type: 'confirm',
-              name: 'overwrite',
-              message: 'Download remote configuration and overwrite local configs?',
-              default: remoteInfo.lastModified > localFile.lastModified,
-            },
-          ])
-
-          if (!overwriteAnswer.overwrite) {
-            displayInfo('Download cancelled.')
-            return false
-          }
-        }
-      }
-
+      // Fetch remote config
       const command = new GetObjectCommand({
         Bucket: s3Config.bucket,
         Key: this.normalizeS3Key(s3Config.key),
@@ -391,7 +509,81 @@ export class S3SyncManager {
       const configData = await response.Body!.transformToString()
       const remoteConfigFile: ConfigFile = JSON.parse(configData)
 
-      // Save the downloaded configuration (disable auto-sync to prevent re-upload)
+      // Smart conflict resolution
+      if (localFile.lastModified.getTime() > 0 && !force) {
+        const conflictResolution = resolveConfigConflicts(localConfig, remoteConfigFile, {
+          autoResolve: options.silent,
+          verbose: options.verbose,
+        })
+
+        if (conflictResolution.hasConflicts && !options.silent) {
+          displayConflictResolution(conflictResolution, { verbose: options.verbose })
+
+          const resolutionAnswer = await inquirer.prompt([
+            {
+              type: 'list',
+              name: 'resolution',
+              message: 'How would you like to resolve the configuration conflicts?',
+              choices: [
+                { name: 'Use smart merge (recommended)', value: 'merge' },
+                { name: 'Use remote configuration', value: 'remote' },
+                { name: 'Keep local configuration', value: 'local' },
+                { name: 'Cancel download', value: 'cancel' },
+              ],
+              default: 'merge',
+            },
+          ])
+
+          if (resolutionAnswer.resolution === 'cancel') {
+            displayInfo('Download cancelled.')
+            return false
+          }
+
+          let configToSave: ConfigFile
+          switch (resolutionAnswer.resolution) {
+            case 'merge':
+              configToSave = conflictResolution.resolvedConfig
+              displayInfo('✅ Applied smart merge resolution')
+              break
+            case 'remote':
+              configToSave = remoteConfigFile
+              displayInfo('✅ Using remote configuration')
+              break
+            case 'local':
+              displayInfo('✅ Keeping local configuration')
+              return true
+            default:
+              configToSave = conflictResolution.resolvedConfig
+          }
+
+          // Save the resolved configuration
+          this.disableAutoSync()
+          try {
+            this.configManager.saveConfigFile(configToSave)
+            displaySuccess(`Configuration synchronized with conflict resolution! (${this.formatTimestamp(remoteInfo.lastModified)})`)
+            return true
+          }
+          finally {
+            this.enableAutoSync()
+          }
+        }
+        else if (conflictResolution.hasConflicts && options.silent) {
+          // Silent mode with conflicts - use smart merge
+          this.disableAutoSync()
+          try {
+            this.configManager.saveConfigFile(conflictResolution.resolvedConfig)
+            if (options.verbose) {
+              displayInfo(`✅ Silent conflict resolution applied (${conflictResolution.conflicts.length} conflicts resolved)`)
+            }
+            return true
+          }
+          finally {
+            this.enableAutoSync()
+          }
+        }
+      }
+
+      // No conflicts or force mode - direct download
       this.disableAutoSync()
       try {
         this.configManager.saveConfigFile(remoteConfigFile)
@@ -457,6 +649,7 @@ export class S3SyncManager {
   /**
    * Check if automatic sync should occur and perform it silently
    * Returns true if sync was performed or not needed
+   * Enhanced with version checking and smart conflict resolution
    */
   async checkAutoSync(): Promise<boolean> {
     if (!this.isS3Configured()) {
@@ -466,36 +659,32 @@ export class S3SyncManager {
     try {
       this.initializeS3Client(this.getS3Config()!)
 
+      const localConfig = this.configManager.getConfigFile()
       const localFile = this.getLocalFileInfo()
       const remoteInfo = await this.getS3ObjectInfo(this.getS3Config()!)
 
-      if (!remoteInfo.exists) {
-        // No remote file, upload local if it exists
-        if (localFile.lastModified.getTime() > 0) {
+      // Use enhanced sync analysis
+      const syncAnalysis = await this.analyzeSyncRequirements(localConfig, remoteInfo, localFile)
+
+      if (!syncAnalysis.shouldSync) {
+        return true // No sync needed
+      }
+
+      // Perform sync based on analysis
+      switch (syncAnalysis.syncDirection) {
+        case 'upload':
           return await this.uploadConfigs(true)
-        }
-        return true
-      }
 
-      if (localFile.lastModified.getTime() === 0) {
-        // No local file, download remote
-        return await this.downloadConfigs(true)
-      }
+        case 'download':
+          // Silent download with conflict resolution
+          return await this.downloadConfigs(true, { silent: true, verbose: false })
 
-      // Both files exist, auto-sync only if one is clearly newer
-      const timeDiffMs = Math.abs(localFile.lastModified.getTime() - remoteInfo.lastModified.getTime())
-      const fiveMinutesMs = 5 * 60 * 1000
+        case 'conflict':
+          // Silent conflict resolution - auto-merge conflicts
+          return await this.downloadConfigs(true, { silent: true, verbose: false })
 
-      if (timeDiffMs < fiveMinutesMs) {
-        // Files are very close in time, don't auto-sync
-        return true
-      }
-
-      if (localFile.lastModified > remoteInfo.lastModified) {
-        return await this.uploadConfigs(true)
-      }
-      else {
-        return await this.downloadConfigs(true)
+        default:
+          return true
       }
     }
     catch {

@@ -3,7 +3,7 @@ import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
 import inquirer from 'inquirer'
-import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/ui'
+import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
 
 export interface ProgramOptions {
   config?: string

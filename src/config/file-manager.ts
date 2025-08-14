@@ -2,7 +2,7 @@ import type { ConfigFile, LegacyConfigFile, MigrationInfo, SystemSettings } from
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { displayInfo, displaySuccess, displayWarning } from '../utils/ui'
+import { displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
 import { migrationRegistry } from './migration'
 import { CURRENT_CONFIG_VERSION } from './types'
 

@@ -1,8 +1,8 @@
 import type { ClaudeConfig } from '../config/types'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
-import { createConfigInEditor } from '../utils/editor'
-import { displayError, displaySuccess, displayWelcome } from '../utils/ui'
+import { createConfigInEditor } from '../utils/cli/editor'
+import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
 
 export async function handleAddCommand(options: { useEditor?: boolean }): Promise<void> {
   displayWelcome()

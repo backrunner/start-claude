@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '../config/types'
+import type { ClaudeConfig } from '../../config/types'
 import { exec, execSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, statSync, unlinkSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

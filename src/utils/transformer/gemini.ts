@@ -18,7 +18,7 @@
  * copies or substantial portions of the Software.
  */
 
-import type { LLMChatRequest, Message } from '../types/llm'
+import type { LLMChatRequest, Message } from '../../types/llm'
 
 // Extended types for Gemini-specific functionality (only add what's missing from base types)
 interface GeminiMessage extends Message {

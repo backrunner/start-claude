@@ -1,6 +1,6 @@
 import { ConfigManager } from '../config/manager'
-import { editConfigFileInEditor } from '../utils/editor'
-import { displayError, displayInfo, displaySuccess, displayWelcome } from '../utils/ui'
+import { editConfigFileInEditor } from '../utils/cli/editor'
+import { displayError, displayInfo, displaySuccess, displayWelcome } from '../utils/cli/ui'
 
 export async function handleEditConfigCommand(): Promise<void> {
   displayWelcome()

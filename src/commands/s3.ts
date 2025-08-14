@@ -1,6 +1,6 @@
 import inquirer from 'inquirer'
 import { S3SyncManager } from '../storage/s3-sync'
-import { displayError, displayInfo, displayWelcome } from '../utils/ui'
+import { displayError, displayInfo, displayWelcome } from '../utils/cli/ui'
 
 export async function handleS3SetupCommand(): Promise<void> {
   displayWelcome()

@@ -14,9 +14,10 @@ import { handleS3DownloadCommand, handleS3SetupCommand, handleS3StatusCommand, h
 
 import { ConfigManager } from '../config/manager'
 import { S3SyncManager } from '../storage/s3-sync'
-import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/detection'
-import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/ui'
-import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/update-checker'
+import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/detection'
+import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/cli/ui'
+import { checkRemoteConfigUpdates } from '../utils/config/remote-config-check'
+import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStrategy, resolveConfig } from './common'
 import { handleProxyMode } from './proxy'
@@ -115,6 +116,10 @@ program
 
     // Check for updates (rate limited to once per day, unless forced)
     const updateInfo = await checkForUpdates(options.checkUpdates)
+
+    // Check for remote config updates (once per day, unless forced)
+    await checkRemoteConfigUpdates(s3SyncManager, { verbose: options.verbose, force: options.checkUpdates })
+
     if (updateInfo?.hasUpdate) {
       displayWarning(`🔔 Update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}`)
 

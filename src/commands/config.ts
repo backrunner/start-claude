@@ -1,7 +1,7 @@
 import process from 'node:process'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
-import { displayError, displayInfo, displaySuccess } from '../utils/ui'
+import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
 
 export async function handleRemoveCommand(name: string): Promise<void> {
   const configManager = new ConfigManager()
@@ -32,7 +32,7 @@ export async function handleRemoveCommand(name: string): Promise<void> {
 export async function handleListCommand(): Promise<void> {
   const configManager = new ConfigManager()
   const configs = configManager.listConfigs()
-  const { displayConfigList, displayWelcome } = await import('../utils/ui')
+  const { displayConfigList, displayWelcome } = await import('../utils/cli/ui')
   displayWelcome()
   displayConfigList(configs)
 }
