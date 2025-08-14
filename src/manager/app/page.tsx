@@ -233,7 +233,12 @@ export default function HomePage(): ReactNode {
       shutdownCoordinator.handleUnload()
     }
 
-    window.addEventListener('keydown', handleKeyDown)
+    // Add ESC key listener with wrapper to handle void return requirement
+    const handleKeyDownWrapper = (event: KeyboardEvent): void => {
+      void handleKeyDown(event)
+    }
+
+    window.addEventListener('keydown', handleKeyDownWrapper)
     window.addEventListener('beforeunload', handleBeforeUnload)
     window.addEventListener('unload', handleUnload)
 
@@ -256,7 +261,7 @@ export default function HomePage(): ReactNode {
       }
 
       // Cleanup event listeners
-      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keydown', handleKeyDownWrapper)
       window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('unload', handleUnload)
     }
@@ -616,7 +621,7 @@ export default function HomePage(): ReactNode {
           open={isFormOpen}
           onOpenChange={setIsFormOpen}
           config={editingConfig}
-          onSave={(config): void => { void saveConfig(config) }}
+          onSave={(config) => { void saveConfig(config) }}
           onCancel={() => {
             setIsFormOpen(false)
             setEditingConfig(null)
@@ -634,7 +639,7 @@ export default function HomePage(): ReactNode {
           open={!!deleteConfig}
           onClose={() => setDeleteConfig(null)}
           configName={deleteConfig}
-          onConfirm={(): void => { void handleDeleteConfirm() }}
+          onConfirm={() => { void handleDeleteConfirm() }}
         />
       </div>
     </div>
