@@ -1305,9 +1305,9 @@ describe('proxyServer', () => {
         recordResponseTime(endpoint, 300)
 
         // Check that average is calculated correctly
-        expect(endpoint.averageResponseTime).toBe(200) // (100 + 200 + 300) / 3
-        expect(endpoint.responseTimes).toHaveLength(3)
-        expect(endpoint.totalRequests).toBe(3)
+        expect(endpoint!.averageResponseTime).toBe(200) // (100 + 200 + 300) / 3
+        expect(endpoint!.responseTimes).toHaveLength(3)
+        expect(endpoint!.totalRequests).toBe(3)
       })
     })
   })

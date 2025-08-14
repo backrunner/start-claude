@@ -233,8 +233,8 @@ export default function HomePage(): ReactNode {
       shutdownCoordinator.handleUnload()
     }
 
-    window.addEventListener('keydown', handleKeyDown as EventListener)
-    window.addEventListener('beforeunload', handleBeforeUnload as EventListener)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('beforeunload', handleBeforeUnload)
     window.addEventListener('unload', handleUnload)
 
     return () => {
@@ -256,8 +256,8 @@ export default function HomePage(): ReactNode {
       }
 
       // Cleanup event listeners
-      window.removeEventListener('keydown', handleKeyDown as EventListener)
-      window.removeEventListener('beforeunload', handleBeforeUnload as EventListener)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('unload', handleUnload)
     }
   }, [])

@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import * as process from 'node:process'
+import process from 'node:process'
 import { displayError, displayInfo, displayWarning } from './ui'
 
 const PROXY_PORT = 2333

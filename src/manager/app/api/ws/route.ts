@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { WebSocketServer } from 'ws'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -16,10 +17,6 @@ function initWebSocketServer(): any {
     return wsServer
 
   try {
-    // Use ws library for WebSocket server
-    // eslint-disable-next-line ts/no-require-imports
-    const { WebSocketServer } = require('ws')
-
     wsServer = new WebSocketServer({
       port: 3001, // Use separate port for WebSocket
       host: 'localhost',
