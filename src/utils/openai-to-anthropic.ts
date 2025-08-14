@@ -166,7 +166,7 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
       let isThinkingStarted = false
       let contentIndex = 0
 
-      const safeEnqueue = (data: Uint8Array) => {
+      const safeEnqueue = (data: Uint8Array): void => {
         if (!isClosed) {
           try {
             controller.enqueue(data)
@@ -182,7 +182,7 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
         }
       }
 
-      const safeClose = () => {
+      const safeClose = (): void => {
         if (!isClosed) {
           try {
             controller.close()
@@ -312,6 +312,7 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
 
               // Handle text content
               if (choice?.delta?.content && !isClosed && !hasFinished) {
+                // eslint-disable-next-line unused-imports/no-unused-vars
                 contentChunks++
 
                 if (!hasTextContentStarted && !hasFinished) {
@@ -455,7 +456,8 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                     catch {
                       try {
                         const fixedArgument = toolCall.function.arguments
-                          .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+                          // eslint-disable-next-line no-control-regex
+                          .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
                           .replace(/\\/g, '\\\\')
                           .replace(/"/g, '\\"')
 
@@ -521,7 +523,7 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                 break
               }
             }
-            catch (parseError) {
+            catch {
               // Skip malformed chunks
               continue
             }

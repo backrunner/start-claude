@@ -102,7 +102,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
     }))
   }
 
-  const handleSpeedFirstChange = (field: keyof NonNullable<SystemSettings['balanceMode']>['speedFirst'], value: any): void => {
+  const handleSpeedFirstChange = (field: keyof NonNullable<NonNullable<SystemSettings['balanceMode']>['speedFirst']>, value: any): void => {
     setSettings(prev => ({
       ...prev,
       balanceMode: {

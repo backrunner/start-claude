@@ -27,6 +27,7 @@ export default antfu({
     'node_modules/',
     'bin/',
     '.history/',
+    'docs/',
     '**/*.min.js',
     '**/*-min.js',
     '**/*.bundle.js',
