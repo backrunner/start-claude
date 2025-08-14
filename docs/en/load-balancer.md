@@ -15,21 +15,77 @@ The enhanced proxy server provides load balancing across multiple Claude API end
 
 The proxy server:
 
-- **Distributes requests** across multiple healthy endpoints using round-robin
+- **Distributes requests** across multiple healthy endpoints using configurable strategies
 - **Health monitoring** - automatically detects and handles unhealthy endpoints
 - **Failover support** - switches to backup endpoints when primary ones fail
+- **Performance optimization** - adapts routing based on endpoint response times
 - **Transformer processing** - supports transformation between different API formats
-- **Priority ordering** - respects configuration order for endpoint priority
+- **Priority ordering** - respects configuration order for endpoint priority (fallback strategy)
 - **Proxy server** - runs on port 2333 by default
+
+## Load Balancer Strategies
+
+Start Claude supports three different load balancing strategies to optimize request distribution:
+
+### Fallback Strategy (Default)
+
+**Priority-based with failover**
+
+- **Respects endpoint priority**: Uses `order` field to determine primary/backup endpoints
+- **Round-robin within priority**: Distributes load evenly among endpoints with same priority
+- **Automatic failover**: Falls back to lower priority endpoints when higher ones fail
+- **Best for**: Production setups with primary/backup endpoint hierarchy
+
+```bash
+start-claude --balance fallback
+```
+
+### Polling Strategy
+
+**Round-robin distribution**
+
+- **Ignores priority ordering**: Treats all endpoints equally
+- **Even distribution**: Simple round-robin across all healthy endpoints
+- **Predictable routing**: Each request goes to the next endpoint in rotation
+- **Best for**: Even load distribution across equivalent endpoints
+
+```bash
+start-claude --balance polling
+```
+
+### Speed First Strategy
+
+**Performance-based routing**
+
+- **Performance monitoring**: Measures response time from request to first token
+- **Adaptive routing**: Automatically routes to fastest responding endpoint
+- **Continuous optimization**: Updates routing decisions based on real-time performance
+- **Warmup period**: Collects multiple samples during startup for reliable routing
+- **Best for**: Optimizing response times across endpoints with varying performance
+
+```bash
+start-claude --balance speedfirst
+```
+
+**Speed First Configuration:**
+
+- **Response Time Window**: Time period for averaging response times (default: 5 minutes)
+- **Minimum Samples**: Number of timing samples required before speed-based routing (default: 2)
+- **Health Check Timing**: Health checks contribute to performance metrics
 
 ## Quick Start
 
 ```bash
-# Start proxy server with all available configurations
+# Start proxy server with all available configurations (default strategy)
 start-claude --balance
 
-# Use proxy server with specific configurations
-start-claude --balance config1 config2 config3
+# Use specific strategy
+start-claude --balance speedfirst         # Performance-optimized routing
+start-claude --balance polling           # Even distribution
+start-claude --balance fallback          # Priority-based with failover
+
+# Use proxy server with specific configurations and strategy
+start-claude --balance polling config1 config2 config3
 
 # Start proxy server without detailed output (simplified mode)
 start-claude config1

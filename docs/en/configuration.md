@@ -52,31 +52,51 @@ Control default load balancing behavior:
   }
   ```
 
-- **Health Check Interval**: How often to check endpoint health (10s - 5min)
+- **Load Balancer Strategy**: Choose how requests are distributed across endpoints
 
   ```json
   {
     "balanceMode": {
-      "healthCheckInterval": 30000 // 30 seconds
+      "strategy": "Speed First" // "Fallback", "Polling", or "Speed First"
     }
   }
   ```
 
-- **Ban Duration**: How long to ban failed endpoints (1min - 1hour)
+- **Speed First Configuration**: Settings for performance-based routing
 
   ```json
   {
     "balanceMode": {
-      "banDuration": 300000 // 5 minutes
+      "strategy": "Speed First",
+      "speedFirst": {
+        "responseTimeWindowMs": 300000, // Time window for averaging (5 minutes)
+        "minSamples": 2 // Minimum samples before speed routing
+      }
     }
   }
   ```
 
-- **Disable Health Checks**: Use simple round-robin without health monitoring
+- **Health Check Settings**: Configure endpoint health monitoring
+
   ```json
   {
     "balanceMode": {
-      "disableHealthChecks": true
+      "healthCheck": {
+        "enabled": true,
+        "intervalMs": 30000 // Check every 30 seconds (10s - 5min)
+      }
+    }
+  }
+  ```
+
+- **Failed Endpoint Handling**: Configure banning of failed endpoints
+
+  ```json
+  {
+    "balanceMode": {
+      "failedEndpoint": {
+        "banDurationSeconds": 300 // Ban for 5 minutes (1min - 1hour)
+      }
     }
   }
   ```
@@ -247,12 +267,17 @@ Configurations are stored in `~/.start-claude/config.json`:
     "overrideClaudeCommand": false,
     "balanceMode": {
       "enableByDefault": true,
+      "strategy": "Speed First",
       "healthCheck": {
         "enabled": true,
         "intervalMs": 30000
       },
       "failedEndpoint": {
         "banDurationSeconds": 300
+      },
+      "speedFirst": {
+        "responseTimeWindowMs": 300000,
+        "minSamples": 2
       }
     },
     "s3Sync": {

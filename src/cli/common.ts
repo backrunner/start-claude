@@ -1,5 +1,5 @@
 import type { ConfigManager } from '../config/manager'
-import type { ClaudeConfig } from '../config/types'
+import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
 import inquirer from 'inquirer'
@@ -8,7 +8,7 @@ import { displayError, displayInfo, displaySuccess, displayWarning } from '../ut
 export interface ProgramOptions {
   config?: string
   list?: boolean
-  balance?: boolean
+  balance?: boolean | string
   addDir?: string[]
   allowedTools?: string[]
   disallowedTools?: string[]
@@ -29,6 +29,40 @@ export interface ProgramOptions {
   proxy?: string
   apiKey?: string
   baseUrl?: string
+}
+
+/**
+ * Parse and validate the load balancer strategy from CLI options
+ */
+export function parseBalanceStrategy(balanceOption: boolean | string | undefined): { enabled: boolean, strategy?: LoadBalancerStrategy } {
+  if (balanceOption === false || balanceOption === undefined) {
+    return { enabled: false }
+  }
+
+  if (balanceOption === true) {
+    return { enabled: true } // Use system default strategy
+  }
+
+  // Handle string values
+  const strategy = String(balanceOption).toLowerCase()
+
+  switch (strategy) {
+    case 'fallback':
+      return { enabled: true, strategy: 'Fallback' }
+    case 'polling':
+      return { enabled: true, strategy: 'Polling' }
+    case 'speedfirst':
+    case 'speed-first':
+      return { enabled: true, strategy: 'Speed First' }
+    default:
+      displayWarning(`❌ Unknown balance strategy '${strategy}'.`)
+      displayInfo('💡 Available strategies:')
+      displayInfo('   • fallback    - Priority-based with failover (default)')
+      displayInfo('   • polling     - Round-robin across all endpoints')
+      displayInfo('   • speedfirst  - Route to fastest responding endpoint')
+      displayError('Using fallback strategy instead.')
+      return { enabled: true, strategy: 'Fallback' } // Fallback to a safe default
+  }
 }
 
 export interface CliOverrides {

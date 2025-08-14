@@ -18,7 +18,7 @@ import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/dete
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/ui'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/update-checker'
 import { startClaude } from './claude'
-import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveConfig } from './common'
+import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStrategy, resolveConfig } from './common'
 import { handleProxyMode } from './proxy'
 
 const program = new Command()
@@ -33,7 +33,7 @@ program
 program
   .option('--config <name>', 'Use specific configuration')
   .option('--list', 'List all configurations')
-  .option('--balance', 'Start a proxy server with load balancing on port 2333')
+  .option('--balance [strategy]', 'Start a proxy server with load balancing on port 2333. Strategies: fallback (priority-based), polling (round-robin), speedfirst (fastest response)')
   .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
   .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
   .option('--disallowedTools <tools>', 'Comma-separated list of disallowed tools', value => value.split(','))
@@ -69,9 +69,16 @@ program
     // Display verbose mode status if enabled
     displayVerbose('Verbose mode enabled', options.verbose)
 
-    // Check if balance mode should be enabled by default (unless explicitly disabled)
-    let shouldUseProxy = options.balance === true
+    // Parse balance strategy from CLI options
+    const balanceConfig = parseBalanceStrategy(options.balance)
+    let shouldUseProxy = balanceConfig.enabled
+    const cliStrategy = balanceConfig.strategy
     let systemSettings: any = null
+
+    // Display strategy info if CLI strategy was provided
+    if (cliStrategy && typeof options.balance === 'string') {
+      displayInfo(`🎯 Using ${cliStrategy} load balancer strategy`)
+    }
 
     if (!shouldUseProxy && options.balance !== false) {
       try {
@@ -102,7 +109,7 @@ program
           // Use null if we can't get settings
         }
       }
-      await handleProxyMode(configManager, options, configArg, systemSettings)
+      await handleProxyMode(configManager, options, configArg, systemSettings, undefined, cliStrategy)
       return
     }
 

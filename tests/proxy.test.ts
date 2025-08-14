@@ -1148,4 +1148,167 @@ describe('proxyServer', () => {
       expect(mockRes.statusCode).toBe(400)
     })
   })
+
+  describe('load balancer strategies', () => {
+    const testConfigsWithOrder: ClaudeConfig[] = [
+      {
+        name: 'high-priority',
+        baseUrl: 'https://api1.example.com',
+        apiKey: 'sk-key-1',
+        order: 0,
+      },
+      {
+        name: 'medium-priority',
+        baseUrl: 'https://api2.example.com',
+        apiKey: 'sk-key-2',
+        order: 5,
+      },
+      {
+        name: 'low-priority',
+        baseUrl: 'https://api3.example.com',
+        apiKey: 'sk-key-3',
+        order: 10,
+      },
+    ]
+
+    describe('fallback strategy', () => {
+      beforeEach(() => {
+        const proxyMode: ProxyMode = { enableLoadBalance: true }
+        const systemSettings = {
+          balanceMode: {
+            strategy: 'Fallback',
+            healthCheck: { enabled: true, intervalMs: 30000 },
+            failedEndpoint: { banDurationSeconds: 300 },
+          },
+        }
+        proxyServer = new ProxyServer(testConfigsWithOrder, proxyMode, systemSettings)
+      })
+
+      it('should prioritize endpoints by order field', () => {
+        const getNextHealthyEndpoint = (proxyServer as any).getNextHealthyEndpoint.bind(proxyServer)
+
+        // Should always return high-priority endpoint first
+        const endpoint1 = getNextHealthyEndpoint()
+        const endpoint2 = getNextHealthyEndpoint()
+        const endpoint3 = getNextHealthyEndpoint()
+
+        expect(endpoint1.config.name).toBe('high-priority')
+        expect(endpoint2.config.name).toBe('high-priority') // Same priority, round-robin within group
+        expect(endpoint3.config.name).toBe('high-priority')
+      })
+
+      it('should fall back to lower priority when higher priority is unhealthy', () => {
+        const getNextHealthyEndpoint = (proxyServer as any).getNextHealthyEndpoint.bind(proxyServer)
+        const markEndpointUnhealthy = (proxyServer as any).markEndpointUnhealthy.bind(proxyServer)
+
+        // Mark high-priority endpoint as unhealthy
+        const status = proxyServer.getStatus()
+        const highPriorityEndpoint = status.endpoints.find(e => e.config.name === 'high-priority')
+        markEndpointUnhealthy(highPriorityEndpoint, 'Test error')
+
+        // Should now use medium priority
+        const endpoint = getNextHealthyEndpoint()
+        expect(endpoint.config.name).toBe('medium-priority')
+      })
+    })
+
+    describe('polling strategy', () => {
+      beforeEach(() => {
+        const proxyMode: ProxyMode = { enableLoadBalance: true }
+        const systemSettings = {
+          balanceMode: {
+            strategy: 'Polling',
+            healthCheck: { enabled: true, intervalMs: 30000 },
+            failedEndpoint: { banDurationSeconds: 300 },
+          },
+        }
+        proxyServer = new ProxyServer(testConfigsWithOrder, proxyMode, systemSettings)
+      })
+
+      it('should ignore priority and round-robin through all endpoints', () => {
+        const getNextHealthyEndpoint = (proxyServer as any).getNextHealthyEndpoint.bind(proxyServer)
+
+        // Should cycle through all endpoints regardless of priority
+        const endpoint1 = getNextHealthyEndpoint()
+        const endpoint2 = getNextHealthyEndpoint()
+        const endpoint3 = getNextHealthyEndpoint()
+        const endpoint4 = getNextHealthyEndpoint() // Should wrap around
+
+        expect(endpoint1.config.name).toBe('high-priority')
+        expect(endpoint2.config.name).toBe('medium-priority')
+        expect(endpoint3.config.name).toBe('low-priority')
+        expect(endpoint4.config.name).toBe('high-priority') // Back to first
+      })
+    })
+
+    describe('speed First strategy', () => {
+      beforeEach(() => {
+        const proxyMode: ProxyMode = { enableLoadBalance: true }
+        const systemSettings = {
+          balanceMode: {
+            strategy: 'Speed First',
+            healthCheck: { enabled: true, intervalMs: 30000 },
+            failedEndpoint: { banDurationSeconds: 300 },
+            speedFirst: {
+              responseTimeWindowMs: 300000,
+              minSamples: 2,
+            },
+          },
+        }
+        proxyServer = new ProxyServer(testConfigsWithOrder, proxyMode, systemSettings)
+      })
+
+      it('should use round-robin when no endpoints have enough samples', () => {
+        const getNextHealthyEndpoint = (proxyServer as any).getNextHealthyEndpoint.bind(proxyServer)
+
+        // No endpoints have enough samples yet, should use round-robin
+        const endpoint1 = getNextHealthyEndpoint()
+        const endpoint2 = getNextHealthyEndpoint()
+        const endpoint3 = getNextHealthyEndpoint()
+
+        expect(endpoint1.config.name).toBe('high-priority')
+        expect(endpoint2.config.name).toBe('medium-priority')
+        expect(endpoint3.config.name).toBe('low-priority')
+      })
+
+      it('should select fastest endpoint when samples are available', () => {
+        const getNextHealthyEndpoint = (proxyServer as any).getNextHealthyEndpoint.bind(proxyServer)
+        const recordResponseTime = (proxyServer as any).recordResponseTime.bind(proxyServer)
+
+        const status = proxyServer.getStatus()
+        const endpoint1 = status.endpoints.find(e => e.config.name === 'high-priority')
+        const endpoint2 = status.endpoints.find(e => e.config.name === 'medium-priority')
+        const endpoint3 = status.endpoints.find(e => e.config.name === 'low-priority')
+
+        // Record response times - make medium-priority fastest
+        recordResponseTime(endpoint1, 1000) // 1 second
+        recordResponseTime(endpoint1, 1200) // 1.2 seconds
+        recordResponseTime(endpoint2, 300) // 0.3 seconds - fastest
+        recordResponseTime(endpoint2, 400) // 0.4 seconds
+        recordResponseTime(endpoint3, 800) // 0.8 seconds
+        recordResponseTime(endpoint3, 900) // 0.9 seconds
+
+        // Should now select the fastest endpoint (medium-priority)
+        const selectedEndpoint = getNextHealthyEndpoint()
+        expect(selectedEndpoint.config.name).toBe('medium-priority')
+      })
+
+      it('should record and calculate average response times correctly', () => {
+        const recordResponseTime = (proxyServer as any).recordResponseTime.bind(proxyServer)
+
+        const status = proxyServer.getStatus()
+        const endpoint = status.endpoints.find(e => e.config.name === 'high-priority')
+
+        // Record some response times
+        recordResponseTime(endpoint, 100)
+        recordResponseTime(endpoint, 200)
+        recordResponseTime(endpoint, 300)
+
+        // Check that average is calculated correctly
+        expect(endpoint.averageResponseTime).toBe(200) // (100 + 200 + 300) / 3
+        expect(endpoint.responseTimes).toHaveLength(3)
+        expect(endpoint.totalRequests).toBe(3)
+      })
+    })
+  })
 })

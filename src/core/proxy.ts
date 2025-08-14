@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '../config/types'
+import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { LLMProvider } from '../types/llm'
 import type { ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
 import { Buffer } from 'node:buffer'
@@ -16,6 +16,12 @@ import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarni
 
 const log = console.log
 
+interface ResponseTiming {
+  startTime: number
+  firstTokenTime?: number // Time when first chunk/response data received
+  duration?: number // Total duration from start to first token
+}
+
 interface EndpointStatus {
   config: ClaudeConfig
   isHealthy: boolean
@@ -23,6 +29,11 @@ interface EndpointStatus {
   failureCount: number
   lastError?: string
   bannedUntil?: number // Timestamp when ban expires
+  // Speed First mode timing data
+  responseTimes: number[] // Array of recent response times (ms)
+  averageResponseTime: number // Calculated average response time
+  lastResponseTime?: number // Most recent response time
+  totalRequests: number // Total number of requests sent to this endpoint
 }
 
 export class ProxyServer {
@@ -44,6 +55,15 @@ export class ProxyServer {
   private proxyUrl?: string
   private httpAgent?: http.Agent
   private httpsAgent?: https.Agent
+  // Load balancer strategy configuration
+  private loadBalancerStrategy: LoadBalancerStrategy = 'Fallback'
+  private speedFirstConfig: {
+    responseTimeWindowMs: number
+    minSamples: number
+  } = {
+    responseTimeWindowMs: 300000, // 5 minutes
+    minSamples: 2,
+  }
 
   constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode, systemSettings?: any, proxyUrl?: string) {
     this.proxyMode = proxyMode || {}
@@ -76,6 +96,15 @@ export class ProxyServer {
       this.healthCheckIntervalMs = systemSettings.balanceMode.healthCheck?.intervalMs || 30000
       this.healthCheckEnabled = systemSettings.balanceMode.healthCheck?.enabled !== false
       this.failedEndpointBanDurationSeconds = systemSettings.balanceMode.failedEndpoint?.banDurationSeconds || 300
+      this.loadBalancerStrategy = systemSettings.balanceMode.strategy || 'Fallback'
+
+      // Configure Speed First mode if specified
+      if (this.loadBalancerStrategy === 'Speed First' && systemSettings.balanceMode.speedFirst) {
+        this.speedFirstConfig = {
+          responseTimeWindowMs: systemSettings.balanceMode.speedFirst.responseTimeWindowMs || 300000,
+          minSamples: systemSettings.balanceMode.speedFirst.minSamples || 3,
+        }
+      }
     }
 
     // Initialize services
@@ -121,6 +150,9 @@ export class ProxyServer {
         isHealthy: true,
         lastCheck: 0,
         failureCount: 0,
+        responseTimes: [],
+        averageResponseTime: 0,
+        totalRequests: 0,
       }))
     }
     else {
@@ -145,6 +177,9 @@ export class ProxyServer {
             isHealthy: true,
             lastCheck: 0,
             failureCount: 0,
+            responseTimes: [],
+            averageResponseTime: 0,
+            totalRequests: 0,
           }))
         }
         else {
@@ -264,10 +299,12 @@ export class ProxyServer {
 
       this.server.listen(port, () => {
         const features = []
-        if (this.enableLoadBalance)
-          features.push('Load Balancer')
-        if (this.enableTransform)
+        if (this.enableLoadBalance) {
+          features.push(`Load Balancer (${this.loadBalancerStrategy})`)
+        }
+        if (this.enableTransform) {
           features.push('Transformer')
+        }
 
         const featureText = features.length > 0 ? ` (${features.join(' + ')})` : ''
         displaySuccess(`🚀 Proxy server started on port ${port}${featureText}`)
@@ -430,11 +467,138 @@ export class ProxyServer {
       return null
     }
 
-    // Simple round-robin selection among available endpoints
+    // Apply load balancer strategy
+    switch (this.loadBalancerStrategy) {
+      case 'Fallback':
+        return this.selectEndpointFallback(availableEndpoints)
+      case 'Polling':
+        return this.selectEndpointPolling(availableEndpoints)
+      case 'Speed First':
+        return this.selectEndpointSpeedFirst(availableEndpoints)
+      default:
+        displayWarning(`Unknown load balancer strategy: ${String(this.loadBalancerStrategy)}, falling back to Fallback mode`)
+        return this.selectEndpointFallback(availableEndpoints)
+    }
+  }
+
+  /**
+   * Fallback strategy: Use priority order, round-robin within same priority level
+   */
+  private selectEndpointFallback(availableEndpoints: EndpointStatus[]): EndpointStatus {
+    // Group endpoints by priority level (order field)
+    const priorityGroups = new Map<number, EndpointStatus[]>()
+
+    for (const endpoint of availableEndpoints) {
+      const priority = endpoint.config.order ?? 0
+      if (!priorityGroups.has(priority)) {
+        priorityGroups.set(priority, [])
+      }
+      priorityGroups.get(priority)!.push(endpoint)
+    }
+
+    // Get the highest priority (lowest order number) group
+    const sortedPriorities = Array.from(priorityGroups.keys()).sort((a, b) => a - b)
+    const highestPriorityEndpoints = priorityGroups.get(sortedPriorities[0])!
+
+    // Round-robin within the highest priority group
+    const endpoint = highestPriorityEndpoints[this.currentIndex % highestPriorityEndpoints.length]
+    this.currentIndex = (this.currentIndex + 1) % highestPriorityEndpoints.length
+
+    return endpoint
+  }
+
+  /**
+   * Polling strategy: Simple round-robin through all healthy endpoints regardless of priority
+   */
+  private selectEndpointPolling(availableEndpoints: EndpointStatus[]): EndpointStatus {
+    // Simple round-robin selection among all available endpoints
     const endpoint = availableEndpoints[this.currentIndex % availableEndpoints.length]
     this.currentIndex = (this.currentIndex + 1) % availableEndpoints.length
 
     return endpoint
+  }
+
+  /**
+   * Speed First strategy: Select endpoint with fastest average response time
+   */
+  private selectEndpointSpeedFirst(availableEndpoints: EndpointStatus[]): EndpointStatus {
+    // Filter endpoints that have enough samples for reliable average (reduced from 3 to 2)
+    const endpointsWithSamples = availableEndpoints.filter(e => e.responseTimes.length >= Math.max(1, this.speedFirstConfig.minSamples))
+
+    if (endpointsWithSamples.length === 0) {
+      // No endpoints have enough samples yet, fall back to round-robin to gather data
+      displayVerbose('Speed First: Not enough samples, using round-robin to gather data', this.verbose)
+      return this.selectEndpointPolling(availableEndpoints)
+    }
+
+    // Sort by average response time (ascending - fastest first)
+    const sortedBySpeed = endpointsWithSamples.sort((a, b) => a.averageResponseTime - b.averageResponseTime)
+
+    displayVerbose(`Speed First: Selected fastest endpoint ${sortedBySpeed[0].config.name} (avg: ${sortedBySpeed[0].averageResponseTime}ms, samples: ${sortedBySpeed[0].responseTimes.length})`, this.verbose)
+
+    return sortedBySpeed[0]
+  }
+
+  /**
+   * Record response time for Speed First load balancing
+   */
+  private recordResponseTime(endpoint: EndpointStatus, responseTime: number): void {
+    // Add the new response time
+    endpoint.responseTimes.push(responseTime)
+    endpoint.lastResponseTime = responseTime
+    endpoint.totalRequests++
+
+    // Remove old samples to prevent unbounded growth
+    // Note: This is a simplified approach. In practice, we'd store timestamps with each response time
+    // For now, we'll just limit the array size to prevent unbounded growth
+    if (endpoint.responseTimes.length > 100) {
+      endpoint.responseTimes = endpoint.responseTimes.slice(-50) // Keep most recent 50 samples
+    }
+
+    // Recalculate average
+    this.updateAverageResponseTime(endpoint)
+
+    if (this.debug) {
+      fileLogger.info('RESPONSE_TIME_RECORDED', 'Recorded response time for Speed First strategy', {
+        endpointName: endpoint.config.name,
+        responseTime,
+        sampleCount: endpoint.responseTimes.length,
+        newAverage: endpoint.averageResponseTime,
+        totalRequests: endpoint.totalRequests,
+      })
+    }
+  }
+
+  /**
+   * Update the average response time for an endpoint
+   */
+  private updateAverageResponseTime(endpoint: EndpointStatus): void {
+    if (endpoint.responseTimes.length === 0) {
+      endpoint.averageResponseTime = 0
+      return
+    }
+
+    const sum = endpoint.responseTimes.reduce((acc, time) => acc + time, 0)
+    endpoint.averageResponseTime = sum / endpoint.responseTimes.length
+  }
+
+  /**
+   * Start timing a request for Speed First tracking
+   */
+  private startRequestTiming(): ResponseTiming {
+    return {
+      startTime: Date.now(),
+    }
+  }
+
+  /**
+   * Record first token received time for Speed First tracking
+   */
+  private recordFirstToken(timing: ResponseTiming): void {
+    if (!timing.firstTokenTime) {
+      timing.firstTokenTime = Date.now()
+      timing.duration = timing.firstTokenTime - timing.startTime
+    }
   }
 
   private async proxyRequest(
@@ -442,6 +606,9 @@ export class ProxyServer {
     res: http.ServerResponse,
     endpoint: EndpointStatus,
   ): Promise<void> {
+    // Start timing for Speed First strategy
+    const requestTiming = this.loadBalancerStrategy === 'Speed First' ? this.startRequestTiming() : null
+
     // Collect request body
     const chunks: Buffer[] = []
     req.on('data', chunk => chunks.push(chunk))
@@ -604,12 +771,20 @@ export class ProxyServer {
 
                 // Collect response data
                 passThrough.on('data', (chunk) => {
+                  // Record first token timing if enabled
+                  if (requestTiming) {
+                    this.recordFirstToken(requestTiming)
+                  }
                   rawResponseBody += chunk.toString()
                 })
 
                 passThrough.on('end', () => {
                   void (async () => {
                     try {
+                      // Record response time for Speed First strategy
+                      if (requestTiming && requestTiming.duration !== undefined) {
+                        this.recordResponseTime(endpoint, requestTiming.duration)
+                      }
                       // Log raw response if debug is enabled
                       if (this.debug) {
                         fileLogger.info('EXTERNAL_API_RESPONSE', 'Raw response from external API', {
@@ -908,11 +1083,20 @@ export class ProxyServer {
 
             // Intercept data chunks
             passThrough.on('data', (chunk) => {
+              // Record first token timing if enabled
+              if (requestTiming) {
+                this.recordFirstToken(requestTiming)
+              }
               rawResponseBody += chunk.toString()
             })
 
             passThrough.on('end', () => {
               void (async () => {
+                // Record response time for Speed First strategy
+                if (requestTiming && requestTiming.duration !== undefined) {
+                  this.recordResponseTime(endpoint, requestTiming.duration)
+                }
+
                 // Apply universal response formatting
                 const formattedResponseBody = await this.formatUniversalResponse(
                   rawResponseBody,
@@ -1326,6 +1510,9 @@ export class ProxyServer {
 
   private async healthCheck(endpoint: EndpointStatus): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Start timing for Speed First strategy
+      const healthTiming = this.loadBalancerStrategy === 'Speed First' ? this.startRequestTiming() : null
+
       const healthUrl = new URL('/v1/messages', endpoint.config.baseUrl)
 
       const healthCheckBody = JSON.stringify({
@@ -1352,7 +1539,16 @@ export class ProxyServer {
       }
 
       const req = httpModule.request(healthUrl, options, (res) => {
+        // Record first response timing for health checks
+        if (healthTiming) {
+          this.recordFirstToken(healthTiming)
+        }
+
         if (res.statusCode && res.statusCode < 500) {
+          // Record health check response time for Speed First strategy
+          if (healthTiming && healthTiming.duration !== undefined) {
+            this.recordResponseTime(endpoint, healthTiming.duration)
+          }
           this.markEndpointHealthy(endpoint)
           resolve()
         }
@@ -1396,7 +1592,7 @@ export class ProxyServer {
     }
   }
 
-  getStatus(): { total: number, healthy: number, unhealthy: number, endpoints: EndpointStatus[], loadBalance: boolean, transform: boolean, transformers?: string[] } {
+  getStatus(): { total: number, healthy: number, unhealthy: number, endpoints: EndpointStatus[], loadBalance: boolean, transform: boolean, strategy?: LoadBalancerStrategy, transformers?: string[] } {
     const healthy = this.endpoints.filter(e => e.isHealthy).length
     const result = {
       total: this.endpoints.length,
@@ -1406,6 +1602,10 @@ export class ProxyServer {
       loadBalance: this.enableLoadBalance,
       transform: this.enableTransform,
     } as any
+
+    if (this.enableLoadBalance) {
+      result.strategy = this.loadBalancerStrategy
+    }
 
     if (this.enableTransform) {
       result.transformers = Array.from(this.transformerService.getAllTransformers().keys())
@@ -1429,43 +1629,75 @@ export class ProxyServer {
 
     let hasShownQuietMessage = false
 
-    for (let i = 0; i < this.endpoints.length; i++) {
-      const endpoint = this.endpoints[i]
-      const configName = endpoint.config.name || endpoint.config.baseUrl
+    // For Speed First strategy, perform multiple rounds of health checks to collect baseline data
+    const rounds = this.loadBalancerStrategy === 'Speed First' ? 3 : 1
 
-      try {
-        if (i === 0 && !hasShownQuietMessage) {
-          displayGrey('🔍 Testing endpoints...')
-          hasShownQuietMessage = true
+    for (let round = 0; round < rounds; round++) {
+      if (round > 0) {
+        displayVerbose(`Speed First: Collecting baseline data (round ${round + 1}/${rounds})`, this.verbose)
+        // Small delay between rounds to avoid overwhelming endpoints
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+
+      for (let i = 0; i < this.endpoints.length; i++) {
+        const endpoint = this.endpoints[i]
+        const configName = endpoint.config.name || endpoint.config.baseUrl
+
+        try {
+          if (i === 0 && !hasShownQuietMessage && round === 0) {
+            displayGrey('🔍 Testing endpoints...')
+            hasShownQuietMessage = true
+          }
+          await this.initialHealthCheck(endpoint)
+
+          // For the first round, if first endpoint is healthy, we can proceed (legacy behavior)
+          // For Speed First rounds, continue collecting data from all endpoints
+          if (i === 0 && round === 0 && this.loadBalancerStrategy !== 'Speed First') {
+            return
+          }
         }
-        await this.initialHealthCheck(endpoint)
+        catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-        // If first endpoint is healthy, we can proceed
-        if (i === 0) {
-          return
+          // Parse HTTP status code from error message if available
+          const statusMatch = errorMessage.match(/status (\d+)/)
+          const statusCode = statusMatch ? statusMatch[1] : null
+
+          if (statusCode) {
+            displayError(`❌ ${configName} - HTTP ${statusCode}: ${this.getStatusMessage(statusCode)}`)
+          }
+          else {
+            displayError(`❌ ${configName} - ${errorMessage}`)
+          }
+
+          this.markEndpointUnhealthy(endpoint, errorMessage)
+
+          // If first endpoint failed, try the next one (only in first round)
+          if (i === 0 && round === 0) {
+            displayWarning('First endpoint failed, trying alternatives...')
+          }
         }
       }
-      catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    }
 
-        // Parse HTTP status code from error message if available
-        const statusMatch = errorMessage.match(/status (\d+)/)
-        const statusCode = statusMatch ? statusMatch[1] : null
+    // After initial health checks, display Speed First readiness if applicable
+    if (this.loadBalancerStrategy === 'Speed First') {
+      const readyEndpoints = this.endpoints.filter(e => e.isHealthy && e.responseTimes.length > 0)
+      if (readyEndpoints.length > 0) {
+        // Sort by average response time to show initial ranking
+        const sorted = readyEndpoints.sort((a, b) => a.averageResponseTime - b.averageResponseTime)
+        displaySuccess(`🏁 Speed First ready with ${readyEndpoints.length} endpoints (fastest: ${sorted[0].config.name})`)
 
-        if (statusCode) {
-          displayError(`❌ ${configName} - HTTP ${statusCode}: ${this.getStatusMessage(statusCode)}`)
+        // Show sample counts for verification
+        if (this.verbose) {
+          displayVerbose('📊 Speed First endpoint timing data:', this.verbose)
+          for (const endpoint of sorted) {
+            displayVerbose(`   • ${endpoint.config.name}: ${endpoint.responseTimes.length} samples, avg ${endpoint.averageResponseTime.toFixed(1)}ms`, this.verbose)
+          }
         }
-        else {
-          displayError(`❌ ${configName} - ${errorMessage}`)
-        }
-
-        this.markEndpointUnhealthy(endpoint, errorMessage)
-
-        // If first endpoint failed, try the next one
-        if (i === 0) {
-          displayWarning('First endpoint failed, trying alternatives...')
-          continue
-        }
+      }
+      else {
+        displayWarning('⚠️ Speed First: No healthy endpoints with timing data collected')
       }
     }
 
@@ -1481,6 +1713,9 @@ export class ProxyServer {
 
   private async initialHealthCheck(endpoint: EndpointStatus): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Start timing for Speed First strategy
+      const healthTiming = this.loadBalancerStrategy === 'Speed First' ? this.startRequestTiming() : null
+
       const healthUrl = new URL('/v1/messages', endpoint.config.baseUrl)
 
       const healthCheckBody = JSON.stringify({
@@ -1507,7 +1742,16 @@ export class ProxyServer {
       }
 
       const req = httpModule.request(healthUrl, options, (res) => {
+        // Record first response timing for initial health checks
+        if (healthTiming) {
+          this.recordFirstToken(healthTiming)
+        }
+
         if (res.statusCode && res.statusCode < 500) {
+          // Record initial health check response time for Speed First strategy
+          if (healthTiming && healthTiming.duration !== undefined) {
+            this.recordResponseTime(endpoint, healthTiming.duration)
+          }
           resolve()
         }
         else {

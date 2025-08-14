@@ -73,6 +73,7 @@ export const s3SyncSchema = z.object({
 // Balance mode configuration schema
 export const balanceModeSchema = z.object({
   enableByDefault: z.boolean().default(false),
+  strategy: z.enum(['Fallback', 'Polling', 'Speed First']).default('Fallback'),
   healthCheck: z.object({
     enabled: z.boolean().default(true),
     intervalMs: z.number().int().min(10000).max(300000).default(30000), // 10s to 5min
@@ -80,6 +81,10 @@ export const balanceModeSchema = z.object({
   failedEndpoint: z.object({
     banDurationSeconds: z.number().int().min(60).max(3600).default(300), // 1min to 1hour
   }),
+  speedFirst: z.object({
+    responseTimeWindowMs: z.number().int().min(60000).max(3600000).default(300000), // 1min to 1hour
+    minSamples: z.number().int().min(1).max(20).default(2), // 1 to 20 samples, reduced default
+  }).optional(),
 })
 
 // System settings schema
