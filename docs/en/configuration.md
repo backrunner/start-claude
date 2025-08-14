@@ -70,7 +70,7 @@ Control default load balancing behavior:
       "strategy": "Speed First",
       "speedFirst": {
         "responseTimeWindowMs": 300000, // Time window for averaging (5 minutes)
-        "minSamples": 2 // Minimum samples before speed routing
+        "minSamples": 2 // Minimum samples before speed routing (default: 2)
       }
     }
   }

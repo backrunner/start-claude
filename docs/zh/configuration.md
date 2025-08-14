@@ -34,6 +34,124 @@
 
 ## 高级配置选项
 
+### 系统设置
+
+通过网页界面（`start-claude manager`）或编辑系统设置文件配置全局系统行为：
+
+#### 均衡模式设置
+
+控制默认负载均衡行为：
+
+- **默认启用**: 自动在均衡模式下启动所有命令
+
+  ```json
+  {
+    "balanceMode": {
+      "enableByDefault": true
+    }
+  }
+  ```
+
+- **负载均衡器策略**: 选择如何在端点间分发请求
+
+  ```json
+  {
+    "balanceMode": {
+      "strategy": "Speed First" // "Fallback", "Polling", 或 "Speed First"
+    }
+  }
+  ```
+
+- **速度优先配置**: 基于性能路由的设置
+
+  ```json
+  {
+    "balanceMode": {
+      "strategy": "Speed First",
+      "speedFirst": {
+        "responseTimeWindowMs": 300000, // 平均时间窗口（5分钟）
+        "minSamples": 2 // 速度路由前的最小样本数（默认：2）
+      }
+    }
+  }
+  ```
+
+- **健康检查设置**: 配置端点健康监控
+
+  ```json
+  {
+    "balanceMode": {
+      "healthCheck": {
+        "enabled": true,
+        "intervalMs": 30000 // 每30秒检查一次（10秒 - 5分钟）
+      }
+    }
+  }
+  ```
+
+- **失败端点处理**: 配置失败端点的封禁
+
+  ```json
+  {
+    "balanceMode": {
+      "failedEndpoint": {
+        "banDurationSeconds": 300 // 封禁5分钟（1分钟 - 1小时）
+      }
+    }
+  }
+  ```
+
+#### S3 同步设置
+
+配置自动同步行为：
+
+- **自动上传**: 配置更改时自动上传配置
+
+  ```json
+  {
+    "s3Sync": {
+      "autoUpload": true
+    }
+  }
+  ```
+
+- **自动下载**: 管理器启动时下载配置
+
+  ```json
+  {
+    "s3Sync": {
+      "autoDownload": true
+    }
+  }
+  ```
+
+- **冲突解决**: 如何处理同步冲突
+  ```json
+  {
+    "s3Sync": {
+      "conflictResolution": "prompt" // "local", "remote", 或 "prompt"
+    }
+  }
+  ```
+
+#### 命令覆盖设置
+
+控制 shell 命令别名行为：
+
+- **覆盖状态**: 当前命令覆盖状态
+- **Shell 检测**: 自动检测的 shell 和配置文件
+- **支持的 Shell**: 支持覆盖功能的 shell 列表
+
+通过以下方式访问系统设置：
+
+```bash
+# 网页界面（推荐）
+start-claude manager  # 前往设置标签
+
+# 直接文件编辑
+~/.start-claude/system-settings.json
+```
+
 ### 身份验证和 API
 
 - **身份验证令牌**: 自定义授权令牌（`ANTHROPIC_AUTH_TOKEN`）
