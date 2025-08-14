@@ -606,6 +606,185 @@ export class ProxyServer {
     }
   }
 
+  /**
+   * Prepare response headers by removing hop-by-hop headers
+   */
+  private prepareResponseHeaders(headers: any): any {
+    const cleanHeaders = { ...headers }
+    delete cleanHeaders.connection
+    delete cleanHeaders['transfer-encoding']
+    return cleanHeaders
+  }
+
+  /**
+   * Prepare request headers for upstream request
+   */
+  private prepareRequestHeaders(originalHeaders: http.IncomingHttpHeaders, targetUrl: URL, apiKey: string): any {
+    const headers = { ...originalHeaders }
+    headers['x-api-key'] = apiKey
+    delete headers.authorization
+    headers.host = targetUrl.host
+
+    // Remove hop-by-hop headers
+    delete headers.connection
+    delete headers['proxy-connection']
+    delete headers['transfer-encoding']
+    delete headers.upgrade
+
+    return headers
+  }
+
+  /**
+   * Process response stream and apply formatting
+   */
+  private async processResponseStream(
+    proxyRes: http.IncomingMessage,
+    res: http.ServerResponse,
+    endpoint: EndpointStatus,
+    requestTiming: ResponseTiming | null,
+    context: {
+      isTransformer?: boolean
+      transformer?: any
+      transformerName?: string
+      provider?: any
+      targetUrl?: URL
+    } = {},
+  ): Promise<void> {
+    const initialResponseHeaders = this.prepareResponseHeaders(proxyRes.headers)
+    let rawResponseBody = ''
+    const passThrough = new PassThrough()
+
+    // Collect response data
+    passThrough.on('data', (chunk) => {
+      if (requestTiming) {
+        this.recordFirstToken(requestTiming)
+      }
+      rawResponseBody += chunk.toString()
+    })
+
+    passThrough.on('end', () => {
+      void (async () => {
+        try {
+          // Record response time for Speed First strategy
+          if (requestTiming && requestTiming.duration !== undefined) {
+            this.recordResponseTime(endpoint, requestTiming.duration)
+          }
+
+          let finalResponseBody = rawResponseBody
+          let finalResponseHeaders = { ...initialResponseHeaders }
+
+          // Apply transformer formatResponse if available
+          if (context.isTransformer && context.transformer?.formatResponse) {
+            try {
+              const responseForTransformation = new Response(rawResponseBody, {
+                status: proxyRes.statusCode || 200,
+                statusText: proxyRes.statusMessage || 'OK',
+                headers: proxyRes.headers as HeadersInit,
+              })
+
+              const transformedResponse = await context.transformer.formatResponse(responseForTransformation)
+              finalResponseBody = await transformedResponse.text()
+
+              const transformedHeaders: Record<string, string> = {}
+              transformedResponse.headers.forEach((value: string, key: string) => {
+                transformedHeaders[key] = value
+              })
+              finalResponseHeaders = { ...finalResponseHeaders, ...transformedHeaders }
+
+              if (this.debug) {
+                fileLogger.info('TRANSFORM_RESPONSE_OUTPUT', 'Response transformed by formatResponse', {
+                  transformerName: context.transformerName,
+                  statusCode: proxyRes.statusCode || 0,
+                  originalBodySize: rawResponseBody.length,
+                  transformedBodySize: finalResponseBody.length,
+                  originalBody: rawResponseBody,
+                  transformedBody: finalResponseBody,
+                })
+              }
+            }
+            catch (transformError) {
+              if (this.debug) {
+                fileLogger.error('TRANSFORM_RESPONSE_ERROR', 'Failed to transform response with formatResponse', {
+                  transformerName: context.transformerName,
+                  statusCode: proxyRes.statusCode || 0,
+                  error: transformError instanceof Error ? transformError.message : 'Unknown error',
+                  originalBody: rawResponseBody,
+                })
+              }
+            }
+          }
+
+          // Apply universal response formatting
+          const formattedFinalResponseBody = await this.formatUniversalResponse(
+            finalResponseBody,
+            proxyRes.statusCode || 200,
+            finalResponseHeaders,
+            res,
+          )
+
+          // For streaming responses, formatUniversalResponse handles everything
+          if (formattedFinalResponseBody === null) {
+            return
+          }
+
+          // Log response if debug enabled
+          if (this.debug) {
+            const logType = context.isTransformer ? 'EXTERNAL_API_RESPONSE' : 'REGULAR_API_RESPONSE'
+            const logMessage = context.isTransformer ? 'Raw response from external API' : 'Raw response from external API (direct proxy)'
+
+            fileLogger.info(logType, logMessage, {
+              ...(context.transformerName ? { transformerName: context.transformerName } : {}),
+              ...(context.provider ? { targetProvider: context.provider.name } : {}),
+              endpointName: endpoint.config.name,
+              targetUrl: context.targetUrl?.toString() || endpoint.config.baseUrl,
+              statusCode: proxyRes.statusCode || 0,
+              body: rawResponseBody,
+              formattedBody: formattedFinalResponseBody,
+            })
+          }
+
+          // Send headers and response
+          if (!res.headersSent) {
+            res.writeHead(proxyRes.statusCode || 200, finalResponseHeaders)
+          }
+          res.end(formattedFinalResponseBody)
+        }
+        catch (error) {
+          // Fallback error handling
+          if (this.debug) {
+            fileLogger.error('RESPONSE_PROCESSING_ERROR', 'Error processing response', {
+              ...(context.transformerName ? { transformerName: context.transformerName } : {}),
+              error: error instanceof Error ? error.message : 'Unknown error',
+            })
+          }
+
+          const formattedFallbackResponse = await this.formatUniversalResponse(
+            rawResponseBody,
+            proxyRes.statusCode || 200,
+            initialResponseHeaders,
+            res,
+          )
+
+          if (!res.headersSent) {
+            res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
+          }
+          res.end(formattedFallbackResponse)
+        }
+      })()
+    })
+
+    // Pipe the response through our processing stream
+    proxyRes.pipe(passThrough)
+
+    // Mark endpoint health based on status code
+    if (proxyRes.statusCode && proxyRes.statusCode < 500) {
+      this.markEndpointHealthy(endpoint)
+    }
+    else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
+      this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
+    }
+  }
+
   private async proxyRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -760,165 +939,14 @@ export class ProxyServer {
                   })
                 }
 
-                // Prepare initial response headers (but don't send yet)
-                const initialResponseHeaders = { ...proxyRes.headers }
-                delete initialResponseHeaders.connection
-                delete initialResponseHeaders['transfer-encoding']
-
-                // Add CORS headers
-                initialResponseHeaders['Access-Control-Allow-Origin'] = '*'
-                initialResponseHeaders['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-                initialResponseHeaders['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, x-api-key'
-
-                // Intercept response body for transformation and logging
-                let rawResponseBody = ''
-                const passThrough = new PassThrough()
-
-                // Collect response data
-                passThrough.on('data', (chunk) => {
-                  // Record first token timing if enabled
-                  if (requestTiming) {
-                    this.recordFirstToken(requestTiming)
-                  }
-                  rawResponseBody += chunk.toString()
+                // Use shared response processing method
+                void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
+                  isTransformer: true,
+                  transformer,
+                  transformerName,
+                  provider,
+                  targetUrl,
                 })
-
-                passThrough.on('end', () => {
-                  void (async () => {
-                    try {
-                      // Record response time for Speed First strategy
-                      if (requestTiming && requestTiming.duration !== undefined) {
-                        this.recordResponseTime(endpoint, requestTiming.duration)
-                      }
-                      // Log raw response if debug is enabled
-                      if (this.debug) {
-                        fileLogger.info('EXTERNAL_API_RESPONSE', 'Raw response from external API', {
-                          transformerName,
-                          targetProvider: provider.name,
-                          statusCode: proxyRes.statusCode || 0,
-                          body: rawResponseBody,
-                        })
-                      }
-
-                      let finalResponseBody = rawResponseBody
-                      let finalResponseHeaders = { ...initialResponseHeaders }
-
-                      // Apply formatResponse transformation if available
-                      if (transformer.formatResponse) {
-                        try {
-                          // Create a Response object from the raw response for transformation
-                          const responseForTransformation = new Response(rawResponseBody, {
-                            status: proxyRes.statusCode || 200,
-                            statusText: proxyRes.statusMessage || 'OK',
-                            headers: proxyRes.headers as HeadersInit,
-                          })
-
-                          // Apply the transformer's formatResponse method
-                          const transformedResponse = await transformer.formatResponse(responseForTransformation)
-
-                          // Extract the transformed body and headers
-                          finalResponseBody = await transformedResponse.text()
-
-                          // Update headers from transformed response
-                          const transformedHeaders: Record<string, string> = {}
-                          transformedResponse.headers.forEach((value, key) => {
-                            transformedHeaders[key] = value
-                          })
-                          finalResponseHeaders = { ...finalResponseHeaders, ...transformedHeaders }
-
-                          // Log transformation if debug is enabled
-                          if (this.debug) {
-                            fileLogger.info('TRANSFORM_RESPONSE_OUTPUT', 'Response transformed by formatResponse', {
-                              transformerName,
-                              statusCode: proxyRes.statusCode || 0,
-                              originalBodySize: rawResponseBody.length,
-                              transformedBodySize: finalResponseBody.length,
-                              originalBody: rawResponseBody,
-                              transformedBody: finalResponseBody,
-                            })
-                          }
-                        }
-                        catch (transformError) {
-                          // Log transformation error if debug is enabled
-                          if (this.debug) {
-                            fileLogger.error('TRANSFORM_RESPONSE_ERROR', 'Failed to transform response with formatResponse', {
-                              transformerName,
-                              statusCode: proxyRes.statusCode || 0,
-                              error: transformError instanceof Error ? transformError.message : 'Unknown error',
-                              originalBody: rawResponseBody,
-                            })
-                          }
-                          // Continue with original response on transformation error
-                        }
-                      }
-                      else if (this.debug) {
-                        // Log that no formatResponse transformation is available (debug only)
-                        fileLogger.info('TRANSFORM_RESPONSE_SKIPPED', 'No formatResponse method available', {
-                          transformerName,
-                          hasFormatResponse: false,
-                          originalBodySize: rawResponseBody.length,
-                        })
-                      }
-
-                      // Apply universal response formatting after transformer formatResponse
-                      const formattedFinalResponseBody = await this.formatUniversalResponse(
-                        finalResponseBody,
-                        proxyRes.statusCode || 200,
-                        finalResponseHeaders,
-                        res,
-                      )
-
-                      // For streaming responses, formatUniversalResponse handles everything
-                      if (formattedFinalResponseBody === null) {
-                        // Response already sent via SSE
-                        return
-                      }
-
-                      // Now send headers with final transformed headers
-                      if (!res.headersSent) {
-                        res.writeHead(proxyRes.statusCode || 200, finalResponseHeaders)
-                      }
-
-                      // Send the final response (transformed or original) to client
-                      res.end(formattedFinalResponseBody)
-                    }
-                    catch (error) {
-                      // If anything goes wrong, send the original response with universal formatting
-                      if (this.debug) {
-                        fileLogger.error('RESPONSE_PROCESSING_ERROR', 'Error processing response', {
-                          transformerName,
-                          error: error instanceof Error ? error.message : 'Unknown error',
-                        })
-                      }
-
-                      // Apply universal response formatting to the fallback response too
-                      const formattedFallbackResponse = await this.formatUniversalResponse(
-                        rawResponseBody,
-                        proxyRes.statusCode || 200,
-                        initialResponseHeaders,
-                        res,
-                      )
-
-                      // Send fallback headers if not already sent
-                      if (!res.headersSent) {
-                        res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
-                      }
-
-                      res.end(formattedFallbackResponse)
-                    }
-                  })()
-                })
-
-                // Pipe the response through our processing stream (but don't pipe to res yet)
-                proxyRes.pipe(passThrough)
-
-                // Mark endpoint as healthy on successful response
-                if (proxyRes.statusCode && proxyRes.statusCode < 500) {
-                  this.markEndpointHealthy(endpoint)
-                }
-                else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
-                  this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
-                }
               })
 
               proxyReq.on('error', (error) => {
@@ -1037,21 +1065,8 @@ export class ProxyServer {
           // Construct target URL for non-transformer endpoints
           const targetUrl = new URL(req.url || '/', endpoint.config.baseUrl)
 
-          // Prepare headers for the upstream request
-          const headers = { ...req.headers }
-
-          // Replace the x-api-key header with the real API key
-          headers['x-api-key'] = endpoint.config.apiKey
-          delete headers.authorization
-
-          // Fix Host header to match the target server
-          headers.host = targetUrl.host
-
-          // Remove hop-by-hop headers
-          delete headers.connection
-          delete headers['proxy-connection']
-          delete headers['transfer-encoding']
-          delete headers.upgrade
+          // Prepare headers for the upstream request using shared method
+          const headers = this.prepareRequestHeaders(req.headers, targetUrl, endpoint.config.apiKey)
 
           const isHttps = targetUrl.protocol === 'https:'
           const httpModule = isHttps ? https : http
@@ -1075,78 +1090,11 @@ export class ProxyServer {
               })
             }
 
-            // Prepare response headers (but don't send yet)
-            const initialResponseHeaders = { ...proxyRes.headers }
-            delete initialResponseHeaders.connection
-            delete initialResponseHeaders['transfer-encoding']
-
-            // Don't send headers yet - wait for universal formatting to complete
-
-            // Intercept response body for universal formatting and optional logging
-            let rawResponseBody = ''
-            const passThrough = new PassThrough()
-
-            // Intercept data chunks
-            passThrough.on('data', (chunk) => {
-              // Record first token timing if enabled
-              if (requestTiming) {
-                this.recordFirstToken(requestTiming)
-              }
-              rawResponseBody += chunk.toString()
+            // Use shared response processing method
+            void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
+              isTransformer: false,
+              targetUrl,
             })
-
-            passThrough.on('end', () => {
-              void (async () => {
-                // Record response time for Speed First strategy
-                if (requestTiming && requestTiming.duration !== undefined) {
-                  this.recordResponseTime(endpoint, requestTiming.duration)
-                }
-
-                // Apply universal response formatting
-                const formattedResponseBody = await this.formatUniversalResponse(
-                  rawResponseBody,
-                  proxyRes.statusCode || 200,
-                  initialResponseHeaders,
-                  res,
-                )
-
-                // For streaming responses, formatUniversalResponse handles everything
-                if (formattedResponseBody === null) {
-                // Response already sent via SSE
-                  return
-                }
-
-                // Log the raw response body from external API if debug enabled
-                if (this.debug) {
-                  fileLogger.info('REGULAR_API_RESPONSE', 'Raw response from external API (direct proxy)', {
-                    endpointName: endpoint.config.name,
-                    targetUrl: targetUrl.toString(),
-                    statusCode: proxyRes.statusCode || 0,
-                    body: rawResponseBody,
-                    formattedBody: formattedResponseBody,
-                  })
-                }
-
-                // Send headers with final formatted headers
-                if (!res.headersSent) {
-                  res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
-                }
-
-                // Send formatted response
-                res.end(formattedResponseBody)
-              })()
-            })
-
-            // Pipe the response through our processing stream
-            proxyRes.pipe(passThrough)
-
-            // Mark endpoint as healthy on successful response
-            if (proxyRes.statusCode && proxyRes.statusCode < 500) {
-              this.markEndpointHealthy(endpoint)
-            }
-            else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
-              this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
-            }
           })
 
           proxyReq.on('error', (error) => {
@@ -1281,21 +1229,8 @@ export class ProxyServer {
   ): Promise<void> {
     const targetUrl = new URL(url, endpoint.config.baseUrl)
 
-    // Prepare headers for the upstream request
-    const headers = { ...originalHeaders }
-
-    // Replace the x-api-key header with the real API key
-    headers['x-api-key'] = endpoint.config.apiKey
-    delete headers.authorization
-
-    // Fix Host header to match the target server
-    headers.host = targetUrl.host
-
-    // Remove hop-by-hop headers
-    delete headers.connection
-    delete headers['proxy-connection']
-    delete headers['transfer-encoding']
-    delete headers.upgrade
+    // Prepare headers for the upstream request using shared method
+    const headers = this.prepareRequestHeaders(originalHeaders, targetUrl, endpoint.config.apiKey!)
 
     const isHttps = targetUrl.protocol === 'https:'
     const httpModule = isHttps ? https : http
@@ -1319,69 +1254,11 @@ export class ProxyServer {
         })
       }
 
-      // Prepare response headers (but don't send yet)
-      const initialResponseHeaders = { ...proxyRes.headers }
-      delete initialResponseHeaders.connection
-      delete initialResponseHeaders['transfer-encoding']
-
-      // Don't send headers yet - wait for universal formatting to complete
-
-      // Intercept response body for universal formatting and optional logging
-      let rawResponseBody = ''
-      const passThrough = new PassThrough()
-
-      // Intercept data chunks
-      passThrough.on('data', (chunk) => {
-        rawResponseBody += chunk.toString()
+      // Use shared response processing method
+      void this.processResponseStream(proxyRes, res, endpoint, null, {
+        isTransformer: false,
+        targetUrl,
       })
-
-      passThrough.on('end', () => {
-        void (async () => {
-          // Apply universal response formatting
-          const formattedResponseBody = await this.formatUniversalResponse(
-            rawResponseBody,
-            proxyRes.statusCode || 200,
-            initialResponseHeaders,
-            res,
-          )
-
-          // For streaming responses, formatUniversalResponse handles everything
-          if (formattedResponseBody === null) {
-          // Response already sent via SSE
-            return
-          }
-
-          // Log the raw response body from external API if debug enabled
-          if (this.debug) {
-            fileLogger.info('RETRY_API_RESPONSE', 'Raw response from retry attempt', {
-              endpointName: endpoint.config.name,
-              targetUrl: targetUrl.toString(),
-              statusCode: proxyRes.statusCode || 0,
-              body: rawResponseBody,
-              formattedBody: formattedResponseBody,
-            })
-          }
-
-          // Send headers with final formatted headers
-          if (!res.headersSent) {
-            res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
-          }
-
-          // Send formatted response
-          res.end(formattedResponseBody)
-        })()
-      })
-
-      // Pipe the response through our processing stream
-      proxyRes.pipe(passThrough)
-
-      // Mark endpoint as healthy on successful response
-      if (proxyRes.statusCode && proxyRes.statusCode < 500) {
-        this.markEndpointHealthy(endpoint)
-      }
-      else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
-        this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
-      }
     })
 
     proxyReq.on('error', (error) => {
@@ -1513,7 +1390,7 @@ export class ProxyServer {
     }
   }
 
-  private async healthCheck(endpoint: EndpointStatus): Promise<void> {
+  private async performHealthCheckRequest(endpoint: EndpointStatus, options: { timeout: number, isInitial?: boolean } = { timeout: 10000 }): Promise<void> {
     return new Promise((resolve, reject) => {
       // Start timing for Speed First strategy
       const healthTiming = this.loadBalancerStrategy === 'Speed First' ? this.startRequestTiming() : null
@@ -1521,7 +1398,7 @@ export class ProxyServer {
       const healthUrl = new URL('/v1/messages', endpoint.config.baseUrl)
 
       const healthCheckBody = JSON.stringify({
-        model: endpoint.config.model || 'claude-3-haiku-20240307',
+        model: endpoint.config.model || 'claude-3-haiku-20241022',
         max_tokens: 10,
         messages: [{
           role: 'user',
@@ -1532,18 +1409,18 @@ export class ProxyServer {
       const isHttps = healthUrl.protocol === 'https:'
       const httpModule = isHttps ? https : http
 
-      const options = {
+      const requestOptions = {
         method: 'POST',
         headers: {
           'x-api-key': endpoint.config.apiKey,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(healthCheckBody),
         },
-        timeout: 10000,
+        timeout: options.timeout,
         agent: this.getAgent(isHttps),
       }
 
-      const req = httpModule.request(healthUrl, options, (res) => {
+      const req = httpModule.request(healthUrl, requestOptions, (res) => {
         // Record first response timing for health checks
         if (healthTiming) {
           this.recordFirstToken(healthTiming)
@@ -1554,11 +1431,17 @@ export class ProxyServer {
           if (healthTiming && healthTiming.duration !== undefined) {
             this.recordResponseTime(endpoint, healthTiming.duration)
           }
-          this.markEndpointHealthy(endpoint)
+
+          // Only mark as healthy if this is not an initial check or if it is an initial check
+          if (!options.isInitial) {
+            this.markEndpointHealthy(endpoint)
+          }
           resolve()
         }
         else {
-          endpoint.lastCheck = Date.now()
+          if (!options.isInitial) {
+            endpoint.lastCheck = Date.now()
+          }
           reject(new Error(`Health check failed with status ${res.statusCode}`))
         }
 
@@ -1567,20 +1450,30 @@ export class ProxyServer {
       })
 
       req.on('error', (error) => {
-        endpoint.lastCheck = Date.now()
+        if (!options.isInitial) {
+          endpoint.lastCheck = Date.now()
+        }
         reject(error)
       })
 
       req.on('timeout', () => {
-        endpoint.lastCheck = Date.now()
+        if (!options.isInitial) {
+          endpoint.lastCheck = Date.now()
+        }
         req.destroy()
-        reject(new Error('Health check timeout'))
+        const timeoutMessage = options.isInitial ? `Health check timeout (${options.timeout / 1000}s)` : 'Health check timeout'
+        reject(new Error(timeoutMessage))
       })
 
       // Send the health check request body
       req.write(healthCheckBody)
       req.end()
     })
+  }
+
+  private async healthCheck(endpoint: EndpointStatus, isInitial = false): Promise<void> {
+    const timeout = isInitial ? 15000 : 10000
+    return this.performHealthCheckRequest(endpoint, { timeout, isInitial })
   }
 
   async stop(): Promise<void> {
@@ -1644,7 +1537,7 @@ export class ProxyServer {
           displayGrey('🔍 Testing endpoints...')
           hasShownQuietMessage = true
         }
-        await this.initialHealthCheck(endpoint)
+        await this.healthCheck(endpoint, true)
 
         // For Speed First strategy, test all endpoints to collect timing data
         // For other strategies, can return early after first successful endpoint
@@ -1704,72 +1597,6 @@ export class ProxyServer {
       displayWarning('⚠️ Load balancer will continue but may not work properly')
       log()
     }
-  }
-
-  private async initialHealthCheck(endpoint: EndpointStatus): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Start timing for Speed First strategy
-      const healthTiming = this.loadBalancerStrategy === 'Speed First' ? this.startRequestTiming() : null
-
-      const healthUrl = new URL('/v1/messages', endpoint.config.baseUrl)
-
-      const healthCheckBody = JSON.stringify({
-        model: endpoint.config.model || 'claude-3-haiku-20241022',
-        max_tokens: 10,
-        messages: [{
-          role: 'user',
-          content: 'ping',
-        }],
-      })
-
-      const isHttps = healthUrl.protocol === 'https:'
-      const httpModule = isHttps ? https : http
-
-      const options = {
-        method: 'POST',
-        headers: {
-          'x-api-key': endpoint.config.apiKey,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(healthCheckBody),
-        },
-        timeout: 15000, // 15 second timeout for initial check
-        agent: this.getAgent(isHttps),
-      }
-
-      const req = httpModule.request(healthUrl, options, (res) => {
-        // Record first response timing for initial health checks
-        if (healthTiming) {
-          this.recordFirstToken(healthTiming)
-        }
-
-        if (res.statusCode && res.statusCode < 500) {
-          // Record initial health check response time for Speed First strategy
-          if (healthTiming && healthTiming.duration !== undefined) {
-            this.recordResponseTime(endpoint, healthTiming.duration)
-          }
-          resolve()
-        }
-        else {
-          reject(new Error(`Health check failed with status ${res.statusCode}`))
-        }
-
-        // Consume response to free up the socket
-        res.resume()
-      })
-
-      req.on('error', (error) => {
-        reject(error)
-      })
-
-      req.on('timeout', () => {
-        req.destroy()
-        reject(new Error('Health check timeout (15s)'))
-      })
-
-      // Send the health check request body
-      req.write(healthCheckBody)
-      req.end()
-    })
   }
 
   // Transformer management methods

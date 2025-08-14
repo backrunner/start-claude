@@ -24,6 +24,7 @@ export interface ProgramOptions {
   resume?: boolean
   continue?: boolean
   checkUpdates?: boolean
+  forceConfigCheck?: boolean
   dangerouslySkipPermissions?: boolean
   env?: string[]
   proxy?: string
@@ -173,6 +174,8 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--permission-prompt-tool',
       '--resume',
       '--continue',
+      '--check-updates',
+      '--force-config-check',
       '--dangerously-skip-permissions',
       '-e',
       '--env',

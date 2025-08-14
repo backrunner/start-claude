@@ -148,7 +148,7 @@ claude --base-url http://localhost:2333 --api-key sk-claude-load-balancer-proxy-
 
 ```json
 {
-  "model": "claude-3-haiku-20240307",
+  "model": "claude-3-haiku-20241022",
   "max_tokens": 10,
   "messages": [
     {

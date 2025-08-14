@@ -50,6 +50,7 @@ program
   .option('--resume', 'Resume previous session')
   .option('--continue', 'Continue previous session')
   .option('--check-updates', 'Force check for updates')
+  .option('--force-config-check', 'Force check for remote config updates (bypass interval limit)')
   .option('--dangerously-skip-permissions', 'Skip permission checks (dangerous)')
   .option('-e, --env <key=value>', 'Set environment variable', (value, previous: string[] = []) => [...previous, value])
   .option('--proxy <url>', 'Set HTTPS proxy for requests')
@@ -118,7 +119,10 @@ program
     const updateInfo = await checkForUpdates(options.checkUpdates)
 
     // Check for remote config updates (once per day, unless forced)
-    await checkRemoteConfigUpdates(s3SyncManager, { verbose: options.verbose, force: options.checkUpdates })
+    await checkRemoteConfigUpdates(s3SyncManager, {
+      verbose: options.verbose,
+      force: options.checkUpdates || options.forceConfigCheck,
+    })
 
     if (updateInfo?.hasUpdate) {
       displayWarning(`🔔 Update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}`)
