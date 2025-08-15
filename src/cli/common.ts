@@ -196,6 +196,7 @@ export function filterProcessArgs(configArg?: string): string[] {
     const prevArg = process.argv[process.argv.indexOf(arg) - 1]
     const flagsWithValues = [
       '--config',
+      '--balance',
       '--add-dir',
       '--allowedTools',
       '--disallowedTools',
