@@ -20,21 +20,21 @@ Synchronize your configurations across multiple devices using Amazon S3 or any S
 
 ```bash
 # Setup S3/S3-compatible sync with timestamp tracking
-start-claude s3-setup
+start-claude s3 setup
 
 # Smart sync with conflict detection
-start-claude s3-sync
+start-claude s3 sync
 
 # Upload local configs (with timestamp warnings)
-start-claude s3-upload
-start-claude s3-upload --force  # Skip timestamp warnings
+start-claude s3 upload
+start-claude s3 upload --force  # Skip timestamp warnings
 
 # Download configs with timestamp comparison
-start-claude s3-download
-start-claude s3-download --force # Skip conflict prompts
+start-claude s3 download
+start-claude s3 download --force # Skip conflict prompts
 
 # Check sync status and timestamps
-start-claude s3-status
+start-claude s3 status
 
 # Configure sync preferences via web interface
 start-claude manager  # Go to System Settings
@@ -53,7 +53,7 @@ start-claude manager  # Go to System Settings
 ### Amazon S3
 
 ```bash
-start-claude s3-setup
+start-claude s3 setup
 # Select: Amazon S3
 # Bucket name: my-claude-configs
 # AWS Region: us-east-1
@@ -65,7 +65,7 @@ start-claude s3-setup
 ### Cloudflare R2
 
 ```bash
-start-claude s3-setup
+start-claude s3 setup
 # Select: Cloudflare R2
 # Bucket name: my-claude-configs
 # AWS Region: us-east-1
@@ -78,7 +78,7 @@ start-claude s3-setup
 ### Backblaze B2
 
 ```bash
-start-claude s3-setup
+start-claude s3 setup
 # Select: Backblaze B2
 # Bucket name: my-claude-configs
 # Region: us-west-004
@@ -91,7 +91,7 @@ start-claude s3-setup
 ### Custom S3-Compatible Service
 
 ```bash
-start-claude s3-setup
+start-claude s3 setup
 # Select: Other S3-compatible service
 # Bucket name: my-claude-configs
 # Region: your-region
@@ -105,15 +105,15 @@ start-claude s3-setup
 
 ### Setup and Configuration
 
-- `start-claude s3-setup` - Interactive setup for S3 synchronization
-- `start-claude s3-status` - Show current S3 sync status and configuration
+- `start-claude s3 setup` - Interactive setup for S3 synchronization
+- `start-claude s3 status` - Show current S3 sync status and configuration
 
 ### Synchronization Commands
 
-- `start-claude s3-sync` - Bidirectional sync (upload and download as needed)
-- `start-claude s3-upload` - Upload local configurations to remote storage
-- `start-claude s3-download` - Download configurations from remote storage
-- `start-claude s3-download -f` - Force download (overwrite local configurations)
+- `start-claude s3 sync` - Bidirectional sync (upload and download as needed)
+- `start-claude s3 upload` - Upload local configurations to remote storage
+- `start-claude s3 download` - Download configurations from remote storage
+- `start-claude s3 download -f` - Force download (overwrite local configurations)
 
 ## How It Works
 
@@ -200,10 +200,10 @@ The sync command intelligently handles conflicts with **timestamp awareness**:
 
 ```bash
 # Check S3 status and connection
-start-claude s3-status
+start-claude s3 status
 
 # Re-run setup to fix credentials
-start-claude s3-setup
+start-claude s3 setup
 ```
 
 ### Permission Errors
@@ -218,8 +218,8 @@ Ensure your S3 credentials have the following permissions:
 
 If you encounter sync conflicts:
 
-1. Use `start-claude s3-download -f` to force download remote configs
-2. Or use `start-claude s3-upload` to force upload local configs
+1. Use `start-claude s3 download -f` to force download remote configs
+2. Or use `start-claude s3 upload` to force upload local configs
 3. Or manually resolve conflicts by editing configurations
 
 ## Configuration Storage in S3

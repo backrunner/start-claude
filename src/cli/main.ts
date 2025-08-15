@@ -4,13 +4,6 @@ import process from 'node:process'
 import { Command } from 'commander'
 import inquirer from 'inquirer'
 import { name, version } from '../../package.json'
-import { handleAddCommand } from '../commands/add'
-import { handleDefaultCommand, handleListCommand, handleRemoveCommand } from '../commands/config'
-import { handleEditCommand } from '../commands/edit'
-import { handleEditConfigCommand } from '../commands/edit-config'
-import { handleManagerCommand } from '../commands/manager'
-import { handleOverrideCommand } from '../commands/override'
-import { handleS3DownloadCommand, handleS3SetupCommand, handleS3StatusCommand, handleS3SyncCommand, handleS3UploadCommand } from '../commands/s3'
 
 import { ConfigManager } from '../config/manager'
 import { S3SyncManager } from '../storage/s3-sync'
@@ -18,6 +11,7 @@ import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/cli/ui'
 import { checkRemoteConfigUpdates } from '../utils/config/remote-config-check'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
+import { StatusLineManager } from '../utils/statusline/manager'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStrategy, resolveConfig } from './common'
 import { handleProxyMode } from './proxy'
@@ -25,6 +19,45 @@ import { handleProxyMode } from './proxy'
 const program = new Command()
 const configManager = new ConfigManager()
 const s3SyncManager = new S3SyncManager()
+const statusLineManager = new StatusLineManager()
+
+/**
+ * Handle statusline sync on startup
+ */
+async function handleStatusLineSync(options: { verbose?: boolean } = {}): Promise<void> {
+  try {
+    const settings = configManager.getSettings()
+    const statusLineConfig = settings.statusLine
+
+    // Only proceed if statusline is enabled and has config
+    if (!statusLineConfig?.enabled || !statusLineConfig.config) {
+      displayVerbose('Statusline not enabled or no config found, skipping sync', options.verbose)
+      return
+    }
+
+    displayVerbose('🔍 Checking statusline integration...', options.verbose)
+
+    // Check if local ccstatusline config exists
+    if (!statusLineManager.hasStatusLineConfig()) {
+      displayVerbose('📥 Local ccstatusline config missing, syncing from start-claude config...', options.verbose)
+      await statusLineManager.syncStatusLineConfig(statusLineConfig.config, options)
+    }
+
+    // Ensure Claude Code settings.json has statusline config
+    const claudeSettings = await statusLineManager.loadClaudeSettings(options)
+    if (!claudeSettings.statusLine) {
+      displayVerbose('🔧 Claude Code statusline config missing, updating...', options.verbose)
+      await statusLineManager.enableStatusLineInClaude(options)
+    }
+    else {
+      displayVerbose('✅ Claude Code statusline config present', options.verbose)
+    }
+  }
+  catch (error) {
+    // Don't fail the entire startup for statusline issues
+    displayVerbose(`⚠️ Statusline sync error: ${error instanceof Error ? error.message : 'Unknown error'}`, options.verbose)
+  }
+}
 
 program
   .name(name)
@@ -169,6 +202,9 @@ program
 
     const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
 
+    // Handle statusline sync after S3 sync
+    await handleStatusLineSync(options)
+
     if (config) {
       displayBoxedConfig(config)
     }
@@ -194,33 +230,33 @@ program
   .command('add')
   .description('Add a new configuration')
   .option('-e, --use-editor', 'Create configuration in editor')
-  .action(handleAddCommand)
+  .action(async options => (await import('../commands/add')).handleAddCommand(options))
 
 program
   .command('edit <name>')
   .description('Edit an existing configuration')
   .option('-e, --use-editor', 'Open configuration in editor')
-  .action(handleEditCommand)
+  .action(async (name, options) => (await import('../commands/edit')).handleEditCommand(name, options))
 
 program
   .command('remove <name>')
   .description('Remove a configuration')
-  .action(handleRemoveCommand)
+  .action(async name => (await import('../commands/config')).handleRemoveCommand(name))
 
 program
   .command('list')
   .description('List all configurations')
-  .action(handleListCommand)
+  .action(async () => (await import('../commands/config')).handleListCommand())
 
 program
   .command('default <name>')
   .description('Set a configuration as default')
-  .action(handleDefaultCommand)
+  .action(async name => (await import('../commands/config')).handleDefaultCommand(name))
 
 const overrideCmd = program
   .command('override')
   .description('Enable Claude command override (alias "claude" to "start-claude")')
-  .action(handleOverrideCommand)
+  .action(async () => (await import('../commands/override')).handleOverrideCommand())
 
 overrideCmd
   .command('disable')
@@ -237,48 +273,120 @@ overrideCmd
   .description('Show supported shells for override')
   .action(async () => (await import('../commands/override')).handleOverrideShellsCommand())
 
-program
-  .command('s3-setup')
+// Setup command with subcommands
+const setupCmd = program
+  .command('setup')
+  .description('Interactive setup wizard for start-claude configuration')
+  .action(async () => (await import('../commands/setup')).handleSetupCommand())
+
+setupCmd
+  .command('statusline')
+  .description('Setup statusline integration for Claude Code')
+  .option('-v, --verbose', 'Enable verbose output')
+  .action(async options => (await import('../commands/setup')).handleSetupStatusLineCommand(options))
+
+setupCmd
+  .command('s3')
   .description('Setup S3 sync configuration')
   .option('-v, --verbose', 'Enable verbose output')
-  .action(handleS3SetupCommand)
+  .action(async options => (await import('../commands/setup')).handleSetupS3Command(options))
 
-program
-  .command('s3-sync')
+// S3 command group with subcommands
+const s3Cmd = program
+  .command('s3')
+  .description('S3 sync operations')
+
+s3Cmd
+  .command('setup')
+  .description('Setup S3 sync configuration')
+  .option('-v, --verbose', 'Enable verbose output')
+  .action(async options => (await import('../commands/s3')).handleS3SetupCommand(options))
+
+s3Cmd
+  .command('sync')
   .description('Sync configurations with S3')
   .option('-v, --verbose', 'Enable verbose output')
-  .action(handleS3SyncCommand)
+  .action(async options => (await import('../commands/s3')).handleS3SyncCommand(options))
 
-program
-  .command('s3-upload')
+s3Cmd
+  .command('upload')
   .description('Upload local configurations to S3')
   .option('-f, --force', 'Force overwrite remote configurations')
   .option('-v, --verbose', 'Enable verbose output')
-  .action(handleS3UploadCommand)
+  .action(async options => (await import('../commands/s3')).handleS3UploadCommand(options))
 
-program
-  .command('s3-download')
+s3Cmd
+  .command('download')
   .description('Download configurations from S3')
   .option('-f, --force', 'Force overwrite local configurations')
   .option('-v, --verbose', 'Enable verbose output')
-  .action(handleS3DownloadCommand)
+  .action(async options => (await import('../commands/s3')).handleS3DownloadCommand(options))
 
-program
-  .command('s3-status')
+s3Cmd
+  .command('status')
   .description('Show S3 sync status')
   .option('-v, --verbose', 'Enable verbose output')
-  .action(handleS3StatusCommand)
+  .action(async options => (await import('../commands/s3')).handleS3StatusCommand(options))
+
+// Statusline command group
+const statuslineCmd = program
+  .command('statusline')
+  .description('Statusline integration management')
+
+statuslineCmd
+  .command('setup')
+  .description('Setup statusline integration for Claude Code')
+  .option('-v, --verbose', 'Enable verbose output')
+  .action(async options => (await import('../commands/statusline')).handleStatusLineSetupCommand(options))
+
+statuslineCmd
+  .command('disable')
+  .description('Disable statusline integration')
+  .option('-v, --verbose', 'Enable verbose output')
+  .action(async options => (await import('../commands/statusline')).handleStatusLineDisableCommand(options))
+
+statuslineCmd
+  .command('status')
+  .description('Show statusline integration status')
+  .option('-v, --verbose', 'Enable verbose output')
+  .action(async options => (await import('../commands/statusline')).handleStatusLineStatusCommand(options))
+
+// Legacy S3 commands with deprecation warnings
+function createDeprecatedS3Command(
+  command: string,
+  newCommand: string,
+  description: string,
+  handler: (options: any) => Promise<void>,
+): Command {
+  return program
+    .command(command)
+    .description(`${description} (DEPRECATED: use 'start-claude ${newCommand}')`)
+    .option('-v, --verbose', 'Enable verbose output')
+    .option('-f, --force', 'Force overwrite configurations', false)
+    .action(async (options) => {
+      displayWarning(`⚠️  WARNING: 'start-claude ${command}' is deprecated.`)
+      displayWarning(`   Please use 'start-claude ${newCommand}' instead.`)
+      displayWarning(`   The old command will be removed in a future version.\n`)
+      await handler(options)
+    })
+}
+
+createDeprecatedS3Command('s3-setup', 's3 setup', 'Setup S3 sync configuration', async options => (await import('../commands/s3')).handleS3SetupCommand(options))
+createDeprecatedS3Command('s3-sync', 's3 sync', 'Sync configurations with S3', async options => (await import('../commands/s3')).handleS3SyncCommand(options))
+createDeprecatedS3Command('s3-upload', 's3 upload', 'Upload local configurations to S3', async options => (await import('../commands/s3')).handleS3UploadCommand(options))
+createDeprecatedS3Command('s3-download', 's3 download', 'Download configurations from S3', async options => (await import('../commands/s3')).handleS3DownloadCommand(options))
+createDeprecatedS3Command('s3-status', 's3 status', 'Show S3 sync status', async options => (await import('../commands/s3')).handleS3StatusCommand(options))
 
 program
   .command('edit-config')
   .description('Edit the configuration file directly in your editor')
-  .action(handleEditConfigCommand)
+  .action(async () => (await import('../commands/edit-config')).handleEditConfigCommand())
 
 program
   .command('manage')
   .alias('manager')
   .description('Open the Claude Configuration Manager web interface')
   .option('-p, --port <number>', 'Port to run the manager on', '2334')
-  .action(handleManagerCommand)
+  .action(async options => (await import('../commands/manager')).handleManagerCommand(options))
 
 program.parse()

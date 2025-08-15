@@ -20,21 +20,21 @@
 
 ```bash
 # 设置具有时间戳跟踪的 S3/S3 兼容同步
-start-claude s3-setup
+start-claude s3 setup
 
 # 具有冲突检测的智能同步
-start-claude s3-sync
+start-claude s3 sync
 
 # 上传本地配置（带时间戳警告）
-start-claude s3-upload
-start-claude s3-upload --force  # 跳过时间戳警告
+start-claude s3 upload
+start-claude s3 upload --force  # 跳过时间戳警告
 
 # 带时间戳比较的下载配置
-start-claude s3-download
-start-claude s3-download --force # 跳过冲突提示
+start-claude s3 download
+start-claude s3 download --force # 跳过冲突提示
 
 # 检查同步状态和时间戳
-start-claude s3-status
+start-claude s3 status
 
 # 通过网页界面配置同步首选项
 start-claude manager  # 前往系统设置
@@ -53,7 +53,7 @@ start-claude manager  # 前往系统设置
 ### Amazon S3
 
 ```bash
-start-claude s3-setup
+start-claude s3 setup
 # 选择：Amazon S3
 # 存储桶名称：my-claude-configs
 # AWS 区域：us-east-1
@@ -65,7 +65,7 @@ start-claude s3-setup
 ### Cloudflare R2
 
 ```bash
-start-claude s3-setup
+start-claude s3 setup
 # 选择：Cloudflare R2
 # 存储桶名称：my-claude-configs
 # AWS 区域：us-east-1
@@ -78,7 +78,7 @@ start-claude s3-setup
 ### Backblaze B2
 
 ```bash
-start-claude s3-setup
+start-claude s3 setup
 # 选择：Backblaze B2
 # 存储桶名称：my-claude-configs
 # 区域：us-west-004
@@ -91,7 +91,7 @@ start-claude s3-setup
 ### 自定义 S3 兼容服务
 
 ```bash
-start-claude s3-setup
+start-claude s3 setup
 # 选择：其他 S3 兼容服务
 # 存储桶名称：my-claude-configs
 # 区域：your-region
@@ -105,15 +105,15 @@ start-claude s3-setup
 
 ### 设置和配置
 
-- `start-claude s3-setup` - S3 同步的交互式设置
-- `start-claude s3-status` - 显示当前 S3 同步状态和配置
+- `start-claude s3 setup` - S3 同步的交互式设置
+- `start-claude s3 status` - 显示当前 S3 同步状态和配置
 
 ### 同步命令
 
-- `start-claude s3-sync` - 双向同步（根据需要上传和下载）
-- `start-claude s3-upload` - 将本地配置上传到远程存储
-- `start-claude s3-download` - 从远程存储下载配置
-- `start-claude s3-download -f` - 强制下载（覆盖本地配置）
+- `start-claude s3 sync` - 双向同步（根据需要上传和下载）
+- `start-claude s3 upload` - 将本地配置上传到远程存储
+- `start-claude s3 download` - 从远程存储下载配置
+- `start-claude s3 download -f` - 强制下载（覆盖本地配置）
 
 ## 工作原理
 
@@ -157,10 +157,10 @@ start-claude s3-setup
 
 ```bash
 # 检查 S3 状态和连接
-start-claude s3-status
+start-claude s3 status
 
 # 重新运行设置以修复凭据
-start-claude s3-setup
+start-claude s3 setup
 ```
 
 ### 权限错误
@@ -175,8 +175,8 @@ start-claude s3-setup
 
 如果遇到同步冲突：
 
-1. 使用 `start-claude s3-download -f` 强制下载远程配置
-2. 或使用 `start-claude s3-upload` 强制上传本地配置
+1. 使用 `start-claude s3 download -f` 强制下载远程配置
+2. 或使用 `start-claude s3 upload` 强制上传本地配置
 3. 或通过编辑配置手动解决冲突
 
 ## S3 中的配置存储

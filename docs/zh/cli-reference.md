@@ -176,54 +176,54 @@ _Windows:_
 
 ### S3 同步
 
-#### `start-claude s3-setup`
+#### `start-claude s3 setup`
 
 配置 S3 同步设置。
 
 ```bash
-start-claude s3-setup         # 交互式 S3 配置设置
+start-claude s3 setup         # 交互式 S3 配置设置
 ```
 
-#### `start-claude s3-sync`
+#### `start-claude s3 sync`
 
 与 S3 同步配置。
 
 ```bash
-start-claude s3-sync          # 带冲突检测的智能双向同步
+start-claude s3 sync          # 带冲突检测的智能双向同步
 ```
 
-#### `start-claude s3-upload`
+#### `start-claude s3 upload`
 
 将本地配置上传到 S3。
 
 ```bash
-start-claude s3-upload        # 带时间戳比较的上传
-start-claude s3-upload -f     # 强制上传，忽略远程时间戳
+start-claude s3 upload        # 带时间戳比较的上传
+start-claude s3 upload -f     # 强制上传，忽略远程时间戳
 ```
 
 **选项：**
 
 - `-f, --force` - 强制覆盖远程配置
 
-#### `start-claude s3-download`
+#### `start-claude s3 download`
 
 从 S3 下载配置。
 
 ```bash
-start-claude s3-download      # 带时间戳比较的下载
-start-claude s3-download -f   # 强制下载，忽略本地时间戳
+start-claude s3 download      # 带时间戳比较的下载
+start-claude s3 download -f   # 强制下载，忽略本地时间戳
 ```
 
 **选项：**
 
 - `-f, --force` - 强制覆盖本地配置
 
-#### `start-claude s3-status`
+#### `start-claude s3 status`
 
 显示 S3 同步状态。
 
 ```bash
-start-claude s3-status        # 显示：
+start-claude s3 status        # 显示：
                              # - S3 配置状态
                              # - 上次同步时间戳
                              # - 远程 vs 本地修改时间
@@ -372,13 +372,13 @@ start-claude --balance --verbose          # 带详细日志
 
 ```bash
 # 初始设置
-start-claude s3-setup                     # 配置 S3 凭据
+start-claude s3 setup                     # 配置 S3 凭据
 
 # 跨设备同步配置
-start-claude s3-sync                      # 智能双向同步
-start-claude s3-upload --force            # 强制上传本地更改
-start-claude s3-download                  # 下载远程更改
-start-claude s3-status                    # 检查同步状态
+start-claude s3 sync                      # 智能双向同步
+start-claude s3 upload --force            # 强制上传本地更改
+start-claude s3 download                  # 下载远程更改
+start-claude s3 status                    # 检查同步状态
 ```
 
 ## 退出码
