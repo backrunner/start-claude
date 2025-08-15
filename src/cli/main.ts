@@ -12,6 +12,7 @@ import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displ
 import { checkRemoteConfigUpdates } from '../utils/config/remote-config-check'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
 import { StatusLineManager } from '../utils/statusline/manager'
+import { handleSyncVerification } from '../utils/sync/verification'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStrategy, resolveConfig } from './common'
 import { handleProxyMode } from './proxy'
@@ -202,6 +203,9 @@ program
 
     const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
 
+    // Handle configuration sync verification
+    await handleSyncVerification(options)
+
     // Handle statusline sync after S3 sync
     await handleStatusLineSync(options)
 
@@ -350,6 +354,26 @@ statuslineCmd
   .description('Show statusline integration status')
   .option('-v, --verbose', 'Enable verbose output')
   .action(async options => (await import('../commands/statusline')).handleStatusLineStatusCommand(options))
+
+// Sync command group
+const syncCmd = program
+  .command('sync')
+  .description('Configuration synchronization management')
+
+syncCmd
+  .command('setup')
+  .description('Setup configuration synchronization with cloud storage')
+  .action(async () => (await import('../commands/sync')).setupSyncCommand())
+
+syncCmd
+  .command('status')
+  .description('Show configuration sync status')
+  .action(async () => (await import('../commands/sync')).syncStatusCommand())
+
+syncCmd
+  .command('disable')
+  .description('Disable configuration synchronization')
+  .action(async () => (await import('../commands/sync')).disableSyncCommand())
 
 // Legacy S3 commands with deprecation warnings
 function createDeprecatedS3Command(

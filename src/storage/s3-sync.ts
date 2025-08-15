@@ -1,6 +1,6 @@
 import type { S3ClientConfig } from '@aws-sdk/client-s3'
 import type { ConfigFile, SystemSettings } from '../config/types'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, statSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
@@ -59,6 +59,25 @@ export class S3SyncManager {
 
     // Set up auto-sync callback when config changes
     this.configManager.setAutoSyncCallback(async () => this.autoUploadAfterChange())
+  }
+
+  /**
+   * Check if cloud sync is enabled (iCloud, OneDrive, or custom folder)
+   */
+  private isCloudSyncEnabled(): boolean {
+    try {
+      const syncConfigFile = join(homedir(), '.start-claude', 'sync.json')
+      if (!existsSync(syncConfigFile)) {
+        return false
+      }
+      
+      const syncConfigData = readFileSync(syncConfigFile, 'utf-8')
+      const syncConfig = JSON.parse(syncConfigData)
+      
+      return syncConfig.enabled && ['icloud', 'onedrive', 'custom'].includes(syncConfig.provider)
+    } catch {
+      return false
+    }
   }
 
   private disableAutoSync(): void {
@@ -744,6 +763,31 @@ export class S3SyncManager {
   async checkAutoSync(): Promise<boolean> {
     if (!this.isS3Configured()) {
       return true // No S3 config, nothing to sync
+    }
+
+    // Check if cloud sync is enabled - if so, treat S3 as backup (upload only)
+    if (this.isCloudSyncEnabled()) {
+      try {
+        this.initializeS3Client(this.getS3Config()!)
+        
+        const localConfig = this.configManager.getConfigFile()
+        const localFile = this.getLocalFileInfo()
+        const remoteInfo = await this.getS3ObjectInfo(this.getS3Config()!)
+
+        // Use enhanced sync analysis but only for uploads
+        const syncAnalysis = await this.analyzeSyncRequirements(localConfig, remoteInfo, localFile)
+
+        // Only upload when cloud sync is enabled - no downloads
+        if (syncAnalysis.shouldSync && syncAnalysis.syncDirection === 'upload') {
+          return await this.uploadConfigs(true)
+        }
+        
+        return true // Skip downloads when cloud sync is enabled
+      }
+      catch {
+        // Silent fail for auto-sync
+        return true
+      }
     }
 
     try {
