@@ -3,6 +3,7 @@ import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
 import inquirer from 'inquirer'
+import { findClosestMatch, isSimilarEnough } from '../utils/cli/fuzzy-match'
 import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
 
 export interface ProgramOptions {
@@ -335,7 +336,41 @@ export async function resolveConfig(
       // If config not found and S3 is configured, check for newer remote config
       config = await handleS3ConfigLookup(configManager, s3SyncManager, configName)
       if (!config) {
+        // Try fuzzy matching before giving up
+        const allConfigs = configManager.listConfigs()
+        const configNames = allConfigs.map(c => c.name)
+        const closest = findClosestMatch(configName, configNames)
+
+        if (closest && isSimilarEnough(closest.similarity, 0.6)) {
+          displayWarning(`Configuration "${configName}" not found`)
+          displayInfo(`💡 Did you mean "${closest.match}"?`)
+
+          const confirmAnswer = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'useClosest',
+              message: `Start with "${closest.match}" instead?`,
+              default: true,
+            },
+          ])
+
+          if (confirmAnswer.useClosest) {
+            config = configManager.getConfig(closest.match)
+            if (config) {
+              displaySuccess(`✅ Using configuration "${closest.match}"`)
+              return config
+            }
+          }
+        }
+
         displayError(`Configuration "${configName}" not found`)
+
+        // Show available configurations for reference
+        if (configNames.length > 0) {
+          displayInfo('📋 Available configurations:')
+          configNames.forEach(name => displayInfo(`  - ${name}`))
+        }
+
         process.exit(1)
       }
     }
