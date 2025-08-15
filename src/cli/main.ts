@@ -61,7 +61,7 @@ async function handleStatusLineSync(options: { verbose?: boolean } = {}): Promis
 
 program
   .name(name)
-  .version(version)
+  .version(version, '-v, --version', 'Display version number')
   .description('Start Claude Code with specified configuration')
 
 program
