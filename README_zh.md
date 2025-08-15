@@ -63,10 +63,10 @@ start-claude --api-key sk-key --model claude-3-sonnet
 start-claude -e DEBUG=1 -e NODE_ENV=prod --verbose
 
 # 带智能冲突检测的 S3 同步
-start-claude s3-setup          # 配置带时间戳跟踪的 S3 同步
-start-claude s3-sync           # 带冲突解决的智能同步
-start-claude s3-upload --force # 强制上传（忽略时间戳警告）
-start-claude s3-download       # 带时间戳比较的下载
+start-claude s3 setup          # 配置带时间戳跟踪的 S3 同步
+start-claude s3 sync           # 带冲突解决的智能同步
+start-claude s3 upload --force # 强制上传（忽略时间戳警告）
+start-claude s3 download       # 带时间戳比较的下载
 
 # 覆盖原始 claude-code 命令
 start-claude override         # 启用 claude 命令覆盖

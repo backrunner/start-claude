@@ -176,54 +176,54 @@ _Windows:_
 
 ### S3 Synchronization
 
-#### `start-claude s3-setup`
+#### `start-claude s3 setup`
 
 Configure S3 synchronization settings.
 
 ```bash
-start-claude s3-setup         # Interactive S3 configuration setup
+start-claude s3 setup         # Interactive S3 configuration setup
 ```
 
-#### `start-claude s3-sync`
+#### `start-claude s3 sync`
 
 Synchronize configurations with S3.
 
 ```bash
-start-claude s3-sync          # Smart bidirectional sync with conflict detection
+start-claude s3 sync          # Smart bidirectional sync with conflict detection
 ```
 
-#### `start-claude s3-upload`
+#### `start-claude s3 upload`
 
 Upload local configurations to S3.
 
 ```bash
-start-claude s3-upload        # Upload with timestamp comparison
-start-claude s3-upload -f     # Force upload, ignore remote timestamps
+start-claude s3 upload        # Upload with timestamp comparison
+start-claude s3 upload -f     # Force upload, ignore remote timestamps
 ```
 
 **Options:**
 
 - `-f, --force` - Force overwrite remote configurations
 
-#### `start-claude s3-download`
+#### `start-claude s3 download`
 
 Download configurations from S3.
 
 ```bash
-start-claude s3-download      # Download with timestamp comparison
-start-claude s3-download -f   # Force download, ignore local timestamps
+start-claude s3 download      # Download with timestamp comparison
+start-claude s3 download -f   # Force download, ignore local timestamps
 ```
 
 **Options:**
 
 - `-f, --force` - Force overwrite local configurations
 
-#### `start-claude s3-status`
+#### `start-claude s3 status`
 
 Show S3 synchronization status.
 
 ```bash
-start-claude s3-status        # Shows:
+start-claude s3 status        # Shows:
                              # - S3 configuration status
                              # - Last sync timestamps
                              # - Remote vs local modification times
@@ -398,13 +398,13 @@ start-claude override disable             # Remove override
 
 ```bash
 # Initial setup
-start-claude s3-setup                     # Configure S3 credentials
+start-claude s3 setup                     # Configure S3 credentials
 
 # Sync configurations across devices
-start-claude s3-sync                      # Smart bidirectional sync
-start-claude s3-upload --force            # Force upload local changes
-start-claude s3-download                  # Download remote changes
-start-claude s3-status                    # Check sync status
+start-claude s3 sync                      # Smart bidirectional sync
+start-claude s3 upload --force            # Force upload local changes
+start-claude s3 download                  # Download remote changes
+start-claude s3 status                    # Check sync status
 ```
 
 ### Advanced Environment Overrides

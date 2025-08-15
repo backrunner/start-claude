@@ -54,10 +54,22 @@ export interface ClaudeConfig {
 export type LoadBalancerStrategy = 'Fallback' | 'Polling' | 'Speed First'
 
 /**
+ * Status line configuration interface
+ */
+export interface StatusLineConfig {
+  enabled: boolean
+  config?: {
+    // ccstatusline configuration
+    [key: string]: any
+  }
+}
+
+/**
  * System settings interface
  */
 export interface SystemSettings {
   overrideClaudeCommand: boolean
+  statusLine?: StatusLineConfig
   balanceMode?: {
     enableByDefault: boolean
     strategy: LoadBalancerStrategy

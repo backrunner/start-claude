@@ -1,6 +1,7 @@
 import inquirer from 'inquirer'
 import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
 import { handleS3SetupCommand } from './s3'
+import { handleStatusLineSetupCommand } from './statusline'
 
 /**
  * Handle the main setup command with interactive prompts
@@ -18,6 +19,11 @@ export async function handleSetupCommand(): Promise<void> {
         {
           name: 'S3 Sync - Configure AWS S3 for configuration synchronization',
           value: 's3',
+          checked: false,
+        },
+        {
+          name: 'Status Line - Configure ccstatusline integration for Claude Code',
+          value: 'statusline',
           checked: false,
         },
         {
@@ -48,6 +54,11 @@ export async function handleSetupCommand(): Promise<void> {
         await handleS3SetupCommand({ verbose: true })
         break
 
+      case 'statusline':
+        displayInfo('\n📊 Setting up Status Line...')
+        await handleStatusLineSetupCommand({ verbose: true })
+        break
+
       case 'system':
         displayInfo('\n⚙️  Setting up System Settings...')
         await handleSystemSetup()
@@ -60,8 +71,9 @@ export async function handleSetupCommand(): Promise<void> {
 
   displaySuccess('\n✅ Setup completed!')
   displayInfo('💡 Tip: You can run specific setup commands directly:')
-  displayInfo('   • start-claude setup s3     - S3 sync setup')
-  displayInfo('   • start-claude s3 setup     - S3 sync setup (alternative)')
+  displayInfo('   • start-claude setup s3         - S3 sync setup')
+  displayInfo('   • start-claude setup statusline - Status line setup')
+  displayInfo('   • start-claude s3 setup         - S3 sync setup (alternative)')
 }
 
 /**
@@ -70,6 +82,14 @@ export async function handleSetupCommand(): Promise<void> {
 export async function handleSetupS3Command(options: { verbose?: boolean } = {}): Promise<void> {
   displayInfo('📦 Starting S3 Sync Setup...')
   await handleS3SetupCommand(options)
+}
+
+/**
+ * Handle statusline setup as a subcommand
+ */
+export async function handleSetupStatusLineCommand(options: { verbose?: boolean } = {}): Promise<void> {
+  displayInfo('📊 Starting Status Line Setup...')
+  await handleStatusLineSetupCommand(options)
 }
 
 /**

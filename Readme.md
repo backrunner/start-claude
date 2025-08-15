@@ -79,10 +79,10 @@ start-claude --api-key sk-key --model claude-3-sonnet
 start-claude -e DEBUG=1 -e NODE_ENV=prod --verbose
 
 # S3 Sync with Smart Conflict Detection
-start-claude s3-setup          # Configure S3 sync with timestamp tracking
-start-claude s3-sync           # Smart sync with conflict resolution
-start-claude s3-upload --force # Force upload (ignore timestamp warnings)
-start-claude s3-download       # Download with timestamp comparison
+start-claude s3 setup          # Configure S3 sync with timestamp tracking
+start-claude s3 sync           # Smart sync with conflict resolution
+start-claude s3 upload --force # Force upload (ignore timestamp warnings)
+start-claude s3 download       # Download with timestamp comparison
 
 # Override original claude-code command
 start-claude override         # Enable claude command override
