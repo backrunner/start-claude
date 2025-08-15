@@ -1,31 +1,31 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as process from 'node:process'
-import { detectOneDrive, detectiCloud, getCloudStorageStatus, getAvailableCloudServices } from '../src/utils/cloud-storage/detector'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { detectiCloud, detectOneDrive, getAvailableCloudServices, getCloudStorageStatus } from '../src/utils/cloud-storage/detector'
 
 // Mock the filesystem and OS modules
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(),
-  statSync: vi.fn()
+  statSync: vi.fn(),
 }))
 
 vi.mock('node:os', () => ({
-  homedir: vi.fn()
+  homedir: vi.fn(),
 }))
 
 vi.mock('node:process', () => ({
   default: {
     platform: 'darwin',
-    env: {}
-  }
+    env: {},
+  },
 }))
 
 const mockFs = vi.mocked(fs)
 const mockOs = vi.mocked(os)
 const mockProcess = vi.mocked(process)
 
-describe('Cloud Storage Detection', () => {
+describe('cloud Storage Detection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockOs.homedir.mockReturnValue('/home/user')
@@ -37,7 +37,7 @@ describe('Cloud Storage Detection', () => {
     vi.restoreAllMocks()
   })
 
-  describe('OneDrive Detection', () => {
+  describe('oneDrive Detection', () => {
     describe('macOS', () => {
       beforeEach(() => {
         mockProcess.default.platform = 'darwin'
@@ -48,7 +48,7 @@ describe('Cloud Storage Detection', () => {
           const pathStr = path.toString()
           return pathStr.includes('OneDrive.app') || pathStr.includes('OneDrive')
         })
-        
+
         mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any)
 
         const result = detectOneDrive()
@@ -81,12 +81,12 @@ describe('Cloud Storage Detection', () => {
       })
     })
 
-    describe('Windows', () => {
+    describe('windows', () => {
       beforeEach(() => {
         mockProcess.default.platform = 'win32'
         mockProcess.default.env = {
           OneDrive: 'C:\\Users\\user\\OneDrive',
-          LOCALAPPDATA: 'C:\\Users\\user\\AppData\\Local'
+          LOCALAPPDATA: 'C:\\Users\\user\\AppData\\Local',
         }
       })
 
@@ -95,7 +95,7 @@ describe('Cloud Storage Detection', () => {
           const pathStr = path.toString()
           return pathStr.includes('OneDrive') || pathStr.includes('OneDrive.exe')
         })
-        
+
         mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any)
 
         const result = detectOneDrive()
@@ -120,7 +120,7 @@ describe('Cloud Storage Detection', () => {
       })
     })
 
-    describe('Unsupported platforms', () => {
+    describe('unsupported platforms', () => {
       it('should return not supported for Linux', () => {
         mockProcess.default.platform = 'linux'
 
@@ -144,7 +144,7 @@ describe('Cloud Storage Detection', () => {
           const pathStr = path.toString()
           return pathStr.includes('CloudDocs') || pathStr.includes('iCloud Drive')
         })
-        
+
         mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any)
 
         const result = detectiCloud()
@@ -165,22 +165,22 @@ describe('Cloud Storage Detection', () => {
       })
     })
 
-    describe('Windows', () => {
+    describe('windows', () => {
       beforeEach(() => {
         mockProcess.default.platform = 'win32'
         mockProcess.default.env = {
-          APPDATA: 'C:\\Users\\user\\AppData\\Roaming'
+          APPDATA: 'C:\\Users\\user\\AppData\\Roaming',
         }
       })
 
       it('should detect iCloud for Windows when installed and configured', () => {
         mockFs.existsSync.mockImplementation((path: any) => {
           const pathStr = path.toString()
-          return pathStr.includes('iCloudServices.exe') || 
-                 pathStr.includes('iCloud') ||
-                 pathStr.includes('Apple Computer')
+          return pathStr.includes('iCloudServices.exe')
+            || pathStr.includes('iCloud')
+            || pathStr.includes('Apple Computer')
         })
-        
+
         mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any)
 
         const result = detectiCloud()
@@ -200,7 +200,7 @@ describe('Cloud Storage Detection', () => {
       })
     })
 
-    describe('Unsupported platforms', () => {
+    describe('unsupported platforms', () => {
       it('should return not supported for Linux', () => {
         mockProcess.default.platform = 'linux'
 
@@ -213,7 +213,7 @@ describe('Cloud Storage Detection', () => {
     })
   })
 
-  describe('Cloud Storage Status', () => {
+  describe('cloud Storage Status', () => {
     it('should return status for both OneDrive and iCloud', () => {
       mockProcess.default.platform = 'darwin'
       mockFs.existsSync.mockReturnValue(true)
@@ -230,7 +230,7 @@ describe('Cloud Storage Detection', () => {
     })
   })
 
-  describe('Available Cloud Services', () => {
+  describe('available Cloud Services', () => {
     it('should return list of available services', () => {
       mockProcess.default.platform = 'darwin'
       mockFs.existsSync.mockReturnValue(true)
@@ -240,8 +240,8 @@ describe('Cloud Storage Detection', () => {
 
       expect(Array.isArray(services)).toBe(true)
       expect(services.length).toBeGreaterThan(0)
-      
-      services.forEach(service => {
+
+      services.forEach((service) => {
         expect(service).toHaveProperty('name')
         expect(service).toHaveProperty('isEnabled')
         expect(['OneDrive', 'iCloud']).toContain(service.name)
@@ -258,7 +258,7 @@ describe('Cloud Storage Detection', () => {
     })
   })
 
-  describe('Error handling', () => {
+  describe('error handling', () => {
     it('should handle filesystem errors gracefully', () => {
       mockFs.existsSync.mockImplementation(() => {
         throw new Error('Permission denied')

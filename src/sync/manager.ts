@@ -152,13 +152,13 @@ export class SyncManager {
     const s3Status = this.s3SyncManager.getS3Status()
     if (s3Status.includes('Not configured')) {
       options.push({
-        name: '🗄️  Amazon S3 - Configure S3 sync',
+        name: '🗄️  S3 Storage - Configure S3 sync',
         value: 's3',
       })
     }
     else {
       options.push({
-        name: `🗄️  Amazon S3 - ${s3Status}`,
+        name: `🗄️  S3 Storage - ${s3Status}`,
         value: 's3',
       })
     }
@@ -232,7 +232,7 @@ export class SyncManager {
         linkedAt: new Date().toISOString(),
       }
 
-      this.saveSyncConfig(syncConfig)
+      this.saveSyncConfigPrivate(syncConfig)
 
       // Update S3 settings if S3 is configured
       await this.updateS3Settings(true)
@@ -331,7 +331,7 @@ export class SyncManager {
         linkedAt: new Date().toISOString(),
       }
 
-      this.saveSyncConfig(syncConfig)
+      this.saveSyncConfigPrivate(syncConfig)
 
       // Update S3 settings if S3 is configured
       await this.updateS3Settings(true)
@@ -369,7 +369,7 @@ export class SyncManager {
           linkedAt: new Date().toISOString(),
         }
 
-        this.saveSyncConfig(syncConfig)
+        this.saveSyncConfigPrivate(syncConfig)
         displaySuccess('✅ Successfully configured S3 sync!')
       }
 
@@ -438,7 +438,7 @@ export class SyncManager {
    */
   async disableSync(): Promise<boolean> {
     try {
-      const syncConfig = this.getSyncConfig()
+      const syncConfig = this.getSyncConfigPrivate()
       if (!syncConfig?.enabled) {
         displayInfo('ℹ️  Sync is not currently enabled')
         return true
@@ -496,7 +496,7 @@ export class SyncManager {
     let isValid = false
     let cloudPath: string | undefined
 
-    const syncConfig = this.getSyncConfig()
+    const syncConfig = this.getSyncConfigPrivate()
 
     if (!syncConfig?.enabled) {
       return {
@@ -586,10 +586,10 @@ export class SyncManager {
 
     if (status.isValid) {
       // Update last verified timestamp
-      const syncConfig = this.getSyncConfig()
+      const syncConfig = this.getSyncConfigPrivate()
       if (syncConfig) {
         syncConfig.lastVerified = new Date().toISOString()
-        this.saveSyncConfig(syncConfig)
+        this.saveSyncConfigPrivate(syncConfig)
       }
       return true
     }
@@ -615,9 +615,9 @@ export class SyncManager {
   }
 
   /**
-   * Save sync configuration
+   * Save sync configuration (public method)
    */
-  private saveSyncConfig(config: SyncConfig): void {
+  saveSyncConfig(config: SyncConfig): void {
     try {
       if (!existsSync(this.configDir)) {
         mkdirSync(this.configDir, { recursive: true })
@@ -632,9 +632,26 @@ export class SyncManager {
   }
 
   /**
-   * Get sync configuration
+   * Save sync configuration (private method - deprecated, use public saveSyncConfig)
    */
-  private getSyncConfig(): SyncConfig | null {
+  private saveSyncConfigPrivate(config: SyncConfig): void {
+    try {
+      if (!existsSync(this.configDir)) {
+        mkdirSync(this.configDir, { recursive: true })
+      }
+
+      const configData = JSON.stringify(config, null, 2)
+      writeFileSync(this.syncConfigFile, configData, 'utf-8')
+    }
+    catch (error) {
+      throw new Error(`Failed to save sync config: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * Get sync configuration (public method)
+   */
+  getSyncConfig(): SyncConfig | null {
     try {
       if (!existsSync(this.syncConfigFile)) {
         return null
@@ -645,6 +662,73 @@ export class SyncManager {
     }
     catch {
       return null
+    }
+  }
+
+  /**
+   * Remove sync configuration (public method)
+   */
+  removeSyncConfig(): void {
+    try {
+      if (existsSync(this.syncConfigFile)) {
+        unlinkSync(this.syncConfigFile)
+      }
+    }
+    catch (error) {
+      throw new Error(`Failed to remove sync config: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * Get sync configuration (private method - deprecated, use public getSyncConfig)
+   */
+  private getSyncConfigPrivate(): SyncConfig | null {
+    try {
+      if (!existsSync(this.syncConfigFile)) {
+        return null
+      }
+
+      const configData = readFileSync(this.syncConfigFile, 'utf-8')
+      return JSON.parse(configData) as SyncConfig
+    }
+    catch {
+      return null
+    }
+  }
+
+  /**
+   * Automatically setup sync from an existing cloud storage configuration
+   */
+  async autoSetupFromCloudConfig(provider: 'icloud' | 'onedrive', cloudPath: string, configPath: string): Promise<boolean> {
+    try {
+      displayInfo(`🔍 Found existing configuration in ${provider} - Setting up automatic sync...`)
+
+      // Create symlink to the existing cloud config
+      await this.createConfigLink(configPath)
+
+      // Save sync configuration
+      const syncConfig: SyncConfig = {
+        enabled: true,
+        provider,
+        cloudPath,
+        linkedAt: new Date().toISOString(),
+        lastVerified: new Date().toISOString(), // Mark as verified since we just found it
+      }
+
+      this.saveSyncConfigPrivate(syncConfig)
+
+      // Update S3 settings if S3 is configured
+      await this.updateS3Settings(true)
+
+      displaySuccess(`✅ Automatically configured ${provider} sync!`)
+      displayInfo(`📂 Config file: ${configPath}`)
+      displayInfo(`🔗 Linked to: ${this.configFile}`)
+
+      return true
+    }
+    catch (error) {
+      displayError(`❌ Failed to auto-setup ${provider} sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      return false
     }
   }
 }

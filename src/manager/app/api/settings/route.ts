@@ -2,13 +2,15 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { settingsUpdateRequestSchema, systemSettingsSchema } from '@/lib/validation'
 import { ConfigManager } from '../../../../config/manager'
+import { SyncManager } from '../../../../sync/manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// Initialize the ConfigManager instance
+// Initialize the ConfigManager and SyncManager instances
 const configManager = new ConfigManager()
+const syncManager = new SyncManager()
 
 function getSettings(): any {
   try {
@@ -31,6 +33,21 @@ function getSettings(): any {
           responseTimeWindowMs: 300000,
           minSamples: 2,
         },
+      }
+    }
+
+    // Get sync configuration from the sync manager
+    const syncConfig = syncManager.getSyncConfig()
+    if (syncConfig) {
+      // Map SyncConfig to SystemSettings.sync format
+      settings.sync = {
+        enabled: syncConfig.enabled,
+        provider: syncConfig.provider,
+        cloudPath: syncConfig.cloudPath,
+        customPath: syncConfig.customPath,
+        s3Config: syncConfig.s3Config,
+        linkedAt: syncConfig.linkedAt,
+        lastVerified: syncConfig.lastVerified,
       }
     }
 
@@ -61,6 +78,24 @@ function getSettings(): any {
 
 function saveSettings(settings: any): void {
   try {
+    // Handle sync configuration separately
+    if (settings.sync) {
+      const syncConfig = {
+        enabled: settings.sync.enabled,
+        provider: settings.sync.provider,
+        cloudPath: settings.sync.cloudPath,
+        customPath: settings.sync.customPath,
+        s3Config: settings.sync.s3Config,
+        linkedAt: settings.sync.linkedAt,
+        lastVerified: settings.sync.lastVerified,
+      }
+      syncManager.saveSyncConfig(syncConfig)
+
+      // Remove sync from settings to avoid saving it in the main config file
+      const { sync, ...settingsWithoutSync } = settings
+      settings = settingsWithoutSync
+    }
+
     const configFile = configManager.load()
     const updatedConfigFile = {
       ...configFile,

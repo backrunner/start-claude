@@ -87,10 +87,21 @@ export const balanceModeSchema = z.object({
   }).optional(),
 })
 
+// Sync configuration schema
+export const syncConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  provider: z.enum(['icloud', 'onedrive', 'custom']),
+  cloudPath: z.string().optional(),
+  customPath: z.string().optional(),
+  linkedAt: z.string(),
+  lastVerified: z.string().optional(),
+}).optional()
+
 // System settings schema
 export const systemSettingsSchema = z.object({
   overrideClaudeCommand: z.boolean().default(false),
   balanceMode: balanceModeSchema.optional(),
+  sync: syncConfigSchema,
   s3Sync: s3SyncSchema.optional(),
 })
 

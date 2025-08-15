@@ -295,6 +295,11 @@ setupCmd
   .option('-v, --verbose', 'Enable verbose output')
   .action(async options => (await import('../commands/setup')).handleSetupS3Command(options))
 
+setupCmd
+  .command('sync')
+  .description('Setup configuration synchronization with cloud storage')
+  .action(async () => (await import('../commands/sync')).setupSyncCommand())
+
 // S3 command group with subcommands
 const s3Cmd = program
   .command('s3')

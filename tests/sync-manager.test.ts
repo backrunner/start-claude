@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as inquirer from 'inquirer'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the filesystem
 vi.mock('node:fs', () => ({
@@ -68,11 +68,11 @@ const mockFs = vi.mocked(fs)
 const mockOs = vi.mocked(os)
 const mockInquirer = vi.mocked(inquirer)
 
-describe('SyncManager', () => {
+describe('syncManager', () => {
   let SyncManager: any
   let syncManager: any
   const mockHomedir = '/home/test'
-  const mockConfigDir = '/home/test/.start-claude'
+  const _mockConfigDir = '/home/test/.start-claude'
   const mockConfigFile = '/home/test/.start-claude/config.json'
   const mockSyncConfigFile = '/home/test/.start-claude/sync.json'
 
@@ -133,12 +133,14 @@ describe('SyncManager', () => {
       mockFs.existsSync.mockImplementation((path: any) => {
         const pathStr = path.toString()
         // Both sync config and main config exist
-        if (pathStr === mockSyncConfigFile || pathStr === mockConfigFile) return true
+        if (pathStr === mockSyncConfigFile || pathStr === mockConfigFile)
+          return true
         // Target path of symlink exists
-        if (pathStr === '/Users/test/Library/Mobile Documents/com~apple~CloudDocs/.start-claude/config.json') return true
+        if (pathStr === '/Users/test/Library/Mobile Documents/com~apple~CloudDocs/.start-claude/config.json')
+          return true
         return false
       })
-      
+
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockSyncConfig))
       mockFs.statSync.mockReturnValue({ isSymbolicLink: () => true } as any)
       mockFs.readlinkSync.mockReturnValue('/Users/test/Library/Mobile Documents/com~apple~CloudDocs/.start-claude/config.json')
@@ -159,10 +161,11 @@ describe('SyncManager', () => {
 
       mockFs.existsSync.mockImplementation((path: any) => {
         const pathStr = path.toString()
-        if (pathStr === mockSyncConfigFile || pathStr === mockConfigFile) return true
+        if (pathStr === mockSyncConfigFile || pathStr === mockConfigFile)
+          return true
         return false // Target path doesn't exist
       })
-      
+
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockSyncConfig))
       mockFs.statSync.mockReturnValue({ isSymbolicLink: () => true } as any)
       mockFs.readlinkSync.mockReturnValue('/Users/test/Library/Mobile Documents/com~apple~CloudDocs/.start-claude/config.json')
@@ -229,7 +232,7 @@ describe('SyncManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockSyncConfig))
       mockInquirer.default.prompt.mockResolvedValue({ reconfigure: true })
-      
+
       // Make disableSync fail
       mockFs.unlinkSync.mockImplementation(() => {
         throw new Error('Permission denied')
@@ -260,7 +263,7 @@ describe('SyncManager', () => {
       mockFs.existsSync.mockImplementation((path: any) => {
         return path.toString().includes('.start-claude')
       })
-      
+
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockSyncConfig))
       mockFs.statSync.mockReturnValue({ isSymbolicLink: () => true } as any)
       mockFs.readlinkSync.mockReturnValue('/Users/test/iCloud Drive/.start-claude/config.json')
@@ -281,7 +284,7 @@ describe('SyncManager', () => {
         const pathStr = path.toString()
         return pathStr === mockSyncConfigFile || pathStr === mockConfigFile
       })
-      
+
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockSyncConfig))
       mockFs.statSync.mockReturnValue({ isSymbolicLink: () => false } as any) // Should be symlink but isn't
 

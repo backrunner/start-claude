@@ -85,6 +85,20 @@ export interface SystemSettings {
       minSamples: number // Minimum number of samples before reordering
     }
   }
+  sync?: {
+    enabled: boolean
+    provider: 'icloud' | 'onedrive' | 'custom' | 's3'
+    cloudPath?: string
+    customPath?: string
+    s3Config?: {
+      bucket: string
+      region: string
+      key: string
+      endpointUrl?: string
+    }
+    linkedAt: string
+    lastVerified?: string
+  }
   s3Sync?: {
     bucket: string
     region: string

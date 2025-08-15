@@ -1,6 +1,6 @@
 import type { S3ClientConfig } from '@aws-sdk/client-s3'
 import type { ConfigFile, SystemSettings } from '../config/types'
-import { existsSync, statSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
@@ -70,12 +70,13 @@ export class S3SyncManager {
       if (!existsSync(syncConfigFile)) {
         return false
       }
-      
+
       const syncConfigData = readFileSync(syncConfigFile, 'utf-8')
       const syncConfig = JSON.parse(syncConfigData)
-      
+
       return syncConfig.enabled && ['icloud', 'onedrive', 'custom'].includes(syncConfig.provider)
-    } catch {
+    }
+    catch {
       return false
     }
   }
@@ -769,7 +770,7 @@ export class S3SyncManager {
     if (this.isCloudSyncEnabled()) {
       try {
         this.initializeS3Client(this.getS3Config()!)
-        
+
         const localConfig = this.configManager.getConfigFile()
         const localFile = this.getLocalFileInfo()
         const remoteInfo = await this.getS3ObjectInfo(this.getS3Config()!)
@@ -781,7 +782,7 @@ export class S3SyncManager {
         if (syncAnalysis.shouldSync && syncAnalysis.syncDirection === 'upload') {
           return await this.uploadConfigs(true)
         }
-        
+
         return true // Skip downloads when cloud sync is enabled
       }
       catch {

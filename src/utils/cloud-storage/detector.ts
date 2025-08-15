@@ -1,4 +1,4 @@
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -297,7 +297,7 @@ function detectiCloudWindows(): CloudStorageInfo {
 
     if (hasiCloudApp || hasiCloudDriveFolder || hasiCloudConfig) {
       return {
-        isAvailable: hasiCloudApp,
+        isAvailable: hasiCloudApp || hasiCloudDriveFolder, // Consider available if folder exists or app is installed
         isEnabled: hasiCloudDriveFolder || hasiCloudConfig,
         path: iCloudDrivePath,
       }
@@ -352,4 +352,91 @@ export function getAvailableCloudServices(): Array<{ name: string, path?: string
   }
 
   return services
+}
+
+export interface CloudStorageConfigInfo {
+  provider: 'icloud' | 'onedrive'
+  path: string
+  configPath: string
+  hasValidConfig: boolean
+}
+
+/**
+ * Detect existing cloud storage configurations that could be automatically synced
+ */
+export function detectExistingCloudStorageConfigs(): CloudStorageConfigInfo[] {
+  const results: CloudStorageConfigInfo[] = []
+  const cloudStatus = getCloudStorageStatus()
+
+  // Check iCloud for existing config
+  if (cloudStatus.iCloud.isEnabled && cloudStatus.iCloud.path) {
+    const iCloudConfigDir = join(cloudStatus.iCloud.path, '.start-claude')
+    const iCloudConfigFile = join(iCloudConfigDir, 'config.json')
+
+    if (existsSync(iCloudConfigFile)) {
+      try {
+        // Validate that it's a proper config file
+        const configData = readFileSync(iCloudConfigFile, 'utf-8')
+        const config = JSON.parse(configData)
+
+        // Basic validation - should have version and configs array
+        const hasValidConfig = config
+          && typeof config.version === 'number'
+          && Array.isArray(config.configs)
+
+        results.push({
+          provider: 'icloud',
+          path: cloudStatus.iCloud.path,
+          configPath: iCloudConfigFile,
+          hasValidConfig,
+        })
+      }
+      catch {
+        // Invalid JSON or other error - still report it but mark as invalid
+        results.push({
+          provider: 'icloud',
+          path: cloudStatus.iCloud.path,
+          configPath: iCloudConfigFile,
+          hasValidConfig: false,
+        })
+      }
+    }
+  }
+
+  // Check OneDrive for existing config
+  if (cloudStatus.oneDrive.isEnabled && cloudStatus.oneDrive.path) {
+    const oneDriveConfigDir = join(cloudStatus.oneDrive.path, '.start-claude')
+    const oneDriveConfigFile = join(oneDriveConfigDir, 'config.json')
+
+    if (existsSync(oneDriveConfigFile)) {
+      try {
+        // Validate that it's a proper config file
+        const configData = readFileSync(oneDriveConfigFile, 'utf-8')
+        const config = JSON.parse(configData)
+
+        // Basic validation - should have version and configs array
+        const hasValidConfig = config
+          && typeof config.version === 'number'
+          && Array.isArray(config.configs)
+
+        results.push({
+          provider: 'onedrive',
+          path: cloudStatus.oneDrive.path,
+          configPath: oneDriveConfigFile,
+          hasValidConfig,
+        })
+      }
+      catch {
+        // Invalid JSON or other error - still report it but mark as invalid
+        results.push({
+          provider: 'onedrive',
+          path: cloudStatus.oneDrive.path,
+          configPath: oneDriveConfigFile,
+          hasValidConfig: false,
+        })
+      }
+    }
+  }
+
+  return results
 }
