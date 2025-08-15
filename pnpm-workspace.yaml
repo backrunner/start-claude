@@ -1,6 +1,9 @@
 packages:
   - src/manager
 
+ignoredBuiltDependencies:
+  - nx
+
 onlyBuiltDependencies:
   - esbuild
   - sharp
