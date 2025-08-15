@@ -1,0 +1,49 @@
+{
+  "name": "start-claude-cli",
+  "root": ".",
+  "projectType": "application",
+  "sourceRoot": "src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/bin"],
+      "options": {
+        "command": "rollup -c rollup.config.ts --configPlugin typescript"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/coverage"],
+      "options": {
+        "command": "vitest run",
+        "cwd": "."
+      },
+      "configurations": {
+        "watch": {
+          "command": "vitest"
+        },
+        "coverage": {
+          "command": "vitest --coverage"
+        }
+      }
+    },
+    "lint": {
+      "executor": "@nx/linter:eslint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": [
+          "src/**/*.{ts,tsx,js,jsx}",
+          "tests/**/*.{ts,tsx,js,jsx}",
+          "scripts/**/*.{ts,tsx,js,jsx}"
+        ]
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit"
+      }
+    }
+  },
+  "tags": ["type:application", "scope:cli"]
+}

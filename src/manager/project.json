@@ -1,0 +1,69 @@
+{
+  "name": "manager",
+  "root": "src/manager",
+  "projectType": "application",
+  "sourceRoot": "src/manager",
+  "targets": {
+    "build": {
+      "executor": "@nx/next:build",
+      "outputs": ["{projectRoot}/.next"],
+      "defaultConfiguration": "production",
+      "options": {
+        "root": "src/manager"
+      },
+      "configurations": {
+        "development": {
+          "outputPath": "src/manager/.next"
+        },
+        "production": {
+          "outputPath": "src/manager/.next"
+        }
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "defaultConfiguration": "development",
+      "options": {
+        "command": "next dev -p 3001",
+        "cwd": "src/manager"
+      }
+    },
+    "start": {
+      "executor": "@nx/next:server",
+      "defaultConfiguration": "production",
+      "options": {
+        "buildTarget": "manager:build:production",
+        "port": 3001
+      }
+    },
+    "export": {
+      "executor": "@nx/next:export",
+      "options": {
+        "buildTarget": "manager:build:production"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/coverage"],
+      "options": {
+        "command": "echo 'No tests configured for manager project'",
+        "cwd": "src/manager"
+      }
+    },
+    "lint": {
+      "executor": "@nx/linter:eslint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["src/manager/**/*.{ts,tsx,js,jsx}"]
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "src/manager"
+      }
+    }
+  },
+  "tags": ["type:application", "scope:manager", "framework:nextjs"]
+}
