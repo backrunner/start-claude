@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../src/utils/config/update-checker'
 
 // Mock the package.json version
-vi.mock('../package.json', () => ({
+vi.mock('../../../package.json', () => ({
   version: '0.1.2',
 }))
 
@@ -21,7 +21,7 @@ const mockInstance = {
   clear: vi.fn(),
 }
 
-vi.mock('../src/utils/update-check-cache', () => ({
+vi.mock('../src/utils/config/update-check-cache', () => ({
   UpdateCheckCache: {
     getInstance: vi.fn(() => mockInstance),
   },
@@ -68,7 +68,7 @@ describe('updateChecker', () => {
       const result = await checkForUpdates(false)
 
       expect(result).toEqual({
-        currentVersion: '0.1.2',
+        currentVersion: '0.3.0',
         latestVersion: '1.0.1',
         hasUpdate: true,
         updateCommand: 'pnpm add -g start-claude@latest',
@@ -86,7 +86,7 @@ describe('updateChecker', () => {
       // Mock successful pnpm command that returns the same version
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
-          callback(null, '0.1.2\n', '')
+          callback(null, '0.3.0\n', '')
         }
         return {} as any
       })
@@ -94,8 +94,8 @@ describe('updateChecker', () => {
       const result = await checkForUpdates(true)
 
       expect(result).toEqual({
-        currentVersion: '0.1.2',
-        latestVersion: '0.1.2',
+        currentVersion: '0.3.0',
+        latestVersion: '0.3.0',
         hasUpdate: false,
         updateCommand: 'pnpm add -g start-claude@latest',
       })
@@ -129,7 +129,7 @@ describe('updateChecker', () => {
 
       await checkForUpdates(false)
 
-      expect(mockInstance.setLastCheckTimestamp).toHaveBeenCalledWith(expect.any(Number), '0.1.2')
+      expect(mockInstance.setLastCheckTimestamp).toHaveBeenCalledWith(expect.any(Number), '0.3.0')
     })
   })
 

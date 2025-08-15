@@ -350,7 +350,7 @@ export class S3SyncManager {
         Key: this.normalizeS3Key(s3Config.key),
       })
       const response = await this.s3Client!.send(command)
-      const configData = await response.Body!.transformToString()
+      const configData = await response.Body?.transformToString() || ''
       remoteConfig = JSON.parse(configData)
       displayVerbose(`✅ Remote configuration fetched successfully`, options.verbose)
     }
@@ -513,7 +513,7 @@ export class S3SyncManager {
       const now = new Date()
 
       displayVerbose(`📤 Uploading to s3://${s3Config.bucket}/${this.normalizeS3Key(s3Config.key)}`, options.verbose)
-      displayVerbose(`📊 Upload metadata - Version: ${configFile.version}, Size: ${configData.length} bytes`, options.verbose)
+      displayVerbose(`📊 Upload metadata - Version: ${configFile.version || 1}, Size: ${configData.length} bytes`, options.verbose)
 
       const command = new PutObjectCommand({
         Bucket: s3Config.bucket,
@@ -523,7 +523,7 @@ export class S3SyncManager {
         Metadata: {
           'upload-timestamp': now.toISOString(),
           'local-modified': localFile.lastModified.toISOString(),
-          'config-version': configFile.version.toString(),
+          'config-version': (configFile.version || 1).toString(),
         },
       })
 
@@ -567,7 +567,7 @@ export class S3SyncManager {
       })
 
       const response = await this.s3Client!.send(command)
-      const configData = await response.Body!.transformToString()
+      const configData = await response.Body?.transformToString() || ''
       const remoteConfigFile: ConfigFile = JSON.parse(configData)
 
       displayVerbose(`📊 Downloaded configuration - Version: ${remoteConfigFile.version || 1}, Size: ${configData.length} bytes`, options.verbose)
@@ -866,7 +866,6 @@ export class S3SyncManager {
       return 'Not configured'
     }
     const endpointStr = config.endpointUrl ? `, Endpoint: ${config.endpointUrl}` : ''
-    const s3Path = `s3://${config.bucket}/${this.normalizeS3Key(config.key)}`
-    return `Configured (${s3Path}, Region: ${config.region}${endpointStr})`
+    return `Configured (Bucket: ${config.bucket}, Region: ${config.region}${endpointStr}, Key: ${this.normalizeS3Key(config.key)})`
   }
 }
