@@ -11,6 +11,7 @@ import { handleEditConfigCommand } from '../commands/edit-config'
 import { handleManagerCommand } from '../commands/manager'
 import { handleOverrideCommand } from '../commands/override'
 import { handleS3DownloadCommand, handleS3SetupCommand, handleS3StatusCommand, handleS3SyncCommand, handleS3UploadCommand } from '../commands/s3'
+import { handleSetupCommand, handleSetupS3Command } from '../commands/setup'
 
 import { ConfigManager } from '../config/manager'
 import { S3SyncManager } from '../storage/s3-sync'
@@ -237,37 +238,80 @@ overrideCmd
   .description('Show supported shells for override')
   .action(async () => (await import('../commands/override')).handleOverrideShellsCommand())
 
-program
-  .command('s3-setup')
+// Setup command with subcommands
+const setupCmd = program
+  .command('setup')
+  .description('Interactive setup wizard for start-claude configuration')
+  .action(handleSetupCommand)
+
+setupCmd
+  .command('s3')
+  .description('Setup S3 sync configuration')
+  .option('-v, --verbose', 'Enable verbose output')
+  .action(handleSetupS3Command)
+
+// S3 command group with subcommands
+const s3Cmd = program
+  .command('s3')
+  .description('S3 sync operations')
+
+s3Cmd
+  .command('setup')
   .description('Setup S3 sync configuration')
   .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3SetupCommand)
 
-program
-  .command('s3-sync')
+s3Cmd
+  .command('sync')
   .description('Sync configurations with S3')
   .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3SyncCommand)
 
-program
-  .command('s3-upload')
+s3Cmd
+  .command('upload')
   .description('Upload local configurations to S3')
   .option('-f, --force', 'Force overwrite remote configurations')
   .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3UploadCommand)
 
-program
-  .command('s3-download')
+s3Cmd
+  .command('download')
   .description('Download configurations from S3')
   .option('-f, --force', 'Force overwrite local configurations')
   .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3DownloadCommand)
 
-program
-  .command('s3-status')
+s3Cmd
+  .command('status')
   .description('Show S3 sync status')
   .option('-v, --verbose', 'Enable verbose output')
   .action(handleS3StatusCommand)
+
+// Legacy S3 commands with deprecation warnings
+function createDeprecatedS3Command(
+  command: string,
+  newCommand: string,
+  description: string,
+  handler: (...args: any[]) => Promise<void>,
+): Command {
+  return program
+    .command(command)
+    .description(`${description} (DEPRECATED: use 'start-claude ${newCommand}')`)
+    .option('-v, --verbose', 'Enable verbose output')
+    .option('-f, --force', 'Force overwrite configurations', false)
+    .action(async (options) => {
+      displayWarning(`⚠️  WARNING: 'start-claude ${command}' is deprecated.`)
+      displayWarning(`   Please use 'start-claude ${newCommand}' instead.`)
+      displayWarning(`   The old command will be removed in a future version.\n`)
+      await handler(options)
+    })
+}
+
+createDeprecatedS3Command('s3-setup', 's3 setup', 'Setup S3 sync configuration', handleS3SetupCommand)
+createDeprecatedS3Command('s3-sync', 's3 sync', 'Sync configurations with S3', handleS3SyncCommand)
+createDeprecatedS3Command('s3-upload', 's3 upload', 'Upload local configurations to S3', handleS3UploadCommand)
+createDeprecatedS3Command('s3-download', 's3 download', 'Download configurations from S3', handleS3DownloadCommand)
+createDeprecatedS3Command('s3-status', 's3 status', 'Show S3 sync status', handleS3StatusCommand)
 
 program
   .command('edit-config')
