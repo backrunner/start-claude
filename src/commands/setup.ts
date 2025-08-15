@@ -99,12 +99,6 @@ async function handleSystemSetup(): Promise<void> {
     },
     {
       type: 'confirm',
-      name: 'enableDebugLogging',
-      message: 'Enable debug logging by default?',
-      default: false,
-    },
-    {
-      type: 'confirm',
       name: 'autoCheckUpdates',
       message: 'Automatically check for updates on startup?',
       default: true,
@@ -120,7 +114,6 @@ async function handleSystemSetup(): Promise<void> {
     displayInfo(`   Default Strategy: ${systemOptions.defaultStrategy}`)
   }
 
-  displayInfo(`   Debug Logging: ${systemOptions.enableDebugLogging ? 'Enabled' : 'Disabled'}`)
   displayInfo(`   Auto-check Updates: ${systemOptions.autoCheckUpdates ? 'Enabled' : 'Disabled'}`)
 
   // TODO: Implement actual system settings persistence
