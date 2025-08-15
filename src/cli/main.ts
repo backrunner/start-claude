@@ -389,4 +389,19 @@ program
   .option('-p, --port <number>', 'Port to run the manager on', '2334')
   .action(async options => (await import('../commands/manager')).handleManagerCommand(options))
 
+// Usage command with subcommands
+program
+  .command('usage [subcommand]')
+  .description('Show Claude Code usage statistics via ccusage')
+  .option('--since <date>', 'Filter from date (YYYYMMDD)')
+  .option('--until <date>', 'Filter to date (YYYYMMDD)')
+  .option('--json', 'JSON output')
+  .option('--breakdown', 'Per-model cost breakdown')
+  .option('--timezone <tz>', 'Use specific timezone')
+  .option('--locale <locale>', 'Use specific locale for date/time formatting')
+  .option('--instances', 'Group by project/instance')
+  .option('--project <name>', 'Filter to specific project')
+  .option('--live', 'Real-time usage dashboard (for blocks command)')
+  .action(async (subcommand, options) => (await import('../commands/usage')).handleUsageCommand(subcommand, options))
+
 program.parse()

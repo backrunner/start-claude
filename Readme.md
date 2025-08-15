@@ -185,3 +185,19 @@ We recommend using the **override feature** for the best Windows experience.
 ---
 
 💡 **Pro Tip**: Windows users should use `start-claude override` for the best experience, as the `sc` alias may conflict with system commands.
+
+## Credits
+
+This project integrates and builds upon several excellent open source tools:
+
+### Third-Party Tools
+
+- **[ccusage](https://github.com/LouisShark/ccusage)** - Comprehensive Claude Code usage analytics and cost tracking
+- **[ccstatusline](https://github.com/LouisShark/ccstatusline)** - Real-time Claude Code status line integration for shells and editors
+
+### Special Thanks
+
+We express our gratitude to:
+
+- **LouisShark** for creating the excellent ccusage and ccstatusline tools that enhance the Claude Code experience
+- The open-source community for various dependencies and tools that make this project possible
