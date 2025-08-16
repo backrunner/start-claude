@@ -36,7 +36,7 @@ export async function checkRemoteConfigUpdates(
     displayVerbose(`S3 sync status: ${s3SyncManager.getS3Status()}`, options.verbose)
 
     // Get configured check interval (default: 60 minutes)
-    const settings = s3SyncManager.getSystemSettings()
+    const settings = await s3SyncManager.getSystemSettings()
     const checkIntervalMinutes = settings.s3Sync?.remoteConfigCheckIntervalMinutes || 60
     displayVerbose(`Remote config check interval: ${checkIntervalMinutes} minutes`, options.verbose)
 

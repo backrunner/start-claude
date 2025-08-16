@@ -1,0 +1,168 @@
+import type { MigrationOperation, StructuredMigration } from './types'
+import { writeFileSync } from 'node:fs'
+
+/**
+ * Processor for structured declarative migrations
+ * This allows migrations to be defined as data rather than code
+ */
+export class StructuredMigrationProcessor {
+  /**
+   * Execute a structured migration on a config object
+   */
+  static async execute(
+    migration: StructuredMigration,
+    config: any,
+    options?: {
+      fileCreator?: (filePath: string, content: any, config: any) => Promise<void>
+    },
+  ): Promise<any> {
+    let result = JSON.parse(JSON.stringify(config)) // Deep clone
+
+    for (const operation of migration.operations) {
+      // Check condition if specified
+      if (operation.condition && !operation.condition(result)) {
+        continue
+      }
+
+      result = await this.executeOperation(operation, result, options)
+    }
+
+    // Update version
+    result.version = migration.toVersion
+
+    return result
+  }
+
+  /**
+   * Execute a single migration operation
+   */
+  private static async executeOperation(
+    operation: MigrationOperation,
+    config: any,
+    options?: {
+      fileCreator?: (filePath: string, content: any, config: any) => Promise<void>
+    },
+  ): Promise<any> {
+    switch (operation.type) {
+      case 'move':
+        return this.moveProperty(config, operation.source!, operation.target!)
+
+      case 'copy':
+        return this.copyProperty(config, operation.source!, operation.target!)
+
+      case 'delete':
+        return this.deleteProperty(config, operation.source!)
+
+      case 'transform':
+        return this.transformProperty(config, operation.source!, operation.transform!)
+
+      case 'create_file':
+        // Call the file creator with the current config and allow it to modify the config
+        await this.createFile(operation.filePath!, operation.fileContent!(config), options?.fileCreator, config)
+        return config
+
+      case 'custom':
+        // For custom operations, the transform function does the work
+        return operation.transform!(config)
+
+      default:
+        throw new Error(`Unknown operation type: ${(operation as any).type}`)
+    }
+  }
+
+  /**
+   * Move a property from source to target path
+   */
+  private static moveProperty(config: any, sourcePath: string, targetPath: string): any {
+    const value = this.getProperty(config, sourcePath)
+    if (value !== undefined) {
+      this.setProperty(config, targetPath, value)
+      this.deleteProperty(config, sourcePath)
+    }
+    return config
+  }
+
+  /**
+   * Copy a property from source to target path
+   */
+  private static copyProperty(config: any, sourcePath: string, targetPath: string): any {
+    const value = this.getProperty(config, sourcePath)
+    if (value !== undefined) {
+      this.setProperty(config, targetPath, value)
+    }
+    return config
+  }
+
+  /**
+   * Delete a property at the given path
+   */
+  private static deleteProperty(config: any, path: string): any {
+    const parts = path.split('.')
+    let current = config
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (current[parts[i]] === undefined) {
+        return config
+      }
+      current = current[parts[i]]
+    }
+
+    delete current[parts[parts.length - 1]]
+    return config
+  }
+
+  /**
+   * Transform a property using the provided function
+   */
+  private static transformProperty(config: any, path: string, transformer: (value: any) => any): any {
+    const value = this.getProperty(config, path)
+    if (value !== undefined) {
+      this.setProperty(config, path, transformer(value))
+    }
+    return config
+  }
+
+  /**
+   * Get a property value using dot notation path
+   */
+  private static getProperty(obj: any, path: string): any {
+    return path.split('.').reduce((current, part) => current?.[part], obj)
+  }
+
+  /**
+   * Set a property value using dot notation path
+   */
+  private static setProperty(obj: any, path: string, value: any): void {
+    const parts = path.split('.')
+    let current = obj
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (current[parts[i]] === undefined) {
+        current[parts[i]] = {}
+      }
+      current = current[parts[i]]
+    }
+
+    current[parts[parts.length - 1]] = value
+  }
+
+  /**
+   * Create a new file with the given content
+   */
+  private static async createFile(
+    filePath: string,
+    content: any,
+    fileCreator?: (filePath: string, content: any, config: any) => Promise<void>,
+    config?: any,
+  ): Promise<void> {
+    if (fileCreator && config) {
+      // Use provided file creator and pass the config for modification
+      await fileCreator(filePath, content, config)
+    }
+    else {
+      // Default file creation
+      const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2)
+      writeFileSync(filePath, contentStr, 'utf8')
+    }
+  }
+}

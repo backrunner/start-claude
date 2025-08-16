@@ -1,11 +1,11 @@
 import process from 'node:process'
 import inquirer from 'inquirer'
-import { ConfigManager } from '../config/manager'
+import { ConfigManager } from '../config/config-manager'
 import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
 
 export async function handleRemoveCommand(name: string): Promise<void> {
   const configManager = new ConfigManager()
-  const config = configManager.getConfig(name)
+  const config = await configManager.getConfig(name)
   if (!config) {
     displayError(`Configuration "${name}" not found`)
     process.exit(1)
@@ -21,7 +21,7 @@ export async function handleRemoveCommand(name: string): Promise<void> {
   ])
 
   if (answers.confirm) {
-    configManager.removeConfig(name)
+    await configManager.removeConfig(name)
     displaySuccess(`Configuration "${name}" removed successfully!`)
   }
   else {
@@ -31,7 +31,7 @@ export async function handleRemoveCommand(name: string): Promise<void> {
 
 export async function handleListCommand(): Promise<void> {
   const configManager = new ConfigManager()
-  const configs = configManager.listConfigs()
+  const configs = await configManager.listConfigs()
   const { displayConfigList, displayWelcome } = await import('../utils/cli/ui')
   displayWelcome()
   displayConfigList(configs)
@@ -39,7 +39,7 @@ export async function handleListCommand(): Promise<void> {
 
 export async function handleDefaultCommand(name: string): Promise<void> {
   const configManager = new ConfigManager()
-  const success = configManager.setDefaultConfig(name)
+  const success = await configManager.setDefaultConfig(name)
   if (success) {
     displaySuccess(`Configuration "${name}" set as default`)
   }

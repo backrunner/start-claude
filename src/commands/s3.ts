@@ -165,7 +165,7 @@ export async function handleS3StatusCommand(options: { verbose?: boolean } = {})
 
   if (options.verbose) {
     // Additional verbose status information could be added here
-    const settings = s3SyncManager.getSystemSettings()
+    const settings = await s3SyncManager.getSystemSettings()
     if (settings.s3Sync) {
       displayVerbose(`S3 Configuration Details:`, options.verbose)
       displayVerbose(`  Bucket: ${settings.s3Sync.bucket}`, options.verbose)

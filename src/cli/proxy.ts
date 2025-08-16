@@ -1,4 +1,4 @@
-import type { ConfigManager } from '../config/manager'
+import type { ConfigManager } from '../config/config-manager'
 import type { LoadBalancerStrategy } from '../config/types'
 import type { ProgramOptions } from './common'
 import process from 'node:process'
@@ -35,7 +35,7 @@ export async function handleProxyMode(
   const shouldStartNewProxy = await checkAndHandleExistingProxy()
   if (!shouldStartNewProxy) {
     // Proxy server is already running, just start Claude Code with existing proxy
-    const baseConfig = resolveBaseConfig(configManager, options, configArg, forcedConfigs || configManager.listConfigs())
+    const baseConfig = await resolveBaseConfig(configManager, options, configArg, forcedConfigs || await configManager.listConfigs())
     const claudeArgs = buildClaudeArgs(options, baseConfig)
     const filteredArgs = filterProcessArgs(configArg)
     const allArgs = [...claudeArgs, ...filteredArgs]
@@ -57,7 +57,7 @@ export async function handleProxyMode(
   setupProxyCleanup()
 
   // Get configurations for proxy mode - use forced configs or all configs
-  const configs = forcedConfigs || configManager.listConfigs()
+  const configs = forcedConfigs || await configManager.listConfigs()
 
   // Include configs that have complete API credentials (baseUrl, apiKey, and model) OR have transformer enabled
   const proxyableConfigs = configs.filter((c) => {
@@ -106,7 +106,7 @@ export async function handleProxyMode(
     const hasTransformerEnabled = proxyableConfigs.some(c => c.transformerEnabled === true)
 
     // Set up a proxy configuration that preserves other settings - resolve early for transformer matching
-    const baseConfig = resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
+    const baseConfig = await resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
 
     // Override system settings with CLI strategy if provided
     let effectiveSystemSettings = systemSettings

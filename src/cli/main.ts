@@ -5,7 +5,7 @@ import { Command } from 'commander'
 import inquirer from 'inquirer'
 import { name, version } from '../../package.json'
 
-import { ConfigManager } from '../config/manager'
+import { ConfigManager } from '../config/config-manager'
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/detection'
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/cli/ui'
@@ -27,7 +27,7 @@ const statusLineManager = new StatusLineManager()
  */
 async function handleStatusLineSync(options: { verbose?: boolean } = {}): Promise<void> {
   try {
-    const settings = configManager.getSettings()
+    const settings = await configManager.getSettings()
     const statusLineConfig = settings.statusLine
 
     // Only proceed if statusline is enabled and has config
@@ -94,7 +94,7 @@ program
   .action(async (configArg: string | undefined, options: ProgramOptions) => {
     if (options.list === true) {
       displayWelcome()
-      const configs = configManager.listConfigs()
+      const configs = await configManager.listConfigs()
       displayConfigList(configs)
       return
     }

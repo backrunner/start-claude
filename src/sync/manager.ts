@@ -5,6 +5,7 @@ import process from 'node:process'
 import inquirer from 'inquirer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
+import { CloudConfigSyncer } from '../utils/cloud-storage/config-syncer'
 import { getAvailableCloudServices, getCloudStorageStatus } from '../utils/cloud-storage/detector'
 
 export interface SyncConfig {
@@ -221,8 +222,11 @@ export class SyncManager {
         displayInfo('📄 Created new config in cloud folder')
       }
 
-      // Create symlink
+      // Create symlink for main config
       await this.createConfigLink(cloudConfigFile)
+
+      // Also sync S3 config file if it exists
+      await this.syncAllConfigFilesToCloud(serviceInfo.path)
 
       // Save sync configuration
       const syncConfig: SyncConfig = {
@@ -420,6 +424,35 @@ export class SyncManager {
   }
 
   /**
+   * Sync all configuration files to cloud storage using generalized approach
+   */
+  private async syncAllConfigFilesToCloud(cloudPath: string): Promise<void> {
+    try {
+      // Get all standard config files (main config, S3 config, etc.)
+      const configFiles = CloudConfigSyncer.getStandardConfigFiles()
+
+      // Filter to only sync files that exist and aren't the main config (already handled)
+      const additionalConfigs = configFiles.filter(config =>
+        config.name !== 'main-config' && existsSync(config.localPath),
+      )
+
+      if (additionalConfigs.length === 0) {
+        displayInfo('ℹ️  No additional configuration files found to sync')
+        return
+      }
+
+      await CloudConfigSyncer.syncConfigFilesToCloud(additionalConfigs, {
+        cloudPath,
+        backupOnReplace: true,
+        verbose: true,
+      })
+    }
+    catch (error) {
+      displayWarning(`⚠️  Failed to sync additional config files: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  /**
    * Update S3 settings when cloud sync is enabled
    */
   private async updateS3Settings(cloudSyncEnabled: boolean): Promise<void> {
@@ -488,6 +521,33 @@ export class SyncManager {
   }
 
   /**
+   * Check if a file is a symlink with Windows compatibility
+   */
+  private isSymlinkCompatible(filePath: string): boolean {
+    try {
+      // On Windows, check if we can read the symlink target
+      if (process.platform === 'win32') {
+        try {
+          readlinkSync(filePath)
+          return true
+        }
+        catch {
+          // If readlinkSync fails, it's not a symlink
+          return false
+        }
+      }
+      else {
+        // On Unix systems, use standard isSymbolicLink check
+        const stats = statSync(filePath)
+        return stats.isSymbolicLink()
+      }
+    }
+    catch {
+      return false
+    }
+  }
+
+  /**
    * Get current sync status
    */
   getSyncStatus(): SyncStatus {
@@ -515,11 +575,9 @@ export class SyncManager {
       issues.push('Config file does not exist')
     }
     else {
-      const stats = statSync(this.configFile)
-
       if (syncProvider !== 's3') {
         // For cloud/custom sync, config should be a symlink
-        if (!stats.isSymbolicLink()) {
+        if (!this.isSymlinkCompatible(this.configFile)) {
           issues.push('Config file is not a symlink')
         }
         else {
@@ -552,7 +610,7 @@ export class SyncManager {
       }
       else {
         // For S3 sync, config should be a regular file
-        if (stats.isSymbolicLink()) {
+        if (this.isSymlinkCompatible(this.configFile)) {
           issues.push('Config file should not be a symlink for S3 sync')
         }
         else {

@@ -1,4 +1,4 @@
-import { ConfigManager } from '../config/manager'
+import { ConfigManager } from '../config/config-manager'
 import { displayError, displayInfo, displaySuccess, displayVerbose, displayWelcome } from '../utils/cli/ui'
 import { StatusLineManager } from '../utils/statusline/manager'
 
@@ -35,7 +35,7 @@ export async function handleStatusLineSetupCommand(options: { verbose?: boolean 
 
     // Save to start-claude config
     displayInfo('💾 Saving statusline configuration to start-claude...')
-    configManager.updateSettings({
+    await configManager.updateSettings({
       statusLine: {
         enabled: true,
         config: ccstatuslineConfig,
@@ -67,7 +67,7 @@ export async function handleStatusLineDisableCommand(options: { verbose?: boolea
     displayInfo('🔧 Disabling statusline integration...')
 
     // Update start-claude config
-    configManager.updateSettings({
+    await configManager.updateSettings({
       statusLine: {
         enabled: false,
       },
@@ -94,7 +94,7 @@ export async function handleStatusLineStatusCommand(options: { verbose?: boolean
   const statusLineManager = new StatusLineManager()
 
   try {
-    const settings = configManager.getSettings()
+    const settings = await configManager.getSettings()
     const statusLine = settings.statusLine
 
     displayInfo('📊 Statusline Integration Status:')

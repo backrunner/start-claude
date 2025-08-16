@@ -1,20 +1,22 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { settingsUpdateRequestSchema, systemSettingsSchema } from '@/lib/validation'
-import { ConfigManager } from '../../../../config/manager'
+import { ConfigManager } from '../../../../config/config-manager'
+import { S3ConfigFileManager } from '../../../../config/s3-config'
 import { SyncManager } from '../../../../sync/manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// Initialize the ConfigManager and SyncManager instances
+// Initialize the ConfigManager, S3ConfigManager, and SyncManager instances
 const configManager = new ConfigManager()
+const s3ConfigManager = S3ConfigFileManager.getInstance()
 const syncManager = new SyncManager()
 
-function getSettings(): any {
+async function getSettings(): Promise<any> {
   try {
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     const settings = configFile.settings || { overrideClaudeCommand: false }
 
     // Ensure balanceMode structure exists with defaults
@@ -45,10 +47,15 @@ function getSettings(): any {
         provider: syncConfig.provider,
         cloudPath: syncConfig.cloudPath,
         customPath: syncConfig.customPath,
-        s3Config: syncConfig.s3Config,
         linkedAt: syncConfig.linkedAt,
         lastVerified: syncConfig.lastVerified,
       }
+    }
+
+    // Get S3 configuration from separate file
+    const s3Config = s3ConfigManager.getS3Config()
+    if (s3Config) {
+      settings.s3Sync = s3Config
     }
 
     return settings
@@ -76,8 +83,16 @@ function getSettings(): any {
   }
 }
 
-function saveSettings(settings: any): void {
+async function saveSettings(settings: any): Promise<void> {
   try {
+    // Handle S3 configuration separately
+    if (settings.s3Sync) {
+      s3ConfigManager.save(settings.s3Sync)
+      // Remove s3Sync from settings to avoid saving it in the main config file
+      const { s3Sync, ...settingsWithoutS3 } = settings
+      settings = settingsWithoutS3
+    }
+
     // Handle sync configuration separately
     if (settings.sync) {
       const syncConfig = {
@@ -85,7 +100,6 @@ function saveSettings(settings: any): void {
         provider: settings.sync.provider,
         cloudPath: settings.sync.cloudPath,
         customPath: settings.sync.customPath,
-        s3Config: settings.sync.s3Config,
         linkedAt: settings.sync.linkedAt,
         lastVerified: settings.sync.lastVerified,
       }
@@ -96,7 +110,7 @@ function saveSettings(settings: any): void {
       settings = settingsWithoutSync
     }
 
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     const updatedConfigFile = {
       ...configFile,
       settings: { ...configFile.settings, ...settings },
@@ -113,7 +127,7 @@ function saveSettings(settings: any): void {
 
 export async function GET(): Promise<NextResponse> {
   try {
-    const settings = getSettings()
+    const settings = await getSettings()
     return NextResponse.json({ settings })
   }
   catch (error) {
@@ -146,8 +160,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       }, { status: 400 })
     }
 
-    saveSettings(settingsValidation.data)
-    return NextResponse.json({ success: true, settings: getSettings() })
+    await saveSettings(settingsValidation.data)
+    return NextResponse.json({ success: true, settings: await getSettings() })
   }
   catch (error) {
     console.error('PUT /api/settings error:', error)

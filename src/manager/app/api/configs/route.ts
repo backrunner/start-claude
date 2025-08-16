@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server'
 import type { ClaudeConfig } from '@/config/types'
 import { NextResponse } from 'next/server'
 import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
-import { ConfigManager } from '../../../../config/manager'
+import { ConfigManager } from '../../../../config/config-manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -10,9 +10,9 @@ export const revalidate = 0
 
 const configManager = new ConfigManager()
 
-function getConfigs(): ClaudeConfig[] {
+async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     return configFile.configs || []
   }
   catch (error) {
@@ -21,9 +21,9 @@ function getConfigs(): ClaudeConfig[] {
   }
 }
 
-function getSettings(): any {
+async function getSettings(): Promise<any> {
   try {
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     return configFile.settings || { overrideClaudeCommand: false }
   }
   catch (error) {
@@ -32,9 +32,9 @@ function getSettings(): any {
   }
 }
 
-function saveConfigs(configs: ClaudeConfig[], settings?: any): void {
+async function saveConfigs(configs: ClaudeConfig[], settings?: any): Promise<void> {
   try {
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     const updatedConfigFile = {
       ...configFile,
       configs,
@@ -51,8 +51,8 @@ function saveConfigs(configs: ClaudeConfig[], settings?: any): void {
 
 export async function GET(): Promise<NextResponse> {
   try {
-    const configs = getConfigs()
-    const settings = getSettings()
+    const configs = await getConfigs()
+    const settings = await getSettings()
     return NextResponse.json({ configs, settings })
   }
   catch (error) {
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Configuration name is required' }, { status: 400 })
     }
 
-    const configs = getConfigs()
+    const configs = await getConfigs()
     const existingIndex = configs.findIndex(c => c.name === config.name)
 
     if (existingIndex >= 0) {
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       configs.push(newConfigResult.data)
     }
 
-    saveConfigs(configs)
+    await saveConfigs(configs)
     return NextResponse.json({ success: true, configs })
   }
   catch (error) {
@@ -159,7 +159,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       validatedConfigs.push(configValidation.data)
     }
 
-    saveConfigs(validatedConfigs)
+    await saveConfigs(validatedConfigs)
     return NextResponse.json({ success: true, configs: validatedConfigs })
   }
   catch (error) {
@@ -180,7 +180,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Config name is required' }, { status: 400 })
     }
 
-    const configs = getConfigs()
+    const configs = await getConfigs()
     const filteredConfigs = configs.filter(c => c.name !== name)
 
     if (filteredConfigs.length === configs.length) {
@@ -196,7 +196,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
         order: index,
       }))
 
-    saveConfigs(reorderedConfigs)
+    await saveConfigs(reorderedConfigs)
     return NextResponse.json({ success: true, configs: reorderedConfigs })
   }
   catch (error) {

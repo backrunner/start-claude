@@ -140,7 +140,33 @@ export interface LegacyConfigFile {
 /**
  * Current configuration file version
  */
-export const CURRENT_CONFIG_VERSION = 1
+export const CURRENT_CONFIG_VERSION = 2
+
+/**
+ * Current S3 configuration file version
+ */
+export const CURRENT_S3_CONFIG_VERSION = 1
+
+/**
+ * S3 configuration file structure
+ */
+export interface S3ConfigFile {
+  version: number
+  s3Config: {
+    bucket: string
+    region: string
+    accessKeyId: string
+    secretAccessKey: string
+    key: string
+    endpointUrl?: string
+    remoteConfigCheckIntervalMinutes?: number // Default: 60 (1 hour)
+  }
+  metadata: {
+    createdAt: string
+    lastModified: string
+    migratedFrom?: 'system-settings' // Track if migrated from old location
+  }
+}
 
 /**
  * Migration information interface

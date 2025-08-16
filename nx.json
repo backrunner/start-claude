@@ -1,5 +1,6 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "daemon": false,
   "targetDefaults": {
     "build": {
       "cache": true,
@@ -36,7 +37,7 @@
     }
   ],
   "release": {
-    "projects": ["start-claude-cli", "manager"],
+    "projects": ["start-claude-cli", "manager", "migrator"],
     "projectsRelationship": "fixed",
     "changelog": {
       "workspaceChangelog": {

@@ -1,9 +1,10 @@
 import type { ClaudeConfig, ConfigFile } from './types'
-import { ConfigFileManager } from './file-manager'
+import { ConfigFileManager } from './file-operations'
 
 export class ConfigManager {
   private autoSyncCallback?: () => Promise<void>
   private configFileManager: ConfigFileManager
+  private configCache: ConfigFile | null = null
 
   constructor() {
     // Auto-sync callback will be set by S3SyncManager when needed
@@ -14,12 +15,14 @@ export class ConfigManager {
     this.autoSyncCallback = callback || undefined
   }
 
-  load(): ConfigFile {
-    return this.configFileManager.load()
+  async load(): Promise<ConfigFile> {
+    this.configCache = await this.configFileManager.load()
+    return this.configCache
   }
 
   save(config: ConfigFile): void {
     this.configFileManager.save(config)
+    this.configCache = config
 
     // Trigger auto-sync if callback is set
     if (this.autoSyncCallback) {
@@ -30,8 +33,8 @@ export class ConfigManager {
     }
   }
 
-  addConfig(config: ClaudeConfig): void {
-    const configFile = this.load()
+  async addConfig(config: ClaudeConfig): Promise<void> {
+    const configFile = await this.load()
 
     const existingIndex = configFile.configs.findIndex(c => c.name.toLowerCase() === config.name.toLowerCase())
     if (existingIndex >= 0) {
@@ -44,8 +47,8 @@ export class ConfigManager {
     this.save(configFile)
   }
 
-  removeConfig(name: string): boolean {
-    const configFile = this.load()
+  async removeConfig(name: string): Promise<boolean> {
+    const configFile = await this.load()
     const initialLength = configFile.configs.length
     configFile.configs = configFile.configs.filter(c => c.name.toLowerCase() !== name.toLowerCase())
 
@@ -56,18 +59,18 @@ export class ConfigManager {
     return false
   }
 
-  getConfig(name: string): ClaudeConfig | undefined {
-    const configFile = this.load()
+  async getConfig(name: string): Promise<ClaudeConfig | undefined> {
+    const configFile = await this.load()
     return configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
   }
 
-  getDefaultConfig(): ClaudeConfig | undefined {
-    const configFile = this.load()
+  async getDefaultConfig(): Promise<ClaudeConfig | undefined> {
+    const configFile = await this.load()
     return configFile.configs.find(c => c.isDefault)
   }
 
-  setDefaultConfig(name: string): boolean {
-    const configFile = this.load()
+  async setDefaultConfig(name: string): Promise<boolean> {
+    const configFile = await this.load()
 
     configFile.configs.forEach(c => c.isDefault = false)
 
@@ -80,23 +83,23 @@ export class ConfigManager {
     return false
   }
 
-  listConfigs(): ClaudeConfig[] {
-    const configFile = this.load()
+  async listConfigs(): Promise<ClaudeConfig[]> {
+    const configFile = await this.load()
     return configFile.configs
   }
 
-  updateSettings(settings: Partial<ConfigFile['settings']>): void {
-    const configFile = this.load()
+  async updateSettings(settings: Partial<ConfigFile['settings']>): Promise<void> {
+    const configFile = await this.load()
     configFile.settings = { ...configFile.settings, ...settings }
     this.save(configFile)
   }
 
-  getSettings(): ConfigFile['settings'] {
-    const configFile = this.load()
+  async getSettings(): Promise<ConfigFile['settings']> {
+    const configFile = await this.load()
     return configFile.settings
   }
 
-  getConfigFile(): ConfigFile {
+  async getConfigFile(): Promise<ConfigFile> {
     return this.load()
   }
 

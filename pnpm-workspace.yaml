@@ -1,5 +1,6 @@
 packages:
   - src/manager
+  - src/migrator
 
 ignoredBuiltDependencies:
   - nx

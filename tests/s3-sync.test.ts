@@ -54,7 +54,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
 }))
 
 // Mock the dependencies
-vi.mock('@/config/manager', () => ({
+vi.mock('@/config/config-manager', () => ({
   ConfigManager: vi.fn().mockImplementation(() => mockConfigManagerInstance),
 }))
 

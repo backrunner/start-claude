@@ -38,7 +38,7 @@ export function detectConfigConflicts(
   const remoteConfigMap = new Map(remoteConfig.configs.map(c => [c.name.toLowerCase(), c]))
 
   // Check for conflicts in existing configs
-  for (const [name, localItem] of localConfigMap) {
+  for (const [name, localItem] of Array.from(localConfigMap.entries())) {
     const remoteItem = remoteConfigMap.get(name)
 
     if (remoteItem) {
@@ -119,7 +119,7 @@ export function detectConfigConflicts(
   }
 
   // Check for configs that exist only locally or remotely
-  for (const [name, localItem] of localConfigMap) {
+  for (const [name, localItem] of Array.from(localConfigMap.entries())) {
     if (!remoteConfigMap.has(name)) {
       conflicts.push({
         configName: localItem.name,
@@ -131,7 +131,7 @@ export function detectConfigConflicts(
     }
   }
 
-  for (const [name, remoteItem] of remoteConfigMap) {
+  for (const [name, remoteItem] of Array.from(remoteConfigMap.entries())) {
     if (!localConfigMap.has(name)) {
       conflicts.push({
         configName: remoteItem.name,

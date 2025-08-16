@@ -37,7 +37,7 @@ describe('configManager', () => {
     mockFs.appendFileSync.mockImplementation(() => undefined)
 
     // Import ConfigManager after mocks are set up
-    const configModule = await import('@/config/manager')
+    const configModule = await import('@/config/config-manager')
     ConfigManager = configModule.ConfigManager
     configManager = new ConfigManager()
   })

@@ -39,7 +39,7 @@ export async function handleSetupCommand(): Promise<void> {
         return true
       },
     },
-  ] as const)
+  ])
 
   if (setupOptions.setupItems.length === 0) {
     displayWarning('No setup options selected. Exiting...')
@@ -123,7 +123,7 @@ async function handleSystemSetup(): Promise<void> {
       message: 'Automatically check for updates on startup?',
       default: true,
     },
-  ] as const)
+  ])
 
   // Here you would typically save these settings to a system config file
   // For now, we'll just show what would be configured

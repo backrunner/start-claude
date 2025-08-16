@@ -1,4 +1,4 @@
-import type { ConfigManager } from '../config/manager'
+import type { ConfigManager } from '../config/config-manager'
 import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
@@ -272,14 +272,14 @@ async function handleS3EmptyConfigDownload(
   }
 
   // Try to get default config again after download
-  const config = configManager.getDefaultConfig()
+  const config = await configManager.getDefaultConfig()
   if (config) {
     displayInfo(`Using downloaded configuration: ${config.name}`)
     return config
   }
 
   // Downloaded configs exist but no default, let user choose
-  const downloadedConfigs = configManager.listConfigs()
+  const downloadedConfigs = await configManager.listConfigs()
   if (downloadedConfigs.length === 0) {
     return undefined
   }
@@ -290,7 +290,7 @@ async function handleS3EmptyConfigDownload(
       type: 'list',
       name: 'selectedConfig',
       message: 'Select configuration:',
-      choices: downloadedConfigs.map(c => ({
+      choices: downloadedConfigs.map((c: any) => ({
         name: `${c.name}${c.isDefault ? ' (default)' : ''}`,
         value: c.name,
       })),
@@ -331,14 +331,14 @@ export async function resolveConfig(
   const configName = options.config || configArg
 
   if (configName !== undefined) {
-    config = configManager.getConfig(configName)
+    config = await configManager.getConfig(configName)
     if (!config) {
       // If config not found and S3 is configured, check for newer remote config
       config = await handleS3ConfigLookup(configManager, s3SyncManager, configName)
       if (!config) {
         // Try fuzzy matching before giving up
-        const allConfigs = configManager.listConfigs()
-        const configNames = allConfigs.map(c => c.name)
+        const allConfigs = await configManager.listConfigs()
+        const configNames = allConfigs.map((c: any) => c.name)
         const closest = findClosestMatch(configName, configNames)
 
         if (closest && isSimilarEnough(closest.similarity, 0.6)) {
@@ -355,7 +355,7 @@ export async function resolveConfig(
           ])
 
           if (confirmAnswer.useClosest) {
-            config = configManager.getConfig(closest.match)
+            config = await configManager.getConfig(closest.match)
             if (config) {
               displaySuccess(`✅ Using configuration "${closest.match}"`)
               return config
@@ -368,7 +368,7 @@ export async function resolveConfig(
         // Show available configurations for reference
         if (configNames.length > 0) {
           displayInfo('📋 Available configurations:')
-          configNames.forEach(name => displayInfo(`  - ${name}`))
+          configNames.forEach((name: string) => displayInfo(`  - ${name}`))
         }
 
         process.exit(1)
@@ -377,10 +377,10 @@ export async function resolveConfig(
     return config
   }
 
-  config = configManager.getDefaultConfig()
+  config = await configManager.getDefaultConfig()
 
   if (!config) {
-    const configs = configManager.listConfigs()
+    const configs = await configManager.listConfigs()
 
     if (configs.length === 0) {
       // Check if S3 sync is configured and try to download first
@@ -532,10 +532,10 @@ async function createNewConfig(configManager: ConfigManager, s3SyncManager: S3Sy
     isDefault: answers.isDefault,
   }
 
-  configManager.addConfig(newConfig)
+  await configManager.addConfig(newConfig)
 
   if (newConfig.isDefault) {
-    configManager.setDefaultConfig(newConfig.name)
+    await configManager.setDefaultConfig(newConfig.name)
   }
 
   displaySuccess(`Configuration "${newConfig.name}" created successfully!`)
@@ -562,17 +562,17 @@ async function createNewConfig(configManager: ConfigManager, s3SyncManager: S3Sy
 /**
  * Resolve base configuration for load balancer mode
  */
-export function resolveBaseConfig(
+export async function resolveBaseConfig(
   configManager: ConfigManager,
   options: ProgramOptions,
   configArg: string | undefined,
   balanceableConfigs: ClaudeConfig[],
-): ClaudeConfig | undefined {
+): Promise<ClaudeConfig | undefined> {
   let baseConfig: ClaudeConfig | undefined
   const configName = options.config || configArg
 
   if (configName !== undefined) {
-    baseConfig = configManager.getConfig(configName)
+    baseConfig = await configManager.getConfig(configName)
     if (!baseConfig) {
       displayError(`Configuration "${configName}" not found`)
       process.exit(1)
@@ -596,7 +596,7 @@ export function resolveBaseConfig(
     }
   }
   else {
-    baseConfig = configManager.getDefaultConfig()
+    baseConfig = await configManager.getDefaultConfig()
     if (!baseConfig || !balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
       baseConfig = balanceableConfigs[0]
     }

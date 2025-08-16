@@ -1,6 +1,6 @@
 import type { ClaudeConfig } from '../config/types'
 import inquirer from 'inquirer'
-import { ConfigManager } from '../config/manager'
+import { ConfigManager } from '../config/config-manager'
 import { createConfigInEditor } from '../utils/cli/editor'
 import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
 
@@ -13,18 +13,18 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
     const newConfig = await createConfigInEditor()
     if (newConfig) {
       // Check if config name already exists
-      const existing = configManager.getConfig(newConfig.name)
+      const existing = await configManager.getConfig(newConfig.name)
       if (existing) {
         displayError('Configuration with this name already exists')
         return
       }
 
       if (newConfig.isDefault) {
-        const configs = configManager.listConfigs()
+        const configs = await configManager.listConfigs()
         configs.forEach(c => c.isDefault = false)
       }
 
-      configManager.addConfig(newConfig)
+      await configManager.addConfig(newConfig)
       displaySuccess(`Configuration "${newConfig.name}" added successfully!`)
     }
     return
@@ -54,12 +54,7 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
         if (!name) {
           return 'Name is required'
         }
-
-        const existing = configManager.getConfig(name)
-        if (existing) {
-          return 'Configuration with this name already exists'
-        }
-
+        // Note: We'll check for duplicates after the input is provided
         return true
       },
     },
@@ -127,6 +122,13 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
 
   const answers = await inquirer.prompt(questions)
 
+  // Check if config name already exists after getting the input
+  const existing = await configManager.getConfig(answers.name.trim())
+  if (existing) {
+    displayError('Configuration with this name already exists')
+    return
+  }
+
   const config: ClaudeConfig = {
     name: answers.name.trim(),
     profileType: profileTypeAnswer.profileType,
@@ -139,10 +141,10 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
     isDefault: answers.isDefault,
   }
 
-  configManager.addConfig(config)
+  await configManager.addConfig(config)
 
   if (config.isDefault) {
-    configManager.setDefaultConfig(config.name)
+    await configManager.setDefaultConfig(config.name)
   }
 
   displaySuccess(`Configuration "${config.name}" added successfully!`)

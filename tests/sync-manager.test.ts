@@ -47,7 +47,7 @@ const mockS3SyncManager = {
 }
 
 // Mock ConfigManager
-vi.mock('../src/config/manager', () => ({
+vi.mock('../src/config/config-manager', () => ({
   ConfigManager: vi.fn().mockImplementation(() => mockConfigManager),
 }))
 

@@ -1,0 +1,47 @@
+{
+  "name": "migrator",
+  "root": "src/migrator",
+  "projectType": "library",
+  "sourceRoot": "src/migrator/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/dist"],
+      "options": {
+        "command": "rollup -c rollup.config.ts --configPlugin typescript",
+        "cwd": "src/migrator"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/coverage"],
+      "options": {
+        "command": "vitest run",
+        "cwd": "src/migrator"
+      },
+      "configurations": {
+        "watch": {
+          "command": "vitest"
+        },
+        "coverage": {
+          "command": "vitest --coverage"
+        }
+      }
+    },
+    "lint": {
+      "executor": "@nx/linter:eslint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["src/migrator/src/**/*.{ts,tsx,js,jsx}"]
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "src/migrator"
+      }
+    }
+  },
+  "tags": ["type:library", "scope:migrator"]
+}

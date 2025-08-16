@@ -1,7 +1,7 @@
 import boxen from 'boxen'
 import chalk from 'chalk'
 import { OverrideManager } from '../cli/override'
-import { ConfigManager } from '../config/manager'
+import { ConfigManager } from '../config/config-manager'
 import { displayError, displayInfo, displaySuccess, displayWarning, displayWelcome } from '../utils/cli/ui'
 
 export async function handleOverrideCommand(): Promise<void> {
@@ -56,7 +56,7 @@ export async function handleOverrideCommand(): Promise<void> {
     }
 
     // Update settings
-    configManager.updateSettings({ overrideClaudeCommand: true })
+    await configManager.updateSettings({ overrideClaudeCommand: true })
   }
   else {
     displayError('Failed to enable Claude command override')
@@ -97,7 +97,7 @@ export async function handleOverrideDisableCommand(): Promise<void> {
     }
 
     // Update settings
-    configManager.updateSettings({ overrideClaudeCommand: false })
+    await configManager.updateSettings({ overrideClaudeCommand: false })
   }
   else {
     displayError('Failed to disable Claude command override')

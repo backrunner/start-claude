@@ -1,17 +1,15 @@
-import type { ConfigFile, LegacyConfigFile, MigrationInfo, SystemSettings } from './types'
+import type { ConfigFile, LegacyConfigFile, SystemSettings } from './types'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
-import { migrationRegistry } from './migration'
 import { CURRENT_CONFIG_VERSION } from './types'
 
 const CONFIG_DIR = path.join(os.homedir(), '.start-claude')
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
-const MIGRATION_LOG_FILE = path.join(CONFIG_DIR, 'migrations.log')
 
 /**
- * Central manager for configuration file operations with versioning and migration support
+ * Central manager for configuration file operations with migrator integration
  */
 export class ConfigFileManager {
   private static instance: ConfigFileManager | null = null
@@ -58,8 +56,9 @@ export class ConfigFileManager {
 
   /**
    * Read and parse the configuration file with migration support
+   * Migration is now handled by the dedicated migrator package
    */
-  load(): ConfigFile {
+  async load(): Promise<ConfigFile> {
     if (!this.exists()) {
       const defaultConfig = this.getDefaultConfigFile()
       this.save(defaultConfig)
@@ -77,9 +76,9 @@ export class ConfigFileManager {
 
       const config = rawConfig as ConfigFile
 
-      // Check if migration is needed
+      // Check if migration is needed - delegate to migrator package
       if (config.version < CURRENT_CONFIG_VERSION) {
-        return this.migrateConfig(config)
+        return await this.migrateConfigWithMigrator(config)
       }
 
       // Validate and fill in missing fields
@@ -100,24 +99,6 @@ export class ConfigFileManager {
       this.save(defaultConfig)
       return defaultConfig
     }
-  }
-
-  /**
-   * Save configuration file
-   */
-  save(config: ConfigFile): void {
-    this.ensureConfigDir()
-
-    // Ensure the config has the current version
-    const configToSave: ConfigFile = {
-      ...config,
-      version: CURRENT_CONFIG_VERSION,
-    }
-
-    // Validate before saving
-    this.validateConfig(configToSave)
-
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2))
   }
 
   /**
@@ -144,15 +125,7 @@ export class ConfigFileManager {
       settings: newSettings,
     }
 
-    // Log migration
-    this.logMigration({
-      fromVersion: 0,
-      toVersion: 1,
-      description: 'Initial migration from legacy config format',
-      timestamp: Date.now(),
-    })
-
-    // Save the migrated config
+    // Save the migrated config - it will be further migrated by the migrator if needed
     this.save(migratedConfig)
     displaySuccess('Successfully migrated configuration to version 1')
 
@@ -160,52 +133,63 @@ export class ConfigFileManager {
   }
 
   /**
-   * Migrate configuration from older version to current version
+   * Migrate configuration using the new migrator package
    */
-  private migrateConfig(config: ConfigFile): ConfigFile {
+  private async migrateConfigWithMigrator(config: ConfigFile): Promise<ConfigFile> {
     const fromVersion = config.version
     const toVersion = CURRENT_CONFIG_VERSION
 
     displayInfo(`Migrating configuration from version ${fromVersion} to ${toVersion}...`)
 
     try {
-      // Find migration path
-      const migrationPath = migrationRegistry.findMigrationPath(fromVersion, toVersion)
+      // Use dynamic import to load migrator package
+      const { Migrator } = await import('@start-claude/migrator')
 
-      if (migrationPath.length === 0) {
-        displayWarning(`No migration path found from version ${fromVersion} to ${toVersion}`)
-        return config
-      }
+      const migrator = new Migrator({
+        currentVersion: CURRENT_CONFIG_VERSION,
+        backupDirectory: path.join(CONFIG_DIR, 'backups'),
+        enableAutoMigration: true,
+      })
 
-      let migratedConfig = { ...config }
+      // Create a temporary file for migration
+      const tempConfigPath = path.join(CONFIG_DIR, 'temp-migration.json')
+      fs.writeFileSync(tempConfigPath, JSON.stringify(config, null, 2))
 
-      // Apply migrations sequentially
-      for (const migration of migrationPath) {
-        displayInfo(`Applying migration: ${migration.getMigrationInfo()}`)
-
-        if (!migration.canMigrate(migratedConfig)) {
-          throw new Error(`Migration ${migration.getMigrationInfo()} cannot be applied to current config`)
-        }
-
-        const beforeVersion = migratedConfig.version
-        migratedConfig = migration.migrate(migratedConfig)
-
-        // Log each migration step
-        this.logMigration({
-          fromVersion: beforeVersion,
-          toVersion: migration.toVersion,
-          description: migration.description,
-          timestamp: Date.now(),
+      try {
+        const result = await migrator.migrate(tempConfigPath, {
+          backup: true,
+          verbose: true,
         })
 
-        displaySuccess(`Applied migration: ${migration.getMigrationInfo()}`)
+        if (!result.success) {
+          throw new Error(result.error || 'Migration failed')
+        }
+
+        // Read the migrated config
+        const migratedContent = fs.readFileSync(tempConfigPath, 'utf-8')
+        const migratedConfig = JSON.parse(migratedContent) as ConfigFile
+
+        // Handle any S3 config that needs to be created
+        if ((migratedConfig as any).__migration_temp__?.s3ConfigToCreate) {
+          const { S3ConfigFileManager } = await import('../config/s3-config')
+          const s3ConfigManager = S3ConfigFileManager.getInstance()
+          s3ConfigManager.createFromMigration((migratedConfig as any).__migration_temp__.s3ConfigToCreate)
+
+          // Clean up temporary migration data
+          delete (migratedConfig as any).__migration_temp__
+        }
+
+        displaySuccess(`Successfully migrated configuration to version ${toVersion}`)
+        displayInfo(`Applied migrations: ${result.migrationsApplied.join(', ')}`)
+
+        return migratedConfig
       }
-
-      // Save the fully migrated config
-      this.save(migratedConfig)
-      displaySuccess(`Successfully migrated configuration to version ${toVersion}`)
-
-      return migratedConfig
+      finally {
+        // Clean up temp file
+        if (fs.existsSync(tempConfigPath)) {
+          fs.unlinkSync(tempConfigPath)
+        }
+      }
     }
     catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
@@ -213,6 +197,24 @@ export class ConfigFileManager {
       displayInfo('Using configuration as-is without migration')
       return config
     }
+  }
+
+  /**
+   * Save configuration file
+   */
+  save(config: ConfigFile): void {
+    this.ensureConfigDir()
+
+    // Ensure the config has the current version
+    const configToSave: ConfigFile = {
+      ...config,
+      version: CURRENT_CONFIG_VERSION,
+    }
+
+    // Validate before saving
+    this.validateConfig(configToSave)
+
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2))
   }
 
   /**
@@ -268,54 +270,7 @@ export class ConfigFileManager {
   }
 
   /**
-   * Log migration for audit trail
-   */
-  private logMigration(info: MigrationInfo): void {
-    const logEntry = `${new Date(info.timestamp).toISOString()} - Migration ${info.fromVersion} → ${info.toVersion}: ${info.description}\n`
-
-    try {
-      fs.appendFileSync(MIGRATION_LOG_FILE, logEntry)
-    }
-    catch {
-      // Don't fail if we can't write to log file
-      console.error('Failed to write migration log')
-    }
-  }
-
-  /**
-   * Get migration history
-   */
-  getMigrationHistory(): MigrationInfo[] {
-    if (!fs.existsSync(MIGRATION_LOG_FILE)) {
-      return []
-    }
-
-    try {
-      const content = fs.readFileSync(MIGRATION_LOG_FILE, 'utf-8')
-      const lines = content.trim().split('\n').filter(line => line.trim())
-
-      return lines.map((line) => {
-        const match = line.match(/^(.+?) - Migration (\d+) → (\d+): (.+)$/)
-        if (!match) {
-          throw new Error(`Invalid migration log line: ${line}`)
-        }
-
-        return {
-          timestamp: new Date(match[1]).getTime(),
-          fromVersion: Number.parseInt(match[2]),
-          toVersion: Number.parseInt(match[3]),
-          description: match[4],
-        }
-      })
-    }
-    catch (error) {
-      displayWarning(`Error reading migration history: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      return []
-    }
-  }
-
-  /**
-   * Check if migration is needed
+   * Check if migration is needed using lightweight detection
    */
   needsMigration(): boolean {
     if (!this.exists()) {
@@ -323,6 +278,7 @@ export class ConfigFileManager {
     }
 
     try {
+      // Fallback method - just check version
       const content = fs.readFileSync(CONFIG_FILE, 'utf-8')
       const rawConfig = JSON.parse(content)
 

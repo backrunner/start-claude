@@ -1,7 +1,7 @@
 import type { ClaudeConfig } from '../config/types'
 import process from 'node:process'
 import inquirer from 'inquirer'
-import { ConfigManager } from '../config/manager'
+import { ConfigManager } from '../config/config-manager'
 import { editConfigInEditor } from '../utils/cli/editor'
 import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
 
@@ -9,7 +9,7 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
   displayWelcome()
 
   const configManager = new ConfigManager()
-  const config = configManager.getConfig(name)
+  const config = await configManager.getConfig(name)
   if (!config) {
     displayError(`Configuration "${name}" not found`)
     process.exit(1)
@@ -19,11 +19,11 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
     const updatedConfig = await editConfigInEditor(config)
     if (updatedConfig) {
       if (updatedConfig.isDefault && !config.isDefault) {
-        const configs = configManager.listConfigs()
+        const configs = await configManager.listConfigs()
         configs.forEach(c => c.isDefault = false)
       }
 
-      configManager.addConfig(updatedConfig)
+      await configManager.addConfig(updatedConfig)
       displaySuccess(`Configuration "${name}" updated successfully!`)
     }
     return
@@ -123,10 +123,10 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
     isDefault: answers.isDefault,
   }
 
-  configManager.addConfig(updatedConfig)
+  await configManager.addConfig(updatedConfig)
 
   if (updatedConfig.isDefault && !config.isDefault) {
-    configManager.setDefaultConfig(updatedConfig.name)
+    await configManager.setDefaultConfig(updatedConfig.name)
   }
 
   displaySuccess(`Configuration "${name}" updated successfully!`)
