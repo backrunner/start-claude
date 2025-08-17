@@ -13,6 +13,8 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
  */
 export class ConfigFileManager {
   private static instance: ConfigFileManager | null = null
+  private configCache: ConfigFile | null = null
+  private lastFileModTime: number = 0
 
   private constructor() {
     this.ensureConfigDir()
@@ -59,9 +61,16 @@ export class ConfigFileManager {
    * Migration is now handled by the dedicated migrator package
    */
   async load(): Promise<ConfigFile> {
+    // Check if we have a valid cache
+    if (this.configCache && this.isCacheValid()) {
+      return this.configCache
+    }
+
     if (!this.exists()) {
       const defaultConfig = this.getDefaultConfigFile()
       this.save(defaultConfig)
+      this.configCache = defaultConfig
+      this.updateFileModTime()
       return defaultConfig
     }
 
@@ -71,18 +80,27 @@ export class ConfigFileManager {
 
       // Check if this is a legacy config file (no version field)
       if (!('version' in rawConfig)) {
-        return this.migrateLegacyConfig(rawConfig as LegacyConfigFile)
+        const migratedConfig = this.migrateLegacyConfig(rawConfig as LegacyConfigFile)
+        this.configCache = migratedConfig
+        this.updateFileModTime()
+        return migratedConfig
       }
 
       const config = rawConfig as ConfigFile
 
       // Check if migration is needed - delegate to migrator package
       if (config.version < CURRENT_CONFIG_VERSION) {
-        return await this.migrateConfigWithMigrator(config)
+        const migratedConfig = await this.migrateConfigWithMigrator(config)
+        this.configCache = migratedConfig
+        this.updateFileModTime()
+        return migratedConfig
       }
 
       // Validate and fill in missing fields
-      return this.validateAndNormalize(config)
+      const validatedConfig = this.validateAndNormalize(config)
+      this.configCache = validatedConfig
+      this.updateFileModTime()
+      return validatedConfig
     }
     catch (error) {
       displayWarning(`Error loading config file: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -97,6 +115,8 @@ export class ConfigFileManager {
 
       const defaultConfig = this.getDefaultConfigFile()
       this.save(defaultConfig)
+      this.configCache = defaultConfig
+      this.updateFileModTime()
       return defaultConfig
     }
   }
@@ -179,6 +199,9 @@ export class ConfigFileManager {
           delete (migratedConfig as any).__migration_temp__
         }
 
+        // IMPORTANT: Save the migrated config to the actual config file
+        this.save(migratedConfig)
+
         displaySuccess(`Successfully migrated configuration to version ${toVersion}`)
         displayInfo(`Applied migrations: ${result.migrationsApplied.join(', ')}`)
 
@@ -215,6 +238,45 @@ export class ConfigFileManager {
     this.validateConfig(configToSave)
 
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2))
+
+    // Update cache and file modification time
+    this.configCache = configToSave
+    this.updateFileModTime()
+  }
+
+  /**
+   * Check if the current cache is still valid (file hasn't been modified)
+   */
+  private isCacheValid(): boolean {
+    if (!this.exists()) {
+      return false
+    }
+
+    try {
+      const stats = fs.statSync(CONFIG_FILE)
+      return stats.mtime.getTime() === this.lastFileModTime
+    }
+    catch {
+      return false
+    }
+  }
+
+  /**
+   * Update the stored file modification time
+   */
+  private updateFileModTime(): void {
+    if (this.exists()) {
+      try {
+        const stats = fs.statSync(CONFIG_FILE)
+        this.lastFileModTime = stats.mtime.getTime()
+      }
+      catch {
+        this.lastFileModTime = 0
+      }
+    }
+    else {
+      this.lastFileModTime = 0
+    }
   }
 
   /**
