@@ -3,6 +3,7 @@ import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
 import inquirer from 'inquirer'
+import { TransformerService } from '../services/transformer'
 import { findClosestMatch, isSimilarEnough } from '../utils/cli/fuzzy-match'
 import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
 
@@ -578,7 +579,7 @@ export function resolveBaseConfig(
       process.exit(1)
     }
     if (!balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
-      const hasTransformer = 'transformerEnabled' in baseConfig && baseConfig.transformerEnabled === true
+      const hasTransformer = 'transformerEnabled' in baseConfig && TransformerService.isTransformerEnabledNew(baseConfig.transformerEnabled)
       const missingCompleteApiCredentials = !baseConfig.baseUrl || !baseConfig.apiKey || !baseConfig.model
 
       if (hasTransformer && missingCompleteApiCredentials) {

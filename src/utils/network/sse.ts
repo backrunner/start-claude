@@ -1,5 +1,5 @@
 import type * as http from 'node:http'
-import { convertOpenAIStreamToAnthropic, isOpenAIStreamFormat } from './openai-to-anthropic'
+import { convertOpenAIStreamToAnthropic, isOpenAIStreamFormat } from '../transformer/openai-to-anthropic'
 
 /**
  * Utility functions for handling Server-Sent Events (SSE) streaming responses

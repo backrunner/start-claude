@@ -1,6 +1,7 @@
 import type { LLMChatRequest, LLMProvider } from '../types/llm'
 import type { Transformer, TransformerOptions } from '../types/transformer'
 import { createTransformerUrl } from '../utils/network/transformer-url'
+import { buildOpenAIRequestBody, convertAnthropicToOpenAI, isAnthropicFormat } from '../utils/transformer/anthropic-to-openai'
 
 export class OpenaiTransformer implements Transformer {
   static TransformerName = 'openai'
@@ -14,8 +15,14 @@ export class OpenaiTransformer implements Transformer {
     request: LLMChatRequest,
     provider: LLMProvider,
   ): Promise<Record<string, any>> {
+    // Transform Anthropic format to OpenAI format if needed
+    let transformedRequest: any = request
+    if (isAnthropicFormat(request)) {
+      transformedRequest = await convertAnthropicToOpenAI(request)
+    }
+
     return {
-      body: request,
+      body: transformedRequest,
       config: {
         url: createTransformerUrl('v1/chat/completions', provider.baseUrl, 'https://api.openai.com'),
         headers: {
@@ -32,17 +39,8 @@ export class OpenaiTransformer implements Transformer {
       throw new Error('Model parameter is required for OpenAI transformer')
     }
 
-    const body = {
-      model: request.model,
-      messages: request.messages || [],
-      max_tokens: request.max_tokens,
-      temperature: request.temperature,
-      top_p: request.top_p,
-      stream: request.stream,
-      tools: request.tools,
-      tool_choice: request.tool_choice,
-      stop: request.stop_sequences,
-    }
+    // Format the request for OpenAI API
+    const body = buildOpenAIRequestBody(request as any)
 
     // Apply any additional options from transformer configuration
     if (this.options) {

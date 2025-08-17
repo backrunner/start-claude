@@ -150,8 +150,8 @@ export class TransformerService {
     }
   }
 
-  // Find transformer by endpoint domain from config baseUrl
-  findTransformerByDomain(baseUrl?: string): Transformer | null {
+  // Find transformer by endpoint domain from config baseUrl or by manual selection
+  findTransformerByDomain(baseUrl?: string, transformerEnabled?: boolean, transformer?: string): Transformer | null {
     if (!baseUrl) {
       return null
     }
@@ -160,6 +160,17 @@ export class TransformerService {
       const url = new URL(baseUrl)
       const hostname = url.hostname
       displayVerbose(`Looking for transformer for hostname: ${hostname}`, this.verbose)
+
+      // If transformer is specified and not 'auto', use that specific transformer
+      if (transformer && transformer !== 'auto') {
+        const specificTransformer = this.getTransformer(transformer)
+        if (specificTransformer && typeof specificTransformer === 'object') {
+          displayVerbose(`Using manually selected transformer: ${transformer} for ${hostname}`, this.verbose)
+          return specificTransformer
+        } else {
+          displayVerbose(`Manually selected transformer "${transformer}" not found, falling back to domain matching`, this.verbose)
+        }
+      }
 
       const entries = Array.from(this.transformers.entries())
 
@@ -200,5 +211,29 @@ export class TransformerService {
       displayVerbose(`Failed to parse baseUrl ${baseUrl} for transformer matching`, this.verbose)
       return null
     }
+  }
+
+  // Helper function to check if transformer is enabled (keeping for backward compatibility)
+  static isTransformerEnabled(transformerEnabled?: boolean | string): boolean {
+    if (typeof transformerEnabled === 'boolean') {
+      return transformerEnabled
+    }
+    if (typeof transformerEnabled === 'string') {
+      return transformerEnabled === 'auto' || transformerEnabled === 'true' || transformerEnabled.length > 0
+    }
+    return false
+  }
+
+  // New helper function for the new property structure
+  static isTransformerEnabledNew(transformerEnabled?: boolean): boolean {
+    return transformerEnabled === true
+  }
+
+  // Helper function to get transformer type from config (keeping for backward compatibility)
+  static getTransformerType(transformerEnabled?: boolean | string): string | 'auto' {
+    if (typeof transformerEnabled === 'string' && transformerEnabled !== 'true') {
+      return transformerEnabled === 'auto' ? 'auto' : transformerEnabled
+    }
+    return 'auto'
   }
 }

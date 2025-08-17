@@ -6,6 +6,7 @@ import inquirer from 'inquirer'
 import { name, version } from '../../package.json'
 
 import { ConfigManager } from '../config/manager'
+import { TransformerService } from '../services/transformer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/detection'
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/cli/ui'
@@ -128,7 +129,7 @@ program
     // If not yet using proxy, check if we need it for transformer-enabled configs
     if (!shouldUseProxy) {
       const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
-      if (config?.transformerEnabled === true) {
+      if (TransformerService.isTransformerEnabledNew(config?.transformerEnabled)) {
         shouldUseProxy = true
         displayInfo('🔧 Auto-enabling proxy mode for transformer-enabled configuration')
       }

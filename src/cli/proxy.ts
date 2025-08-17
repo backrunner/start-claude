@@ -3,6 +3,7 @@ import type { LoadBalancerStrategy } from '../config/types'
 import type { ProgramOptions } from './common'
 import process from 'node:process'
 import { ProxyServer } from '../core/proxy'
+import { TransformerService } from '../services/transformer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
 import { fileLogger } from '../utils/logging/file-logger'
@@ -61,8 +62,8 @@ export async function handleProxyMode(
 
   // Include configs that have complete API credentials (baseUrl, apiKey, and model) OR have transformer enabled
   const proxyableConfigs = configs.filter((c) => {
-    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && (c.transformerEnabled ? c.model : true)
-    const hasTransformerEnabled = c.transformerEnabled === true
+    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && (TransformerService.isTransformerEnabledNew(c.transformerEnabled) ? c.model : true)
+    const hasTransformerEnabled = TransformerService.isTransformerEnabledNew(c.transformerEnabled)
 
     if (hasTransformerEnabled && !hasCompleteApiCredentials) {
       displayInfo(`Configuration "${c.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) - including for transformer fallback`)
@@ -84,7 +85,7 @@ export async function handleProxyMode(
     displayInfo(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
     proxyableConfigs.forEach((c) => {
       const hasCompleteApi = c.baseUrl && c.apiKey && c.model
-      const hasTransformer = c.transformerEnabled === true
+      const hasTransformer = TransformerService.isTransformerEnabledNew(c.transformerEnabled)
 
       let status = ''
       if (hasCompleteApi && hasTransformer) {
@@ -103,7 +104,7 @@ export async function handleProxyMode(
 
   try {
     // Check if any config has transformer enabled
-    const hasTransformerEnabled = proxyableConfigs.some(c => c.transformerEnabled === true)
+    const hasTransformerEnabled = proxyableConfigs.some(c => TransformerService.isTransformerEnabledNew(c.transformerEnabled))
 
     // Set up a proxy configuration that preserves other settings - resolve early for transformer matching
     const baseConfig = resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
@@ -157,16 +158,38 @@ export async function handleProxyMode(
         else {
           // Show only the current transformer matching the base config when not in balance mode
           if (baseConfig?.baseUrl) {
-            const matchingTransformer = transformers.find(t =>
-              t.hasDomain && t.domain && baseConfig.baseUrl!.includes(t.domain),
-            )
+            let matchingTransformer = null
 
-            if (matchingTransformer) {
-              displayInfo('🔧 Current transformer:')
-              displayInfo(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
+            // First, check if a specific transformer is configured
+            if (baseConfig.transformer && baseConfig.transformer !== 'auto') {
+              matchingTransformer = transformers.find(t => t.name === baseConfig.transformer)
+              if (matchingTransformer) {
+                displayInfo('🔧 Current transformer (manually specified):')
+                if (matchingTransformer.hasDomain) {
+                  displayInfo(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
+                } else {
+                  displayInfo(`  - ${matchingTransformer.name}`)
+                }
+              }
             }
-            else {
+
+            // If no manual transformer specified or found, try domain matching
+            if (!matchingTransformer) {
+              matchingTransformer = transformers.find(t =>
+                t.hasDomain && t.domain && baseConfig.baseUrl!.includes(t.domain),
+              )
+
+              if (matchingTransformer) {
+                displayInfo('🔧 Current transformer (auto-detected):')
+                displayInfo(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
+              }
+            }
+
+            if (!matchingTransformer) {
               displayError(`❌ No transformer found for baseUrl: ${baseConfig.baseUrl}`)
+              if (baseConfig.transformer && baseConfig.transformer !== 'auto') {
+                displayError(`❌ Manually specified transformer "${baseConfig.transformer}" not found`)
+              }
               displayInfo('Available transformers:')
               transformers.forEach((transformer) => {
                 if (transformer.hasDomain) {
@@ -191,7 +214,7 @@ export async function handleProxyMode(
 
     // Determine proxy mode and show appropriate message
     const apiConfigs = proxyableConfigs.filter(c => c.baseUrl && c.apiKey && c.model)
-    const transformerConfigs = proxyableConfigs.filter(c => c.transformerEnabled === true)
+    const transformerConfigs = proxyableConfigs.filter(c => TransformerService.isTransformerEnabledNew(c.transformerEnabled))
 
     if (apiConfigs.length > 0 && transformerConfigs.length > 0) {
       displaySuccess('🔧 Hybrid proxy server is running! (Load balancer + Transformer)')

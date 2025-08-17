@@ -18,8 +18,8 @@ vi.mock('@/utils/ui', () => ({
 
 // Mock services
 vi.mock('@/services/config')
-vi.mock('@/services/transformer', () => ({
-  TransformerService: vi.fn().mockImplementation(() => ({
+vi.mock('@/services/transformer', () => {
+  const MockTransformerService = vi.fn().mockImplementation(() => ({
     registerTransformer: vi.fn(),
     hasTransformer: vi.fn().mockReturnValue(true),
     removeTransformer: vi.fn().mockReturnValue(true),
@@ -30,9 +30,33 @@ vi.mock('@/services/transformer', () => ({
     getTransformersWithoutEndpoint: vi.fn().mockReturnValue([]),
     initialize: vi.fn().mockResolvedValue(undefined),
     findTransformerByPath: vi.fn().mockReturnValue(null),
-    findTransformerByDomain: vi.fn().mockReturnValue(null),
-  })),
-}))
+    findTransformerByDomain: vi.fn((_baseUrl?: string, _transformerEnabled?: boolean, _transformer?: string) => null),
+  }))
+
+  // Add static methods properly
+  Object.assign(MockTransformerService, {
+    isTransformerEnabled: vi.fn((transformerEnabled?: boolean | string) => {
+      if (typeof transformerEnabled === 'boolean') {
+        return transformerEnabled
+      }
+      if (typeof transformerEnabled === 'string') {
+        return transformerEnabled === 'auto' || transformerEnabled === 'true' || transformerEnabled.length > 0
+      }
+      return false
+    }),
+    isTransformerEnabledNew: vi.fn((transformerEnabled?: boolean) => {
+      return transformerEnabled === true
+    }),
+    getTransformerType: vi.fn((transformerEnabled?: boolean | string) => {
+      if (typeof transformerEnabled === 'string' && transformerEnabled !== 'true') {
+        return transformerEnabled === 'auto' ? 'auto' : transformerEnabled
+      }
+      return 'auto'
+    }),
+  })
+
+  return { TransformerService: MockTransformerService }
+})
 
 // Mock HTTP modules
 vi.mock('node:http')
@@ -801,7 +825,7 @@ describe('proxyServer', () => {
 
       const proxyMode: ProxyMode = { enableTransform: true }
       expect(() => new ProxyServer(configsWithoutTransformer, proxyMode)).toThrow(
-        'No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled: true.',
+        'No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled enabled.',
       )
       // Since constructor throws, we can't test the 503 response
       // This test now verifies that the proper error is thrown during construction
@@ -901,7 +925,7 @@ describe('proxyServer', () => {
 
       const proxyMode: ProxyMode = { enableTransform: true }
       expect(() => new ProxyServer(regularConfigs, proxyMode)).toThrow(
-        'No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled: true.',
+        'No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled enabled.',
       )
       // Since constructor now validates configs, we can't test stub endpoint creation
       // This test now verifies that the proper error is thrown
