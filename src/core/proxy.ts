@@ -11,8 +11,8 @@ import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
 import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/cli/ui'
 import { fileLogger } from '../utils/logging/file-logger'
-import { convertOpenAIResponseToAnthropic, isOpenAIFormat } from '../utils/transformer/openai-to-anthropic'
 import { handleStreamingResponse } from '../utils/network/sse'
+import { convertOpenAIResponseToAnthropic, isOpenAIFormat } from '../utils/transformer/openai-to-anthropic'
 
 const log = console.log
 
@@ -124,7 +124,7 @@ export class ProxyServer {
       console.log('configs', configs)
       const validConfigs = configs.filter((c) => {
         const hasApiCredentials = c.baseUrl && c.apiKey
-        const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabledNew(c.transformerEnabled)
+        const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabled(c.transformerEnabled)
 
         if (hasTransformerEnabled && !hasApiCredentials) {
           throw new Error(`Configuration "${c.name}" has transformerEnabled but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
@@ -165,7 +165,7 @@ export class ProxyServer {
       if (this.enableTransform) {
         // Filter for transformer-enabled configs - they MUST have real API credentials
         const transformerConfigs = configs.filter((c) => {
-          const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabledNew(c.transformerEnabled)
+          const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabled(c.transformerEnabled)
           const hasApiCredentials = c.baseUrl && c.apiKey
 
           if (hasTransformerEnabled && !hasApiCredentials) {
@@ -383,7 +383,7 @@ export class ProxyServer {
       else if (this.enableTransform) {
         // Transformer-only mode - use the first transformer-enabled endpoint
         const transformerEndpoint = this.endpoints.find(e =>
-          'transformerEnabled' in e.config && TransformerService.isTransformerEnabledNew(e.config.transformerEnabled),
+          'transformerEnabled' in e.config && TransformerService.isTransformerEnabled(e.config.transformerEnabled),
         )
 
         if (!transformerEndpoint) {
@@ -835,7 +835,7 @@ export class ProxyServer {
           }
 
           // Check if this endpoint has transformer enabled and we have transformer service
-          if (this.enableTransform && 'transformerEnabled' in endpoint.config && TransformerService.isTransformerEnabledNew(endpoint.config.transformerEnabled)) {
+          if (this.enableTransform && 'transformerEnabled' in endpoint.config && TransformerService.isTransformerEnabled(endpoint.config.transformerEnabled)) {
             displayVerbose(`Checking for transformer for endpoint: ${endpoint.config.baseUrl}`, this.verbose)
             const transformer = this.transformerService.findTransformerByDomain(endpoint.config.baseUrl, endpoint.config.transformerEnabled, endpoint.config.transformer)
 
@@ -1188,7 +1188,7 @@ export class ProxyServer {
               endpointUrl: endpoint.config.baseUrl,
               method: req.method || 'UNKNOWN',
               url: req.url || '/',
-              hasTransformer: this.enableTransform && 'transformerEnabled' in endpoint.config && TransformerService.isTransformerEnabledNew(endpoint.config.transformerEnabled),
+              hasTransformer: this.enableTransform && 'transformerEnabled' in endpoint.config && TransformerService.isTransformerEnabled(endpoint.config.transformerEnabled),
             })
           }
 

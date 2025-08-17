@@ -62,8 +62,8 @@ export async function handleProxyMode(
 
   // Include configs that have complete API credentials (baseUrl, apiKey, and model) OR have transformer enabled
   const proxyableConfigs = configs.filter((c) => {
-    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && (TransformerService.isTransformerEnabledNew(c.transformerEnabled) ? c.model : true)
-    const hasTransformerEnabled = TransformerService.isTransformerEnabledNew(c.transformerEnabled)
+    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && (TransformerService.isTransformerEnabled(c.transformerEnabled) ? c.model : true)
+    const hasTransformerEnabled = TransformerService.isTransformerEnabled(c.transformerEnabled)
 
     if (hasTransformerEnabled && !hasCompleteApiCredentials) {
       displayInfo(`Configuration "${c.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) - including for transformer fallback`)
@@ -85,7 +85,7 @@ export async function handleProxyMode(
     displayInfo(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
     proxyableConfigs.forEach((c) => {
       const hasCompleteApi = c.baseUrl && c.apiKey && c.model
-      const hasTransformer = TransformerService.isTransformerEnabledNew(c.transformerEnabled)
+      const hasTransformer = TransformerService.isTransformerEnabled(c.transformerEnabled)
 
       let status = ''
       if (hasCompleteApi && hasTransformer) {
@@ -104,7 +104,7 @@ export async function handleProxyMode(
 
   try {
     // Check if any config has transformer enabled
-    const hasTransformerEnabled = proxyableConfigs.some(c => TransformerService.isTransformerEnabledNew(c.transformerEnabled))
+    const hasTransformerEnabled = proxyableConfigs.some(c => TransformerService.isTransformerEnabled(c.transformerEnabled))
 
     // Set up a proxy configuration that preserves other settings - resolve early for transformer matching
     const baseConfig = resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
@@ -214,7 +214,7 @@ export async function handleProxyMode(
 
     // Determine proxy mode and show appropriate message
     const apiConfigs = proxyableConfigs.filter(c => c.baseUrl && c.apiKey && c.model)
-    const transformerConfigs = proxyableConfigs.filter(c => TransformerService.isTransformerEnabledNew(c.transformerEnabled))
+    const transformerConfigs = proxyableConfigs.filter(c => TransformerService.isTransformerEnabled(c.transformerEnabled))
 
     if (apiConfigs.length > 0 && transformerConfigs.length > 0) {
       displaySuccess('🔧 Hybrid proxy server is running! (Load balancer + Transformer)')

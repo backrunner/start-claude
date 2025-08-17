@@ -35,16 +35,7 @@ vi.mock('@/services/transformer', () => {
 
   // Add static methods properly
   Object.assign(MockTransformerService, {
-    isTransformerEnabled: vi.fn((transformerEnabled?: boolean | string) => {
-      if (typeof transformerEnabled === 'boolean') {
-        return transformerEnabled
-      }
-      if (typeof transformerEnabled === 'string') {
-        return transformerEnabled === 'auto' || transformerEnabled === 'true' || transformerEnabled.length > 0
-      }
-      return false
-    }),
-    isTransformerEnabledNew: vi.fn((transformerEnabled?: boolean) => {
+    isTransformerEnabled: vi.fn((transformerEnabled?: boolean) => {
       return transformerEnabled === true
     }),
     getTransformerType: vi.fn((transformerEnabled?: boolean | string) => {

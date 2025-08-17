@@ -129,7 +129,7 @@ program
     // If not yet using proxy, check if we need it for transformer-enabled configs
     if (!shouldUseProxy) {
       const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
-      if (TransformerService.isTransformerEnabledNew(config?.transformerEnabled)) {
+      if (TransformerService.isTransformerEnabled(config?.transformerEnabled)) {
         shouldUseProxy = true
         displayInfo('🔧 Auto-enabling proxy mode for transformer-enabled configuration')
       }

@@ -579,7 +579,7 @@ export function resolveBaseConfig(
       process.exit(1)
     }
     if (!balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
-      const hasTransformer = 'transformerEnabled' in baseConfig && TransformerService.isTransformerEnabledNew(baseConfig.transformerEnabled)
+      const hasTransformer = 'transformerEnabled' in baseConfig && TransformerService.isTransformerEnabled(baseConfig.transformerEnabled)
       const missingCompleteApiCredentials = !baseConfig.baseUrl || !baseConfig.apiKey || !baseConfig.model
 
       if (hasTransformer && missingCompleteApiCredentials) {
