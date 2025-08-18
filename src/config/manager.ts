@@ -62,24 +62,33 @@ export class ConfigManager {
 
   async removeConfig(name: string): Promise<boolean> {
     const configFile = this.load()
-    const initialLength = configFile.configs.length
-    configFile.configs = configFile.configs.filter(c => c.name.toLowerCase() !== name.toLowerCase())
+    const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
 
-    if (configFile.configs.length < initialLength) {
-      await this.save(configFile)
-      return true
+    if (!targetConfig) {
+      return false
     }
-    return false
+
+    // Mark config as deleted (tombstone approach)
+    targetConfig.isDeleted = true
+    targetConfig.deletedAt = new Date().toISOString()
+
+    // Clear sensitive data from deleted config
+    delete targetConfig.apiKey
+
+    await this.save(configFile)
+    return true
   }
 
   getConfig(name: string): ClaudeConfig | undefined {
     const configFile = this.load()
-    return configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
+    const config = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
+    return config?.isDeleted ? undefined : config
   }
 
   getDefaultConfig(): ClaudeConfig | undefined {
     const configFile = this.load()
-    return configFile.configs.find(c => c.isDefault)
+    const config = configFile.configs.find(c => c.isDefault && !c.isDeleted)
+    return config
   }
 
   async setDefaultConfig(name: string): Promise<boolean> {
@@ -87,7 +96,7 @@ export class ConfigManager {
 
     configFile.configs.forEach(c => c.isDefault = false)
 
-    const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
+    const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase() && !c.isDeleted)
     if (targetConfig) {
       targetConfig.isDefault = true
       await this.save(configFile)
@@ -98,7 +107,7 @@ export class ConfigManager {
 
   listConfigs(): ClaudeConfig[] {
     const configFile = this.load()
-    return configFile.configs
+    return configFile.configs.filter(c => !c.isDeleted)
   }
 
   async updateSettings(settings: Partial<ConfigFile['settings']>): Promise<void> {
@@ -136,5 +145,76 @@ export class ConfigManager {
       // Silent fail for initialization, but log for debugging
       console.error('S3 sync initialization failed:', error)
     }
+  }
+
+  /**
+   * Permanently delete a config (cleanup tombstone)
+   */
+  async cleanupDeletedConfig(name: string): Promise<boolean> {
+    const configFile = this.load()
+    const initialLength = configFile.configs.length
+
+    configFile.configs = configFile.configs.filter(c =>
+      c.name.toLowerCase() !== name.toLowerCase() || !c.isDeleted,
+    )
+
+    if (configFile.configs.length < initialLength) {
+      await this.save(configFile)
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Restore a deleted config
+   */
+  async restoreConfig(name: string): Promise<boolean> {
+    const configFile = this.load()
+
+    const config = configFile.configs.find(c =>
+      c.name.toLowerCase() === name.toLowerCase() && c.isDeleted,
+    )
+
+    if (!config) {
+      return false // Not found or not deleted
+    }
+
+    // Restore the config
+    config.isDeleted = false
+    delete config.deletedAt
+
+    await this.save(configFile)
+    return true
+  }
+
+  /**
+   * Clean up old deleted configs (older than specified days)
+   */
+  async cleanupOldDeletions(daysOld = 30): Promise<number> {
+    const configFile = this.load()
+    const cutoffDate = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000)
+    const initialLength = configFile.configs.length
+
+    configFile.configs = configFile.configs.filter((config) => {
+      if (!config.isDeleted || !config.deletedAt) {
+        return true // Keep non-deleted configs
+      }
+      return new Date(config.deletedAt) > cutoffDate // Keep recent deletions
+    })
+
+    const cleaned = initialLength - configFile.configs.length
+    if (cleaned > 0) {
+      await this.save(configFile)
+    }
+
+    return cleaned
+  }
+
+  /**
+   * Get list of deleted configs
+   */
+  getDeletedConfigs(): ClaudeConfig[] {
+    const configFile = this.load()
+    return configFile.configs.filter(c => c.isDeleted)
   }
 }

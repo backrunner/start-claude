@@ -10,6 +10,8 @@ export interface ClaudeConfig {
   isDefault?: boolean
   order?: number // Lower numbers are prioritized first (0 = highest priority)
   enabled?: boolean // Configuration is enabled/disabled
+  deletedAt?: string // ISO timestamp when config was deleted, for soft deletion tracking
+  isDeleted?: boolean // Simple flag to mark config as deleted (tombstone)
 
   // Environment variables for Claude Code
   authToken?: string
@@ -127,7 +129,7 @@ export interface LegacyConfigFile {
 /**
  * Current configuration file version
  */
-export const CURRENT_CONFIG_VERSION = 1
+export const CURRENT_CONFIG_VERSION = 2
 
 /**
  * Migration information interface

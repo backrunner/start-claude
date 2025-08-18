@@ -51,6 +51,7 @@ export function detectConfigConflicts(
         'permissionMode',
         'transformerEnabled',
         'isDefault',
+        'isDeleted',
         'order',
         'enabled',
         'authToken',
@@ -205,7 +206,7 @@ export function resolveConfigConflicts(
 }
 
 /**
- * Smart merge strategy that handles different types of conflicts intelligently
+ * Smart merge strategy using tombstone approach for deletion tracking
  */
 function smartMergeConfigs(
   localConfig: ConfigFile,
@@ -231,14 +232,34 @@ function smartMergeConfigs(
     switch (conflict.conflictType) {
       case 'existence':
         if (conflict.localValue === 'exists' && conflict.remoteValue === 'missing') {
-          // Local config doesn't exist remotely - add it
+          // Local config exists but missing remotely
           const localItem = localConfigMap.get(configName)
-          if (localItem) {
+          if (localItem && !localItem.isDeleted) {
+            // Only add if local config is not deleted (i.e., it's a genuine new config)
             resolved.configs.push(localItem)
             resolutionDetails.push(`Added local-only config: ${conflict.configName}`)
+          } else if (localItem?.isDeleted) {
+            // Local has a deletion tombstone - respect the deletion
+            resolutionDetails.push(`Respected local deletion of config: ${conflict.configName}`)
+          }
+        } else if (conflict.localValue === 'missing' && conflict.remoteValue === 'exists') {
+          // Remote config exists but missing locally - keep remote (already in resolved)
+          // Unless we have a local deletion record indicating this was intentionally deleted
+          const localTombstone = localConfigMap.get(configName)
+          if (localTombstone?.isDeleted) {
+            // We have a local deletion tombstone, so apply the deletion to remote
+            const remoteConfig = resolvedConfigMap.get(configName)
+            if (remoteConfig) {
+              remoteConfig.isDeleted = true
+              remoteConfig.deletedAt = localTombstone.deletedAt
+              // Clear sensitive data
+              delete remoteConfig.apiKey
+              delete remoteConfig.authToken
+              delete remoteConfig.awsBearerTokenBedrock
+              resolutionDetails.push(`Applied local deletion to remote config: ${conflict.configName}`)
+            }
           }
         }
-        // If remote exists but local doesn't, keep remote (already in resolved)
         break
 
       case 'value': {
@@ -274,6 +295,15 @@ function smartMergeConfigs(
       }
     }
   }
+
+  // Clean up old deletion tombstones (older than 30 days)
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  resolved.configs = resolved.configs.filter(config => {
+    if (!config.isDeleted || !config.deletedAt) {
+      return true // Keep non-deleted configs
+    }
+    return new Date(config.deletedAt) > thirtyDaysAgo // Keep recent deletions
+  })
 
   // Sort configs by order if specified
   resolved.configs.sort((a, b) => {
@@ -391,6 +421,33 @@ function resolveFieldConflict(
       }
       return remoteValue
     }
+
+    case 'isDeleted':
+      // For deletion flags, prefer the more recent deletion
+      if (localValue && remoteValue) {
+        // Both are deleted, need to check timestamps
+        resolutionDetails.push(`Both configs marked as deleted, preserving deletion state`)
+        return true
+      }
+      // One is deleted, one is not - respect the deletion
+      if (localValue || remoteValue) {
+        resolutionDetails.push(`Preserving deletion state: ${localValue || remoteValue}`)
+        return localValue || remoteValue
+      }
+      return false
+
+    case 'deletedAt':
+      // For deletion timestamps, prefer the more recent one
+      if (localValue && remoteValue) {
+        const localTime = new Date(localValue).getTime()
+        const remoteTime = new Date(remoteValue).getTime()
+        const resolved = localTime > remoteTime ? localValue : remoteValue
+        resolutionDetails.push(`Using more recent deletion timestamp: ${resolved}`)
+        return resolved
+      }
+      // If only one has a deletion timestamp, use it
+      resolutionDetails.push(`Using deletion timestamp: ${localValue || remoteValue}`)
+      return localValue || remoteValue
 
     case 'transformer':
       // For transformer settings, prefer local user's choice
