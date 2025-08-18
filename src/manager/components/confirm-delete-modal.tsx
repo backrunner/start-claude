@@ -20,10 +20,12 @@ export function ConfirmDeleteModal({ open, onClose, configName, onConfirm }: Con
     setDeleting(true)
     try {
       await onConfirm()
+      // Only close modal if the API call succeeds
       onClose()
     }
     catch (error) {
       console.error('Error deleting configuration:', error)
+      // Don't close modal on error - let user see the error and retry
     }
     finally {
       setDeleting(false)
