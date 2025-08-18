@@ -254,25 +254,3 @@ export function buildOpenAIRequestBody(unifiedRequest: OpenAIChatRequest): Recor
 
   return body
 }
-
-/**
- * Check if request is in Anthropic format (needs conversion to OpenAI)
- */
-export function isAnthropicFormat(requestBody: any): boolean {
-  try {
-    // Check for Anthropic-specific structure
-    return !!(requestBody.messages && Array.isArray(requestBody.messages)
-      && (requestBody.system !== undefined
-        || requestBody.messages.some((msg: any) =>
-          Array.isArray(msg.content)
-          && msg.content.some((c: any) =>
-            c.type === 'tool_result' || c.type === 'tool_use' || c.type === 'image',
-          ),
-        )
-      )
-    )
-  }
-  catch {
-    return false
-  }
-}

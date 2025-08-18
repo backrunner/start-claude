@@ -2,7 +2,7 @@ import type { LLMChatRequest, LLMProvider } from '../types/llm'
 import type { Transformer, TransformerOptions } from '../types/transformer'
 import { v4 as uuidv4 } from 'uuid'
 import { createTransformerUrl } from '../utils/network/transformer-url'
-import { buildOpenAIRequestBody, convertAnthropicToOpenAI, isAnthropicFormat } from '../utils/transformer/anthropic-to-openai'
+import { buildOpenAIRequestBody, convertAnthropicToOpenAI } from '../utils/transformer/anthropic-to-openai'
 
 export class OpenrouterTransformer implements Transformer {
   static TransformerName = 'openrouter'
@@ -16,14 +16,8 @@ export class OpenrouterTransformer implements Transformer {
     request: LLMChatRequest,
     provider?: LLMProvider,
   ): Promise<Record<string, any>> {
-    // Transform Anthropic format to OpenAI format if needed
-    let transformedRequest: any = request
-    if (isAnthropicFormat(request)) {
-      transformedRequest = await convertAnthropicToOpenAI(request)
-    }
-
     return {
-      body: transformedRequest,
+      body: await convertAnthropicToOpenAI(request),
       config: {
         url: createTransformerUrl('v1/chat/completions', provider?.baseUrl, 'https://openrouter.ai/api'),
         headers: {
