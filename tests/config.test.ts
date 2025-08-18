@@ -3,6 +3,15 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Mock the configuration version constant
+vi.mock('@/config/types', async () => {
+  const actual = await vi.importActual('@/config/types')
+  return {
+    ...actual,
+    CURRENT_CONFIG_VERSION: 1, // Use a stable test version
+  }
+})
+
 // Mock the file system operations
 vi.mock('node:fs')
 vi.mock('node:os', () => ({
@@ -20,6 +29,9 @@ vi.mock('@/utils/ui', () => ({
 }))
 
 const mockFs = vi.mocked(fs)
+
+// Test constants - use stable values for testing
+const TEST_CONFIG_VERSION = 1
 
 describe('configManager', () => {
   let ConfigManager: any
@@ -53,7 +65,7 @@ describe('configManager', () => {
       const config = configManager.load()
 
       expect(config).toEqual({
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [],
         settings: {
           overrideClaudeCommand: false,
@@ -63,7 +75,7 @@ describe('configManager', () => {
 
     it('should load existing config file', () => {
       const mockConfig = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [
           { name: 'test', baseUrl: 'https://api.test.com', isDefault: true, enabled: true },
         ],
@@ -86,7 +98,7 @@ describe('configManager', () => {
       const config = configManager.load()
 
       expect(config).toEqual({
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [],
         settings: {
           overrideClaudeCommand: false,
@@ -118,7 +130,7 @@ describe('configManager', () => {
 
       const config = configManager.load()
 
-      expect(config.version).toBe(1)
+      expect(config.version).toBe(TEST_CONFIG_VERSION)
       expect(config.configs).toEqual([
         { name: 'test', baseUrl: 'https://api.test.com', isDefault: true, enabled: true },
       ])
@@ -134,7 +146,7 @@ describe('configManager', () => {
 
       const config = configManager.load()
 
-      expect(config.version).toBe(1)
+      expect(config.version).toBe(TEST_CONFIG_VERSION)
       expect(config.configs).toEqual([])
       expect(config.settings).toEqual({ overrideClaudeCommand: false })
     })
@@ -178,7 +190,7 @@ describe('configManager', () => {
     it('should return configuration by name', () => {
       const testConfig = { name: 'test', baseUrl: 'https://api.test.com', isDefault: false, enabled: true }
       const mockConfigData = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [testConfig],
         settings: { overrideClaudeCommand: false },
       }
@@ -210,7 +222,7 @@ describe('configManager', () => {
     it('should return default configuration', () => {
       const defaultConfig = { name: 'default', isDefault: true, enabled: true }
       const mockConfigData = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [
           { name: 'test1', isDefault: false, enabled: true },
           defaultConfig,
@@ -229,7 +241,7 @@ describe('configManager', () => {
 
     it('should return undefined when no default configuration exists', () => {
       const mockConfigData = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [
           { name: 'test1', isDefault: false, enabled: true },
           { name: 'test2', isDefault: false, enabled: true },
@@ -321,7 +333,7 @@ describe('configManager', () => {
         { name: 'test2', isDefault: true, enabled: true },
       ]
       const mockConfigData = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs,
         settings: { overrideClaudeCommand: false },
       }
@@ -371,7 +383,7 @@ describe('configManager', () => {
   describe('saveConfigFile', () => {
     it('should save complete config file', async () => {
       const configFile = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [{ name: 'test', isDefault: true }],
         settings: {
           overrideClaudeCommand: true,
@@ -389,7 +401,7 @@ describe('configManager', () => {
 
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
         expect.stringContaining('config.json'),
-        expect.stringContaining('"version": 1'),
+        expect.stringContaining(`"version": ${TEST_CONFIG_VERSION}`),
       )
     })
   })
@@ -397,7 +409,7 @@ describe('configManager', () => {
   describe('getConfigFile', () => {
     it('should return complete config file', () => {
       const mockConfigData = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [{ name: 'test', isDefault: true, enabled: true }],
         settings: {
           overrideClaudeCommand: false,
@@ -528,7 +540,7 @@ describe('configManager', () => {
 
     it('should preserve s3Sync settings when updating other settings', async () => {
       const existingSettings = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [],
         settings: {
           overrideClaudeCommand: false,
@@ -611,7 +623,7 @@ describe('configManager', () => {
         enabled: true,
       }
       const mockConfigData = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs: [configWithProfileType],
         settings: { overrideClaudeCommand: false },
       }
@@ -632,7 +644,7 @@ describe('configManager', () => {
         { name: 'legacy-config', baseUrl: 'https://api.legacy.com', isDefault: true, enabled: true }, // no profileType
       ]
       const mockConfigData = {
-        version: 1,
+        version: TEST_CONFIG_VERSION,
         configs,
         settings: { overrideClaudeCommand: false },
       }

@@ -1,6 +1,7 @@
 import type { ClaudeConfig } from '@/config/types'
 import { spawn } from 'node:child_process'
 import { accessSync } from 'node:fs'
+import path from 'node:path'
 import process from 'node:process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -624,23 +625,37 @@ describe('claude', () => {
 
   describe('findExecutable', () => {
     it('should skip .start-claude directory to avoid infinite loop', async () => {
-      // Mock that .start-claude wrapper exists but should be skipped
-      const realClaudePath = '/usr/local/bin/claude'
+      // Detect platform and use appropriate paths
+      const isWindows = process.platform === 'win32'
+      const realClaudePath = isWindows ? 'C:\\Program Files\\nodejs\\claude.cmd' : '/usr/local/bin/claude'
+      const startClaudeDir = isWindows ? 'C:\\Users\\user\\.start-claude\\bin' : '/home/user/.start-claude/bin'
+      const nodeDir = isWindows ? 'C:\\Program Files\\nodejs' : '/usr/local/bin'
 
       let accessCallCount = 0
       mockAccessSync.mockImplementation((path) => {
         accessCallCount++
         const pathStr = path.toString()
 
-        // Skip the wrapper script in .start-claude directory
+        // .start-claude paths should never be accessed due to directory skip logic
         if (pathStr.includes('.start-claude')) {
-          // This should not be called due to directory skip logic
           throw new Error('Should have been skipped')
         }
 
-        // Return the real Claude executable
-        if (pathStr === realClaudePath) {
-          return undefined // File exists
+        // Return the real Claude executable (handle platform-specific executables)
+        if (isWindows) {
+          if (pathStr === realClaudePath
+            || pathStr.endsWith('\\claude.cmd')
+            || pathStr === 'claude.cmd'
+            || pathStr === 'claude') {
+            return undefined // File exists
+          }
+        }
+        else {
+          if (pathStr === realClaudePath
+            || pathStr.endsWith('/claude')
+            || pathStr === 'claude') {
+            return undefined // File exists
+          }
         }
 
         throw new Error('Not found')
@@ -653,8 +668,11 @@ describe('claude', () => {
       // Set up environment to include .start-claude in PATH
       process.env = {
         ...originalEnv,
-        PATH: `/home/user/.start-claude/bin:/usr/local/bin:${originalEnv.PATH || ''}`,
+        PATH: `${startClaudeDir}${path.delimiter}${nodeDir}${path.delimiter}${originalEnv.PATH || ''}`,
       }
+
+      // Mock inquirer to not interfere with the findExecutable test
+      vi.mocked(mockInquirer.default.prompt).mockResolvedValue({ install: false })
 
       try {
         const promise = startClaude(mockConfig)
@@ -667,8 +685,9 @@ describe('claude', () => {
         await promise
 
         // Should find the real Claude Code, not the wrapper
+        const expectedPattern = isWindows ? /claude(\.cmd)?$/ : /claude$/
         expect(mockSpawn).toHaveBeenCalledWith(
-          realClaudePath,
+          expect.stringMatching(expectedPattern),
           expect.any(Array),
           expect.any(Object),
         )
