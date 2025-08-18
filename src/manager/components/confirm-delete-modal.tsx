@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { AlertTriangle, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
@@ -9,10 +10,26 @@ interface ConfirmDeleteModalProps {
   open: boolean
   onClose: () => void
   configName: string | null
-  onConfirm: () => void
+  onConfirm: () => Promise<void>
 }
 
 export function ConfirmDeleteModal({ open, onClose, configName, onConfirm }: ConfirmDeleteModalProps): ReactNode {
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async (): Promise<void> => {
+    setDeleting(true)
+    try {
+      await onConfirm()
+      onClose()
+    }
+    catch (error) {
+      console.error('Error deleting configuration:', error)
+    }
+    finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-md border-destructive/20">
@@ -49,12 +66,23 @@ export function ConfirmDeleteModal({ open, onClose, configName, onConfirm }: Con
         </div>
 
         <DialogFooter className="pt-6 border-t">
-          <Button variant="outline" onClick={onClose} className="min-w-[80px]">
+          <Button variant="outline" onClick={onClose} disabled={deleting} className="min-w-[80px]">
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm} className="min-w-[100px]">
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
+          <Button variant="destructive" onClick={() => void handleDelete()} disabled={deleting} className="min-w-[100px]">
+            {deleting
+              ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Deleting...
+                  </div>
+                )
+              : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </>
+                )}
           </Button>
         </DialogFooter>
       </DialogContent>
