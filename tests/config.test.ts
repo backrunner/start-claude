@@ -141,7 +141,7 @@ describe('configManager', () => {
   })
 
   describe('addConfig', () => {
-    it('should add new configuration', () => {
+    it('should add new configuration', async () => {
       const newConfig: ClaudeConfig = {
         name: 'test',
         baseUrl: 'https://api.test.com',
@@ -149,12 +149,12 @@ describe('configManager', () => {
         isDefault: false,
       }
 
-      configManager.addConfig(newConfig)
+      await configManager.addConfig(newConfig)
 
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
 
-    it('should update existing configuration', () => {
+    it('should update existing configuration', async () => {
       const existingConfig = {
         configs: [{ name: 'test', baseUrl: 'https://old.com', isDefault: false }],
         settings: { overrideClaudeCommand: false },
@@ -168,7 +168,7 @@ describe('configManager', () => {
         isDefault: true,
       }
 
-      configManager.addConfig(updatedConfig)
+      await configManager.addConfig(updatedConfig)
 
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
@@ -247,7 +247,7 @@ describe('configManager', () => {
   })
 
   describe('removeConfig', () => {
-    it('should remove existing configuration', () => {
+    it('should remove existing configuration', async () => {
       const mockConfigData = {
         configs: [
           { name: 'test1', isDefault: false },
@@ -259,13 +259,13 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.removeConfig('test1')
+      const result = await configManager.removeConfig('test1')
 
       expect(result).toBe(true)
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
 
-    it('should return false for non-existent configuration', () => {
+    it('should return false for non-existent configuration', async () => {
       const mockConfigData = {
         configs: [{ name: 'test1', isDefault: false }],
         settings: { overrideClaudeCommand: false },
@@ -274,14 +274,14 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.removeConfig('non-existent')
+      const result = await configManager.removeConfig('non-existent')
 
       expect(result).toBe(false)
     })
   })
 
   describe('setDefaultConfig', () => {
-    it('should set configuration as default', () => {
+    it('should set configuration as default', async () => {
       const mockConfigData = {
         configs: [
           { name: 'test1', isDefault: true },
@@ -293,13 +293,13 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.setDefaultConfig('test2')
+      const result = await configManager.setDefaultConfig('test2')
 
       expect(result).toBe(true)
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
 
-    it('should return false for non-existent configuration', () => {
+    it('should return false for non-existent configuration', async () => {
       const mockConfigData = {
         configs: [{ name: 'test1', isDefault: false }],
         settings: { overrideClaudeCommand: false },
@@ -308,7 +308,7 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.setDefaultConfig('non-existent')
+      const result = await configManager.setDefaultConfig('non-existent')
 
       expect(result).toBe(false)
     })
@@ -336,7 +336,7 @@ describe('configManager', () => {
   })
 
   describe('updateSettings', () => {
-    it('should update settings', () => {
+    it('should update settings', async () => {
       const mockConfigData = {
         configs: [],
         settings: { overrideClaudeCommand: false },
@@ -345,7 +345,7 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      configManager.updateSettings({ overrideClaudeCommand: true })
+      await configManager.updateSettings({ overrideClaudeCommand: true })
 
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
@@ -369,7 +369,7 @@ describe('configManager', () => {
   })
 
   describe('saveConfigFile', () => {
-    it('should save complete config file', () => {
+    it('should save complete config file', async () => {
       const configFile = {
         version: 1,
         configs: [{ name: 'test', isDefault: true }],
@@ -385,7 +385,7 @@ describe('configManager', () => {
         },
       }
 
-      configManager.saveConfigFile(configFile)
+      await configManager.saveConfigFile(configFile)
 
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
         expect.stringContaining('config.json'),
@@ -422,16 +422,16 @@ describe('configManager', () => {
   })
 
   describe('edge cases and error handling', () => {
-    it('should handle empty config name gracefully', () => {
+    it('should handle empty config name gracefully', async () => {
       const config: ClaudeConfig = {
         name: '',
         isDefault: false,
       }
 
-      expect(() => configManager.addConfig(config)).toThrow('Config at index 0 must have a valid name')
+      await expect(configManager.addConfig(config)).rejects.toThrow('Config at index 0 must have a valid name')
     })
 
-    it('should handle config with all optional fields', () => {
+    it('should handle config with all optional fields', async () => {
       const fullConfig: ClaudeConfig = {
         name: 'full-config',
         profileType: 'default',
@@ -477,12 +477,12 @@ describe('configManager', () => {
         vertexRegion40Sonnet: 'asia-east1',
       }
 
-      configManager.addConfig(fullConfig)
+      await configManager.addConfig(fullConfig)
 
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
 
-    it('should handle multiple default configs by unsetting others', () => {
+    it('should handle multiple default configs by unsetting others', async () => {
       const existingConfigs = {
         configs: [
           { name: 'config1', isDefault: true },
@@ -499,19 +499,19 @@ describe('configManager', () => {
         isDefault: true,
       }
 
-      configManager.addConfig(newDefaultConfig)
+      await configManager.addConfig(newDefaultConfig)
 
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
 
-    it('should handle file system errors gracefully', () => {
+    it('should handle file system errors gracefully', async () => {
       mockFs.writeFileSync.mockImplementation(() => {
         throw new Error('Permission denied')
       })
 
-      expect(() => {
-        configManager.addConfig({ name: 'test', isDefault: false })
-      }).toThrow('Permission denied')
+      await expect(async () => {
+        await configManager.addConfig({ name: 'test', isDefault: false })
+      }).rejects.toThrow('Permission denied')
     })
 
     it('should handle missing config directory', () => {
@@ -526,7 +526,7 @@ describe('configManager', () => {
       )
     })
 
-    it('should preserve s3Sync settings when updating other settings', () => {
+    it('should preserve s3Sync settings when updating other settings', async () => {
       const existingSettings = {
         version: 1,
         configs: [],
@@ -546,7 +546,7 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(existingSettings))
 
-      configManager.updateSettings({ overrideClaudeCommand: true })
+      await configManager.updateSettings({ overrideClaudeCommand: true })
 
       const writeCall = mockFs.writeFileSync.mock.calls[0]
       const savedData = JSON.parse(writeCall[1] as string)
@@ -557,7 +557,7 @@ describe('configManager', () => {
   })
 
   describe('profileType handling', () => {
-    it('should handle official profileType configuration', () => {
+    it('should handle official profileType configuration', async () => {
       const officialConfig: ClaudeConfig = {
         name: 'official-config',
         profileType: 'official',
@@ -567,12 +567,12 @@ describe('configManager', () => {
         isDefault: false,
       }
 
-      configManager.addConfig(officialConfig)
+      await configManager.addConfig(officialConfig)
 
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
 
-    it('should handle default profileType configuration', () => {
+    it('should handle default profileType configuration', async () => {
       const defaultConfig: ClaudeConfig = {
         name: 'default-config',
         profileType: 'default',
@@ -582,12 +582,12 @@ describe('configManager', () => {
         isDefault: false,
       }
 
-      configManager.addConfig(defaultConfig)
+      await configManager.addConfig(defaultConfig)
 
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
 
-    it('should handle configuration without profileType (backward compatibility)', () => {
+    it('should handle configuration without profileType (backward compatibility)', async () => {
       const legacyConfig: ClaudeConfig = {
         name: 'legacy-config',
         // profileType not specified for backward compatibility
@@ -597,7 +597,7 @@ describe('configManager', () => {
         isDefault: false,
       }
 
-      configManager.addConfig(legacyConfig)
+      await configManager.addConfig(legacyConfig)
 
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })

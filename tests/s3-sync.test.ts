@@ -54,8 +54,10 @@ vi.mock('@aws-sdk/client-s3', () => ({
 }))
 
 // Mock the dependencies
-vi.mock('@/config/manager', () => ({
-  ConfigManager: vi.fn().mockImplementation(() => mockConfigManagerInstance),
+vi.mock('../src/config/manager', () => ({
+  ConfigManager: {
+    getInstance: vi.fn(() => mockConfigManagerInstance),
+  },
 }))
 
 vi.mock('@/utils/ui', () => ({
@@ -247,44 +249,44 @@ describe('s3SyncManager', () => {
   })
 
   describe('isS3Configured', () => {
-    it('should return true when S3 is configured', () => {
+    it('should return true when S3 is configured', async () => {
       mockConfigManagerInstance.getSettings.mockReturnValue({ s3Sync: mockS3Config })
 
-      const result = s3SyncManager.isS3Configured()
+      const result = await s3SyncManager.isS3Configured()
 
       expect(result).toBe(true)
     })
 
-    it('should return false when S3 is not configured', () => {
+    it('should return false when S3 is not configured', async () => {
       mockConfigManagerInstance.getSettings.mockReturnValue({})
 
-      const result = s3SyncManager.isS3Configured()
+      const result = await s3SyncManager.isS3Configured()
 
       expect(result).toBe(false)
     })
   })
 
   describe('getS3Status', () => {
-    it('should return status for configured S3', () => {
+    it('should return status for configured S3', async () => {
       mockConfigManagerInstance.getSettings.mockReturnValue({ s3Sync: mockS3Config })
 
-      const result = s3SyncManager.getS3Status()
+      const result = await s3SyncManager.getS3Status()
 
       expect(result).toBe('Configured (Bucket: test-bucket, Region: us-east-1, Key: test-config.json)')
     })
 
-    it('should return status for S3-compatible service with endpoint', () => {
+    it('should return status for S3-compatible service with endpoint', async () => {
       mockConfigManagerInstance.getSettings.mockReturnValue({ s3Sync: mockS3ConfigWithEndpoint })
 
-      const result = s3SyncManager.getS3Status()
+      const result = await s3SyncManager.getS3Status()
 
       expect(result).toBe('Configured (Bucket: test-bucket, Region: us-east-1, Endpoint: https://test.r2.cloudflarestorage.com, Key: test-config.json)')
     })
 
-    it('should return not configured status', () => {
+    it('should return not configured status', async () => {
       mockConfigManagerInstance.getSettings.mockReturnValue({})
 
-      const result = s3SyncManager.getS3Status()
+      const result = await s3SyncManager.getS3Status()
 
       expect(result).toBe('Not configured')
     })
