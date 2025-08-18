@@ -4,7 +4,7 @@ import { ConfigManager } from '../config/manager'
 import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
 
 export async function handleRemoveCommand(name: string): Promise<void> {
-  const configManager = new ConfigManager()
+  const configManager = ConfigManager.getInstance()
   const config = configManager.getConfig(name)
   if (!config) {
     displayError(`Configuration "${name}" not found`)
@@ -30,7 +30,7 @@ export async function handleRemoveCommand(name: string): Promise<void> {
 }
 
 export async function handleListCommand(): Promise<void> {
-  const configManager = new ConfigManager()
+  const configManager = ConfigManager.getInstance()
   const configs = configManager.listConfigs()
   const { displayConfigList, displayWelcome } = await import('../utils/cli/ui')
   displayWelcome()
@@ -38,7 +38,7 @@ export async function handleListCommand(): Promise<void> {
 }
 
 export async function handleDefaultCommand(name: string): Promise<void> {
-  const configManager = new ConfigManager()
+  const configManager = ConfigManager.getInstance()
   const success = configManager.setDefaultConfig(name)
   if (success) {
     displaySuccess(`Configuration "${name}" set as default`)

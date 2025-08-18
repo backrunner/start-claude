@@ -8,7 +8,7 @@ import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
 export async function handleEditCommand(name: string, options: { useEditor?: boolean }): Promise<void> {
   displayWelcome()
 
-  const configManager = new ConfigManager()
+  const configManager = ConfigManager.getInstance()
   const config = configManager.getConfig(name)
   if (!config) {
     displayError(`Configuration "${name}" not found`)

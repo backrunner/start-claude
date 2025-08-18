@@ -50,15 +50,23 @@ interface AwsError {
 }
 
 export class S3SyncManager {
+  private static instance: S3SyncManager
   private s3Client: S3Client | null = null
   private configManager: ConfigManager
   private readonly CONFIG_PATH = join(homedir(), '.start-claude', 'config.json')
 
   constructor() {
-    this.configManager = new ConfigManager()
+    this.configManager = ConfigManager.getInstance()
 
     // Set up auto-sync callback when config changes
     this.configManager.setAutoSyncCallback(async () => this.autoUploadAfterChange())
+  }
+
+  static getInstance(): S3SyncManager {
+    if (!S3SyncManager.instance) {
+      S3SyncManager.instance = new S3SyncManager()
+    }
+    return S3SyncManager.instance
   }
 
   private disableAutoSync(): void {

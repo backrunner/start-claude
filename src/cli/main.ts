@@ -18,9 +18,12 @@ import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStra
 import { handleProxyMode } from './proxy'
 
 const program = new Command()
-const configManager = new ConfigManager()
-const s3SyncManager = new S3SyncManager()
+const configManager = ConfigManager.getInstance()
+const s3SyncManager = S3SyncManager.getInstance()
 const statusLineManager = new StatusLineManager()
+
+// Initialize S3 sync for the config manager
+configManager.initializeS3Sync().catch(console.error)
 
 /**
  * Handle statusline sync on startup

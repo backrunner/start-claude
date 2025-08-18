@@ -7,8 +7,13 @@ import { silentRemoteConfigCheck } from '../utils/config/remote-config-check'
 export async function handleManagerCommand(options: { port?: string }): Promise<void> {
   displayWelcome()
 
+  // Initialize S3 sync for config manager
+  const { ConfigManager } = await import('../config/manager')
+  const configManager = ConfigManager.getInstance()
+  await configManager.initializeS3Sync()
+
   // Check for remote config updates before starting manager
-  const s3SyncManager = new S3SyncManager()
+  const s3SyncManager = S3SyncManager.getInstance()
   await silentRemoteConfigCheck(s3SyncManager, { verbose: false })
 
   const port = options.port ? Number.parseInt(options.port) : 2334

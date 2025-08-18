@@ -1,17 +1,66 @@
 import type { ClaudeConfig, ConfigFile } from './types'
 import { ConfigFileManager } from './file-manager'
 
+// Lazy import to avoid circular dependency
+let S3SyncManager: any = null
+
 export class ConfigManager {
+  private static instance: ConfigManager
   private autoSyncCallback?: () => Promise<void>
   private configFileManager: ConfigFileManager
+  private s3SyncInitialized = false
 
   constructor() {
-    // Auto-sync callback will be set by S3SyncManager when needed
     this.configFileManager = ConfigFileManager.getInstance()
+  }
+
+  static getInstance(): ConfigManager {
+    if (!ConfigManager.instance) {
+      ConfigManager.instance = new ConfigManager()
+    }
+    return ConfigManager.instance
+  }
+
+  /**
+   * Initialize S3 sync if configured
+   * This should be called once at application startup
+   */
+  async initializeS3Sync(): Promise<void> {
+    if (this.s3SyncInitialized) {
+      return
+    }
+
+    try {
+      // Lazy import to avoid circular dependency
+      if (!S3SyncManager) {
+        const module = await import('../storage/s3-sync')
+        S3SyncManager = module.S3SyncManager
+      }
+
+      // Check if S3 is configured
+      const settings = this.getSettings()
+      if (settings.s3Sync) {
+        // Get S3SyncManager singleton instance which will set up the auto-sync callback
+        S3SyncManager.getInstance()
+        this.s3SyncInitialized = true
+      }
+    }
+    catch (error) {
+      console.error('Failed to initialize S3 sync:', error)
+    }
   }
 
   setAutoSyncCallback(callback: (() => Promise<void>) | null): void {
     this.autoSyncCallback = callback || undefined
+  }
+
+  private async triggerAutoSync(): Promise<void> {
+    if (this.autoSyncCallback) {
+      // Run async without blocking
+      this.autoSyncCallback().catch((error) => {
+        console.error('Auto-sync failed:', error)
+      })
+    }
   }
 
   load(): ConfigFile {
@@ -20,14 +69,8 @@ export class ConfigManager {
 
   save(config: ConfigFile): void {
     this.configFileManager.save(config)
-
-    // Trigger auto-sync if callback is set
-    if (this.autoSyncCallback) {
-      // Run async without blocking
-      this.autoSyncCallback().catch((error) => {
-        console.error('Auto-sync failed:', error)
-      })
-    }
+    // Trigger auto-sync after save
+    void this.triggerAutoSync()
   }
 
   addConfig(config: ClaudeConfig): void {

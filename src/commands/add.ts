@@ -7,7 +7,7 @@ import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
 export async function handleAddCommand(options: { useEditor?: boolean }): Promise<void> {
   displayWelcome()
 
-  const configManager = new ConfigManager()
+  const configManager = ConfigManager.getInstance()
 
   if (options.useEditor) {
     const newConfig = await createConfigInEditor()

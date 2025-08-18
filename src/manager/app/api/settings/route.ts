@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 // Initialize the ConfigManager instance
-const configManager = new ConfigManager()
+const configManager = ConfigManager.getInstance()
 
 function getSettings(): any {
   try {

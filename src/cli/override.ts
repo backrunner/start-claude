@@ -59,6 +59,15 @@ const WINDOWS_SHELLS: Record<string, ShellConfig> = {
 }
 
 export class OverrideManager {
+  private static instance: OverrideManager
+
+  static getInstance(): OverrideManager {
+    if (!OverrideManager.instance) {
+      OverrideManager.instance = new OverrideManager()
+    }
+    return OverrideManager.instance
+  }
+
   private isWindows(): boolean {
     return process.platform === 'win32'
   }

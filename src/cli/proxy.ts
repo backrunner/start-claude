@@ -23,7 +23,7 @@ export async function handleProxyMode(
   cliStrategy?: LoadBalancerStrategy, // CLI-specified strategy override
 ): Promise<void> {
   // Check for S3 sync updates at startup
-  const s3SyncManager = new S3SyncManager()
+  const s3SyncManager = S3SyncManager.getInstance()
   if (s3SyncManager.isS3Configured()) {
     const updated = await s3SyncManager.checkRemoteUpdates()
     if (updated) {
