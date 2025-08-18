@@ -209,6 +209,7 @@ export async function convertAnthropicToOpenAI(
  */
 function convertAnthropicToolsToUnified(anthropicTools: any[]): any[] {
   return anthropicTools.map((tool) => {
+    // Handle tools that are already in OpenAI format
     if (tool.type === 'function') {
       return {
         type: 'function',
@@ -219,6 +220,20 @@ function convertAnthropicToolsToUnified(anthropicTools: any[]): any[] {
         },
       }
     }
+
+    // Handle tools in Anthropic native format (name, description, input_schema)
+    if (tool.name && tool.input_schema) {
+      return {
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description || '',
+          parameters: tool.input_schema,
+        },
+      }
+    }
+
+    // Fallback: return as-is
     return tool
   })
 }
