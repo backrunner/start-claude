@@ -323,9 +323,15 @@ export class OverrideManager {
       const overridePath = path.join(os.homedir(), '.start-claude', 'bin')
 
       // Remove the override path from current PATH
-      const pathParts = currentPath.split(':')
-      const cleanedParts = pathParts.filter(part => part !== overridePath)
-      const cleanedPath = cleanedParts.join(':')
+      const pathSeparator = this.isWindows() ? ';' : ':'
+      const pathParts = currentPath.split(pathSeparator)
+      const cleanedParts = pathParts.filter((part) => {
+        // Normalize paths for comparison
+        const normalizedPart = path.normalize(part)
+        const normalizedOverride = path.normalize(overridePath)
+        return normalizedPart !== normalizedOverride
+      })
+      const cleanedPath = cleanedParts.join(pathSeparator)
 
       // Return the export command for the shell to execute
       const shell = this.getCurrentUnixShell()

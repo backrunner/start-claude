@@ -129,7 +129,7 @@ export interface LegacyConfigFile {
 /**
  * Current configuration file version
  */
-export const CURRENT_CONFIG_VERSION = 2
+export const CURRENT_CONFIG_VERSION = 1
 
 /**
  * Migration information interface

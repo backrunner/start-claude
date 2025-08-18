@@ -21,7 +21,7 @@ export async function handleRemoveCommand(name: string): Promise<void> {
   ])
 
   if (answers.confirm) {
-    configManager.removeConfig(name)
+    await configManager.removeConfig(name)
     displaySuccess(`Configuration "${name}" removed successfully!`)
   }
   else {
@@ -39,7 +39,7 @@ export async function handleListCommand(): Promise<void> {
 
 export async function handleDefaultCommand(name: string): Promise<void> {
   const configManager = ConfigManager.getInstance()
-  const success = configManager.setDefaultConfig(name)
+  const success = await configManager.setDefaultConfig(name)
   if (success) {
     displaySuccess(`Configuration "${name}" set as default`)
   }

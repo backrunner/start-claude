@@ -58,7 +58,7 @@ describe('overrideManager', () => {
     describe('isOverrideActive', () => {
       it('should return true when script exists', () => {
         mockFs.existsSync.mockImplementation(path =>
-          path.toString().includes('.start-claude/bin/claude'),
+          path.toString().includes('.start-claude') && path.toString().includes('claude'),
         )
         mockFs.readFileSync.mockReturnValue('# no alias')
 
@@ -91,7 +91,7 @@ describe('overrideManager', () => {
 
       it('should return false when neither script nor aliases exist', () => {
         mockFs.existsSync.mockImplementation(path =>
-          !path.toString().includes('.start-claude/bin/claude'),
+          !(path.toString().includes('.start-claude') && path.toString().includes('claude')),
         )
         mockFs.readFileSync.mockReturnValue('# some other content')
 
@@ -118,7 +118,7 @@ describe('overrideManager', () => {
 
       it('should handle read errors gracefully but still check script', () => {
         mockFs.existsSync.mockImplementation(path =>
-          path.toString().includes('.start-claude/bin/claude'),
+          path.toString().includes('.start-claude') && path.toString().includes('claude'),
         )
         mockFs.readFileSync.mockImplementation(() => {
           throw new Error('Read error')
@@ -138,12 +138,12 @@ describe('overrideManager', () => {
 
         expect(result).toBe(true)
         expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-          expect.stringContaining('.start-claude/bin/claude'),
+          expect.stringContaining('.start-claude'),
           expect.stringContaining('exec start-claude "$@"'),
           'utf-8',
         )
         expect(mockFs.chmodSync).toHaveBeenCalledWith(
-          expect.stringContaining('.start-claude/bin/claude'),
+          expect.stringContaining('.start-claude'),
           0o755,
         )
         expect(mockFs.writeFileSync).toHaveBeenCalledWith(
@@ -165,7 +165,7 @@ describe('overrideManager', () => {
 
         expect(result).toBe(true)
         expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-          expect.stringContaining('.start-claude/bin/claude'),
+          expect.stringContaining('.start-claude'),
           expect.stringContaining('exec start-claude "$@"'),
           'utf-8',
         )
@@ -212,7 +212,7 @@ alias claude="start-claude"
         expect(result.cleanupCommand).toContain('export PATH=')
         expect(result.cleanupCommand).not.toContain('.start-claude/bin')
         expect(mockFs.rmSync).toHaveBeenCalledWith(
-          expect.stringContaining('.start-claude/bin'),
+          expect.stringContaining('.start-claude'),
           { recursive: true, force: true },
         )
         const writtenContent = mockFs.writeFileSync.mock.calls.find(call =>
@@ -427,7 +427,7 @@ alias claude="start-claude"
         expect(result.success).toBe(true)
         expect(result.cleanupCommand).toBeUndefined()
         expect(mockFs.rmSync).toHaveBeenCalledWith(
-          expect.stringContaining('.start-claude/bin'),
+          expect.stringContaining('.start-claude'),
           { recursive: true, force: true },
         )
       })
