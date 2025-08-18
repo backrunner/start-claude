@@ -273,21 +273,10 @@ export class OverrideManager {
       // Remove the script directory
       this.removeScriptDirectory()
 
-      // Get cleanup command for current session PATH and alias on Unix systems
+      // Get cleanup command for current session PATH on Unix systems
       let cleanupCommand: string | undefined
       if (!this.isWindows()) {
-        const pathCleanup = this.cleanupCurrentSessionPath()
-        const aliasCleanup = this.cleanupCurrentSessionAlias()
-
-        if (pathCleanup && aliasCleanup) {
-          cleanupCommand = `${pathCleanup}; ${aliasCleanup}`
-        }
-        else if (pathCleanup) {
-          cleanupCommand = pathCleanup
-        }
-        else if (aliasCleanup) {
-          cleanupCommand = aliasCleanup
-        }
+        cleanupCommand = this.cleanupCurrentSessionPath() || undefined
       }
 
       if (!fs.existsSync(shellConfig.path)) {
@@ -336,21 +325,6 @@ export class OverrideManager {
       }
       else {
         return `export PATH="${cleanedPath}"`
-      }
-    }
-    catch {
-      return null
-    }
-  }
-
-  private cleanupCurrentSessionAlias(): string | null {
-    try {
-      const shell = this.getCurrentUnixShell()
-      if (shell === 'fish') {
-        return 'functions -e claude'
-      }
-      else {
-        return 'unalias claude 2>/dev/null || true'
       }
     }
     catch {
