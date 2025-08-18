@@ -1,14 +1,9 @@
 import type { ClaudeConfig, ConfigFile } from './types'
 import { ConfigFileManager } from './file-manager'
 
-// Lazy import to avoid circular dependency
-let S3SyncManager: any = null
-
 export class ConfigManager {
   private static instance: ConfigManager
-  private autoSyncCallback?: () => Promise<void>
   private configFileManager: ConfigFileManager
-  private s3SyncInitialized = false
 
   constructor() {
     this.configFileManager = ConfigFileManager.getInstance()
@@ -21,59 +16,37 @@ export class ConfigManager {
     return ConfigManager.instance
   }
 
-  /**
-   * Initialize S3 sync if configured
-   * This should be called once at application startup
-   */
-  async initializeS3Sync(): Promise<void> {
-    if (this.s3SyncInitialized) {
-      return
-    }
-
-    try {
-      // Lazy import to avoid circular dependency
-      if (!S3SyncManager) {
-        const module = await import('../storage/s3-sync')
-        S3SyncManager = module.S3SyncManager
-      }
-
-      // Check if S3 is configured
-      const settings = this.getSettings()
-      if (settings.s3Sync) {
-        // Get S3SyncManager singleton instance which will set up the auto-sync callback
-        S3SyncManager.getInstance()
-        this.s3SyncInitialized = true
-      }
-    }
-    catch (error) {
-      console.error('Failed to initialize S3 sync:', error)
-    }
-  }
-
-  setAutoSyncCallback(callback: (() => Promise<void>) | null): void {
-    this.autoSyncCallback = callback || undefined
-  }
-
-  private async triggerAutoSync(): Promise<void> {
-    if (this.autoSyncCallback) {
-      // Run async without blocking
-      this.autoSyncCallback().catch((error) => {
-        console.error('Auto-sync failed:', error)
-      })
-    }
-  }
-
   load(): ConfigFile {
     return this.configFileManager.load()
   }
 
-  save(config: ConfigFile): void {
+  async save(config: ConfigFile, skipSync = false): Promise<void> {
     this.configFileManager.save(config)
-    // Trigger auto-sync after save
-    void this.triggerAutoSync()
+
+    // Trigger S3 sync unless explicitly skipped
+    if (!skipSync) {
+      await this.triggerS3Sync()
+    }
   }
 
-  addConfig(config: ClaudeConfig): void {
+  private async triggerS3Sync(): Promise<void> {
+    try {
+      // Lazy import to avoid circular dependency at module level
+      const { S3SyncManager } = await import('../storage/s3-sync')
+      const s3SyncManager = S3SyncManager.getInstance()
+
+      // Only sync if S3 is configured
+      if (await s3SyncManager.isS3Configured()) {
+        await s3SyncManager.autoUploadAfterChange()
+      }
+    }
+    catch (error) {
+      // Silent fail for auto-sync, but log for debugging
+      console.error('S3 sync failed:', error)
+    }
+  }
+
+  async addConfig(config: ClaudeConfig): Promise<void> {
     const configFile = this.load()
 
     const existingIndex = configFile.configs.findIndex(c => c.name.toLowerCase() === config.name.toLowerCase())
@@ -84,16 +57,16 @@ export class ConfigManager {
       configFile.configs.push(config)
     }
 
-    this.save(configFile)
+    await this.save(configFile)
   }
 
-  removeConfig(name: string): boolean {
+  async removeConfig(name: string): Promise<boolean> {
     const configFile = this.load()
     const initialLength = configFile.configs.length
     configFile.configs = configFile.configs.filter(c => c.name.toLowerCase() !== name.toLowerCase())
 
     if (configFile.configs.length < initialLength) {
-      this.save(configFile)
+      await this.save(configFile)
       return true
     }
     return false
@@ -109,7 +82,7 @@ export class ConfigManager {
     return configFile.configs.find(c => c.isDefault)
   }
 
-  setDefaultConfig(name: string): boolean {
+  async setDefaultConfig(name: string): Promise<boolean> {
     const configFile = this.load()
 
     configFile.configs.forEach(c => c.isDefault = false)
@@ -117,7 +90,7 @@ export class ConfigManager {
     const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
     if (targetConfig) {
       targetConfig.isDefault = true
-      this.save(configFile)
+      await this.save(configFile)
       return true
     }
     return false
@@ -128,10 +101,10 @@ export class ConfigManager {
     return configFile.configs
   }
 
-  updateSettings(settings: Partial<ConfigFile['settings']>): void {
+  async updateSettings(settings: Partial<ConfigFile['settings']>): Promise<void> {
     const configFile = this.load()
     configFile.settings = { ...configFile.settings, ...settings }
-    this.save(configFile)
+    await this.save(configFile)
   }
 
   getSettings(): ConfigFile['settings'] {
@@ -143,7 +116,25 @@ export class ConfigManager {
     return this.load()
   }
 
-  saveConfigFile(configFile: ConfigFile): void {
-    this.save(configFile)
+  async saveConfigFile(configFile: ConfigFile, skipSync = false): Promise<void> {
+    await this.save(configFile, skipSync)
+  }
+
+  async initializeS3Sync(): Promise<void> {
+    try {
+      // Lazy import to avoid circular dependency at module level
+      const { S3SyncManager } = await import('../storage/s3-sync')
+      const s3SyncManager = S3SyncManager.getInstance()
+
+      // Check if S3 is configured and perform initial sync if needed
+      if (await s3SyncManager.isS3Configured()) {
+        // Perform any initial S3 sync operations if necessary
+        // This is a no-op for now but provides a hook for future initialization
+      }
+    }
+    catch (error) {
+      // Silent fail for initialization, but log for debugging
+      console.error('S3 sync initialization failed:', error)
+    }
   }
 }

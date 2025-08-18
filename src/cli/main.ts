@@ -121,7 +121,7 @@ program
 
     if (!shouldUseProxy && options.balance !== false) {
       try {
-        systemSettings = s3SyncManager.getSystemSettings()
+        systemSettings = await s3SyncManager.getSystemSettings()
         shouldUseProxy = systemSettings?.balanceMode?.enableByDefault === true
       }
       catch {
@@ -142,7 +142,7 @@ program
       // Get fresh system settings if we haven't already
       if (!systemSettings) {
         try {
-          systemSettings = s3SyncManager.getSystemSettings()
+          systemSettings = await s3SyncManager.getSystemSettings()
         }
         catch {
           // Use null if we can't get settings

@@ -59,7 +59,7 @@ function getSettings(): any {
   }
 }
 
-function saveSettings(settings: any): void {
+async function saveSettings(settings: any): Promise<void> {
   try {
     const configFile = configManager.load()
     const updatedConfigFile = {
@@ -68,7 +68,7 @@ function saveSettings(settings: any): void {
     }
 
     // Use ConfigManager.save() to trigger S3 auto-sync
-    configManager.save(updatedConfigFile)
+    return await configManager.save(updatedConfigFile)
   }
   catch (error) {
     console.error('Error saving settings:', error)
@@ -111,7 +111,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       }, { status: 400 })
     }
 
-    saveSettings(settingsValidation.data)
+    await saveSettings(settingsValidation.data)
     return NextResponse.json({ success: true, settings: getSettings() })
   }
   catch (error) {

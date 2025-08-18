@@ -25,7 +25,7 @@ export async function checkRemoteConfigUpdates(
 
   try {
     // Check if S3 is configured
-    if (!s3SyncManager.isS3Configured()) {
+    if (!(await s3SyncManager.isS3Configured())) {
       displayVerbose('S3 not configured, skipping remote config check', options.verbose)
       return {
         hasRemoteUpdate: false,
@@ -33,10 +33,10 @@ export async function checkRemoteConfigUpdates(
       }
     }
 
-    displayVerbose(`S3 sync status: ${s3SyncManager.getS3Status()}`, options.verbose)
+    displayVerbose(`S3 sync status: ${await s3SyncManager.getS3Status()}`, options.verbose)
 
     // Get configured check interval (default: 60 minutes)
-    const settings = s3SyncManager.getSystemSettings()
+    const settings = await s3SyncManager.getSystemSettings()
     const checkIntervalMinutes = settings.s3Sync?.remoteConfigCheckIntervalMinutes || 60
     displayVerbose(`Remote config check interval: ${checkIntervalMinutes} minutes`, options.verbose)
 
@@ -94,12 +94,12 @@ export async function silentRemoteConfigCheck(
   options: { verbose?: boolean } = {},
 ): Promise<boolean> {
   try {
-    if (!s3SyncManager.isS3Configured()) {
+    if (!(await s3SyncManager.isS3Configured())) {
       displayVerbose('S3 not configured, skipping silent config check', options.verbose)
       return false
     }
 
-    displayVerbose(`Starting silent remote config check for ${s3SyncManager.getS3Status()}`, options.verbose)
+    displayVerbose(`Starting silent remote config check for ${await s3SyncManager.getS3Status()}`, options.verbose)
 
     // Use the auto-sync method which is designed to be silent
     const syncResult = await s3SyncManager.checkAutoSync()

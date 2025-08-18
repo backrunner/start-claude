@@ -24,7 +24,7 @@ export async function handleProxyMode(
 ): Promise<void> {
   // Check for S3 sync updates at startup
   const s3SyncManager = S3SyncManager.getInstance()
-  if (s3SyncManager.isS3Configured()) {
+  if (await s3SyncManager.isS3Configured()) {
     const updated = await s3SyncManager.checkRemoteUpdates()
     if (updated) {
       // Reload configs after potential update

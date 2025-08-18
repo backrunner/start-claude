@@ -241,7 +241,7 @@ async function handleS3ConfigLookup(
   s3SyncManager: S3SyncManager,
   configName: string,
 ): Promise<ClaudeConfig | undefined> {
-  if (!s3SyncManager.isS3Configured()) {
+  if (!(await s3SyncManager.isS3Configured())) {
     return undefined
   }
 
@@ -260,7 +260,7 @@ async function handleS3EmptyConfigDownload(
   configManager: ConfigManager,
   s3SyncManager: S3SyncManager,
 ): Promise<ClaudeConfig | undefined> {
-  if (!s3SyncManager.isS3Configured()) {
+  if (!(await s3SyncManager.isS3Configured())) {
     return undefined
   }
 
@@ -308,7 +308,7 @@ async function handleS3UpdateCheck(
   configManager: ConfigManager,
   s3SyncManager: S3SyncManager,
 ): Promise<ClaudeConfig | undefined> {
-  if (!s3SyncManager.isS3Configured()) {
+  if (!(await s3SyncManager.isS3Configured())) {
     return undefined
   }
 
@@ -542,7 +542,7 @@ async function createNewConfig(configManager: ConfigManager, s3SyncManager: S3Sy
   displaySuccess(`Configuration "${newConfig.name}" created successfully!`)
 
   // If S3 is configured, ask if user wants to sync the new config
-  if (s3SyncManager.isS3Configured()) {
+  if (await s3SyncManager.isS3Configured()) {
     const syncAnswer = await inquirer.prompt([
       {
         type: 'confirm',
