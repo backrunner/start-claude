@@ -38,7 +38,8 @@ export function detectConfigConflicts(
   const remoteConfigMap = new Map(remoteConfig.configs.map(c => [c.name.toLowerCase(), c]))
 
   // Check for conflicts in existing configs
-  for (const [name, localItem] of localConfigMap) {
+  Array.from(localConfigMap.keys()).forEach((name) => {
+    const localItem = localConfigMap.get(name)!
     const remoteItem = remoteConfigMap.get(name)
 
     if (remoteItem) {
@@ -116,10 +117,11 @@ export function detectConfigConflicts(
         })
       }
     }
-  }
+  })
 
   // Check for configs that exist only locally or remotely
-  for (const [name, localItem] of localConfigMap) {
+  Array.from(localConfigMap.keys()).forEach((name) => {
+    const localItem = localConfigMap.get(name)!
     if (!remoteConfigMap.has(name)) {
       conflicts.push({
         configName: localItem.name,
@@ -129,9 +131,10 @@ export function detectConfigConflicts(
         conflictType: 'existence',
       })
     }
-  }
+  })
 
-  for (const [name, remoteItem] of remoteConfigMap) {
+  Array.from(remoteConfigMap.keys()).forEach((name) => {
+    const remoteItem = remoteConfigMap.get(name)!
     if (!localConfigMap.has(name)) {
       conflicts.push({
         configName: remoteItem.name,
@@ -141,7 +144,7 @@ export function detectConfigConflicts(
         conflictType: 'existence',
       })
     }
-  }
+  })
 
   return conflicts
 }
@@ -388,6 +391,11 @@ function resolveFieldConflict(
       }
       return remoteValue
     }
+
+    case 'transformer':
+      // For transformer settings, prefer local user's choice
+      resolutionDetails.push(`Preserving local transformer setting: ${localValue}`)
+      return localValue
 
     default: {
       // For other fields, prefer remote (newer configuration)

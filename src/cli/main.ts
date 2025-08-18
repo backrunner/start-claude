@@ -20,7 +20,7 @@ import { handleProxyMode } from './proxy'
 const program = new Command()
 const configManager = ConfigManager.getInstance()
 const s3SyncManager = S3SyncManager.getInstance()
-const statusLineManager = new StatusLineManager()
+const statusLineManager = StatusLineManager.getInstance()
 
 // Initialize S3 sync for the config manager
 configManager.initializeS3Sync().catch(console.error)

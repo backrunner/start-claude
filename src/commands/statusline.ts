@@ -9,7 +9,7 @@ export async function handleStatusLineSetupCommand(options: { verbose?: boolean 
   displayWelcome()
 
   const configManager = ConfigManager.getInstance()
-  const statusLineManager = new StatusLineManager()
+  const statusLineManager = StatusLineManager.getInstance()
 
   try {
     displayInfo('🛠️ Setting up ccstatusline integration...')
@@ -61,7 +61,7 @@ export async function handleStatusLineDisableCommand(options: { verbose?: boolea
   displayWelcome()
 
   const configManager = ConfigManager.getInstance()
-  const statusLineManager = new StatusLineManager()
+  const statusLineManager = StatusLineManager.getInstance()
 
   try {
     displayInfo('🔧 Disabling statusline integration...')
@@ -91,7 +91,7 @@ export async function handleStatusLineStatusCommand(options: { verbose?: boolean
   displayWelcome()
 
   const configManager = ConfigManager.getInstance()
-  const statusLineManager = new StatusLineManager()
+  const statusLineManager = StatusLineManager.getInstance()
 
   try {
     const settings = configManager.getSettings()
