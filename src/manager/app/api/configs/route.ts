@@ -12,8 +12,7 @@ const configManager = ConfigManager.getInstance()
 
 function getConfigs(): ClaudeConfig[] {
   try {
-    const configFile = configManager.load()
-    return configFile.configs || []
+    return configManager.listConfigs()
   }
   catch (error) {
     console.error('Error reading configs:', error)
