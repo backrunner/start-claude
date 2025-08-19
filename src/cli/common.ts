@@ -100,7 +100,8 @@ export function buildClaudeArgs(options: ProgramOptions, config?: ClaudeConfig):
   if (options.print) {
     if (typeof options.print === 'string') {
       claudeArgs.push('--print', options.print)
-    } else {
+    }
+    else {
       claudeArgs.push('--print')
     }
   }
