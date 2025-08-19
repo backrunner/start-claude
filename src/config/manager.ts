@@ -21,12 +21,43 @@ export class ConfigManager {
   }
 
   async save(config: ConfigFile, skipSync = false): Promise<void> {
+    // Check if content has actually changed to avoid unnecessary syncs
+    if (!skipSync) {
+      const currentConfig = this.load()
+      const hasChanges = this.hasConfigChanges(currentConfig, config)
+
+      if (!hasChanges) {
+        // No changes detected, just save without sync
+        this.configFileManager.save(config)
+        return
+      }
+    }
+
     this.configFileManager.save(config)
 
     // Trigger S3 sync unless explicitly skipped
     if (!skipSync) {
       await this.triggerS3Sync()
     }
+  }
+
+  /**
+   * Compare two config files to detect meaningful changes
+   * Excludes version field and other auto-generated fields from comparison
+   */
+  private hasConfigChanges(current: ConfigFile, updated: ConfigFile): boolean {
+    // Create normalized copies for comparison (exclude auto-generated fields)
+    const normalizeConfig = (config: ConfigFile): Partial<ConfigFile> => ({
+      ...config,
+      // Exclude fields that don't represent user changes
+      version: undefined,
+    })
+
+    const currentNormalized = normalizeConfig(current)
+    const updatedNormalized = normalizeConfig(updated)
+
+    // Deep comparison of the config objects
+    return JSON.stringify(currentNormalized) !== JSON.stringify(updatedNormalized)
   }
 
   private async triggerS3Sync(): Promise<void> {
@@ -110,10 +141,10 @@ export class ConfigManager {
     return configFile.configs.filter(c => !c.isDeleted)
   }
 
-  async updateSettings(settings: Partial<ConfigFile['settings']>): Promise<void> {
+  async updateSettings(settings: Partial<ConfigFile['settings']>, skipSync = false): Promise<void> {
     const configFile = this.load()
     configFile.settings = { ...configFile.settings, ...settings }
-    await this.save(configFile)
+    await this.save(configFile, skipSync)
   }
 
   getSettings(): ConfigFile['settings'] {

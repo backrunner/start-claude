@@ -10,7 +10,6 @@ import { TransformerService } from '../services/transformer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/detection'
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/cli/ui'
-import { checkRemoteConfigUpdates } from '../utils/config/remote-config-check'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
 import { StatusLineManager } from '../utils/statusline/manager'
 import { startClaude } from './claude'
@@ -138,6 +137,18 @@ program
       }
     }
 
+    // Check for updates (rate limited to once per day, unless forced)
+    const updateInfo = await checkForUpdates(options.checkUpdates)
+
+    // Check for remote config updates (once per day, unless forced)
+    let remoteUpdateResult = false
+    if (await s3SyncManager.isS3Configured()) {
+      remoteUpdateResult = await s3SyncManager.checkAutoSync()
+      if (remoteUpdateResult) {
+        displayVerbose('✨ Remote configuration updated successfully')
+      }
+    }
+
     if (shouldUseProxy) {
       // Get fresh system settings if we haven't already
       if (!systemSettings) {
@@ -151,15 +162,6 @@ program
       await handleProxyMode(configManager, options, configArg, systemSettings, undefined, cliStrategy)
       return
     }
-
-    // Check for updates (rate limited to once per day, unless forced)
-    const updateInfo = await checkForUpdates(options.checkUpdates)
-
-    // Check for remote config updates (once per day, unless forced)
-    await checkRemoteConfigUpdates(s3SyncManager, {
-      verbose: options.verbose,
-      force: options.checkUpdates || options.forceConfigCheck,
-    })
 
     if (updateInfo?.hasUpdate) {
       displayWarning(`🔔 Update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}`)

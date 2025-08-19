@@ -2,7 +2,6 @@ import process from 'node:process'
 import { ManagerServer } from '../core/manager-server'
 import { S3SyncManager } from '../storage/s3-sync'
 import { displayError, displayWelcome } from '../utils/cli/ui'
-import { silentRemoteConfigCheck } from '../utils/config/remote-config-check'
 
 export async function handleManagerCommand(options: { port?: string }): Promise<void> {
   displayWelcome()
@@ -14,7 +13,9 @@ export async function handleManagerCommand(options: { port?: string }): Promise<
 
   // Check for remote config updates before starting manager
   const s3SyncManager = S3SyncManager.getInstance()
-  await silentRemoteConfigCheck(s3SyncManager, { verbose: false })
+  if (await s3SyncManager.isS3Configured()) {
+    await s3SyncManager.checkAutoSync()
+  }
 
   const port = options.port ? Number.parseInt(options.port) : 2334
   const managerServer = new ManagerServer(port)
