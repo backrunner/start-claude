@@ -167,7 +167,8 @@ export async function handleProxyMode(
                 displayInfo('🔧 Current transformer (manually specified):')
                 if (matchingTransformer.hasDomain) {
                   displayInfo(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
-                } else {
+                }
+                else {
                   displayInfo(`  - ${matchingTransformer.name}`)
                 }
               }

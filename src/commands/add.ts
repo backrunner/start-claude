@@ -24,7 +24,7 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
         configs.forEach(c => c.isDefault = false)
       }
 
-      configManager.addConfig(newConfig)
+      await configManager.addConfig(newConfig)
       displaySuccess(`Configuration "${newConfig.name}" added successfully!`)
     }
     return
@@ -139,10 +139,10 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
     isDefault: answers.isDefault,
   }
 
-  configManager.addConfig(config)
+  await configManager.addConfig(config)
 
   if (config.isDefault) {
-    configManager.setDefaultConfig(config.name)
+    await configManager.setDefaultConfig(config.name)
   }
 
   displaySuccess(`Configuration "${config.name}" added successfully!`)

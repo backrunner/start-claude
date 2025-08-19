@@ -35,7 +35,7 @@ export async function handleStatusLineSetupCommand(options: { verbose?: boolean 
 
     // Save to start-claude config
     displayInfo('💾 Saving statusline configuration to start-claude...')
-    configManager.updateSettings({
+    await configManager.updateSettings({
       statusLine: {
         enabled: true,
         config: ccstatuslineConfig,
@@ -67,7 +67,7 @@ export async function handleStatusLineDisableCommand(options: { verbose?: boolea
     displayInfo('🔧 Disabling statusline integration...')
 
     // Update start-claude config
-    configManager.updateSettings({
+    await configManager.updateSettings({
       statusLine: {
         enabled: false,
       },

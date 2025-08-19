@@ -533,10 +533,10 @@ async function createNewConfig(configManager: ConfigManager, s3SyncManager: S3Sy
     isDefault: answers.isDefault,
   }
 
-  configManager.addConfig(newConfig)
+  await configManager.addConfig(newConfig)
 
   if (newConfig.isDefault) {
-    configManager.setDefaultConfig(newConfig.name)
+    await configManager.setDefaultConfig(newConfig.name)
   }
 
   displaySuccess(`Configuration "${newConfig.name}" created successfully!`)
