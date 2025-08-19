@@ -6,10 +6,10 @@ import inquirer from 'inquirer'
 import { name, version } from '../../package.json'
 
 import { ConfigManager } from '../config/manager'
+import { TransformerService } from '../services/transformer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/detection'
 import { displayBoxedConfig, displayConfigList, displayError, displayInfo, displaySuccess, displayVerbose, displayWarning, displayWelcome } from '../utils/cli/ui'
-import { checkRemoteConfigUpdates } from '../utils/config/remote-config-check'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
 import { StatusLineManager } from '../utils/statusline/manager'
 import { startClaude } from './claude'
@@ -17,9 +17,12 @@ import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStra
 import { handleProxyMode } from './proxy'
 
 const program = new Command()
-const configManager = new ConfigManager()
-const s3SyncManager = new S3SyncManager()
-const statusLineManager = new StatusLineManager()
+const configManager = ConfigManager.getInstance()
+const s3SyncManager = S3SyncManager.getInstance()
+const statusLineManager = StatusLineManager.getInstance()
+
+// Initialize S3 sync for the config manager
+configManager.initializeS3Sync().catch(console.error)
 
 /**
  * Handle statusline sync on startup
@@ -71,7 +74,7 @@ program
   .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
   .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
   .option('--disallowedTools <tools>', 'Comma-separated list of disallowed tools', value => value.split(','))
-  .option('-p, --print', 'Print output to stdout')
+  .option('-p, --print [query]', 'Print output to stdout with optional query')
   .option('--output-format <format>', 'Output format')
   .option('--input-format <format>', 'Input format')
   .option('--verbose', 'Enable verbose output')
@@ -117,7 +120,7 @@ program
 
     if (!shouldUseProxy && options.balance !== false) {
       try {
-        systemSettings = s3SyncManager.getSystemSettings()
+        systemSettings = await s3SyncManager.getSystemSettings()
         shouldUseProxy = systemSettings?.balanceMode?.enableByDefault === true
       }
       catch {
@@ -128,9 +131,21 @@ program
     // If not yet using proxy, check if we need it for transformer-enabled configs
     if (!shouldUseProxy) {
       const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
-      if (config?.transformerEnabled === true) {
+      if (TransformerService.isTransformerEnabled(config?.transformerEnabled)) {
         shouldUseProxy = true
         displayInfo('🔧 Auto-enabling proxy mode for transformer-enabled configuration')
+      }
+    }
+
+    // Check for updates (rate limited to once per day, unless forced)
+    const updateInfo = await checkForUpdates(options.checkUpdates)
+
+    // Check for remote config updates (once per day, unless forced)
+    let remoteUpdateResult = false
+    if (await s3SyncManager.isS3Configured()) {
+      remoteUpdateResult = await s3SyncManager.checkAutoSync()
+      if (remoteUpdateResult) {
+        displayVerbose('✨ Remote configuration updated successfully')
       }
     }
 
@@ -138,7 +153,7 @@ program
       // Get fresh system settings if we haven't already
       if (!systemSettings) {
         try {
-          systemSettings = s3SyncManager.getSystemSettings()
+          systemSettings = await s3SyncManager.getSystemSettings()
         }
         catch {
           // Use null if we can't get settings
@@ -147,15 +162,6 @@ program
       await handleProxyMode(configManager, options, configArg, systemSettings, undefined, cliStrategy)
       return
     }
-
-    // Check for updates (rate limited to once per day, unless forced)
-    const updateInfo = await checkForUpdates(options.checkUpdates)
-
-    // Check for remote config updates (once per day, unless forced)
-    await checkRemoteConfigUpdates(s3SyncManager, {
-      verbose: options.verbose,
-      force: options.checkUpdates || options.forceConfigCheck,
-    })
 
     if (updateInfo?.hasUpdate) {
       displayWarning(`🔔 Update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}`)

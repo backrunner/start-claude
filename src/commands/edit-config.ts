@@ -21,7 +21,7 @@ export async function handleEditConfigCommand(): Promise<void> {
   displayInfo('Any changes you save will be automatically reloaded and synced.')
 
   // Initialize S3SyncManager for direct sync without triggering file watcher
-  const s3SyncManager = new S3SyncManager()
+  const s3SyncManager = S3SyncManager.getInstance()
 
   const onConfigReload = (config: any): void => {
     try {

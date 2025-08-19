@@ -18,8 +18,16 @@ export interface CCStatusLineConfig {
 }
 
 export class StatusLineManager {
+  private static instance: StatusLineManager
   private readonly CCSTATUSLINE_CONFIG_PATH = join(homedir(), '.config', 'ccstatusline', 'settings.json')
   private readonly CLAUDE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json')
+
+  static getInstance(): StatusLineManager {
+    if (!StatusLineManager.instance) {
+      StatusLineManager.instance = new StatusLineManager()
+    }
+    return StatusLineManager.instance
+  }
 
   /**
    * Run ccstatusline setup and monitor for completion

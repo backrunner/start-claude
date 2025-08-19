@@ -1,0 +1,833 @@
+import { v4 as uuidv4 } from 'uuid'
+
+/**
+ * Universal converter from OpenAI format to Anthropic format
+ * This handles both streaming and non-streaming responses
+ */
+
+interface OpenAIMessage {
+  role: string
+  content?: string
+  tool_calls?: Array<{
+    id: string
+    type: string
+    function: {
+      name: string
+      arguments: string
+    }
+    index?: number // Add index for streaming tool calls
+  }>
+  annotations?: Array<{
+    type: string
+    url_citation: {
+      url: string
+      title: string
+      content?: string
+      start_index?: number
+      end_index?: number
+    }
+  }>
+}
+
+interface OpenAIChoice {
+  message?: OpenAIMessage
+  delta?: Partial<OpenAIMessage> & {
+    thinking?: {
+      content?: string
+      signature?: string
+    }
+  }
+  finish_reason?: string
+  index?: number
+}
+
+interface OpenAIResponse {
+  id?: string
+  model?: string
+  choices: OpenAIChoice[]
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+  }
+}
+
+/**
+ * Convert OpenAI non-streaming response to Anthropic format
+ */
+export function convertOpenAIResponseToAnthropic(openaiResponse: OpenAIResponse): any {
+  try {
+    const choice = openaiResponse.choices[0]
+    if (!choice?.message) {
+      throw new Error('No choices found in OpenAI response')
+    }
+
+    const content: any[] = []
+
+    if (choice.message.annotations) {
+      const id = `srvtoolu_${uuidv4()}`
+      content.push({
+        type: 'server_tool_use',
+        id,
+        name: 'web_search',
+        input: {
+          query: '',
+        },
+      })
+      content.push({
+        type: 'web_search_tool_result',
+        tool_use_id: id,
+        content: choice.message.annotations.map(item => ({
+          type: 'web_search_result',
+          url: item.url_citation.url,
+          title: item.url_citation.title,
+        })),
+      })
+    }
+
+    if (choice.message.content) {
+      content.push({
+        type: 'text',
+        text: choice.message.content,
+      })
+    }
+
+    if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
+      choice.message.tool_calls.forEach((toolCall) => {
+        let parsedInput = {}
+        try {
+          const argumentsStr = toolCall.function.arguments || '{}'
+
+          if (typeof argumentsStr === 'object') {
+            parsedInput = argumentsStr
+          }
+          else if (typeof argumentsStr === 'string') {
+            parsedInput = JSON.parse(argumentsStr)
+          }
+        }
+        catch {
+          parsedInput = { text: toolCall.function.arguments || '' }
+        }
+
+        content.push({
+          type: 'tool_use',
+          id: toolCall.id,
+          name: toolCall.function.name,
+          input: parsedInput,
+        })
+      })
+    }
+
+    const result = {
+      id: openaiResponse.id,
+      type: 'message',
+      role: 'assistant',
+      model: openaiResponse.model,
+      content,
+      stop_reason:
+        choice.finish_reason === 'stop'
+          ? 'end_turn'
+          : choice.finish_reason === 'length'
+            ? 'max_tokens'
+            : choice.finish_reason === 'tool_calls'
+              ? 'tool_use'
+              : choice.finish_reason === 'content_filter'
+                ? 'stop_sequence'
+                : 'end_turn',
+      stop_sequence: null,
+      usage: {
+        input_tokens: openaiResponse.usage?.prompt_tokens || 0,
+        output_tokens: openaiResponse.usage?.completion_tokens || 0,
+      },
+    }
+
+    return result
+  }
+  catch {
+    throw new Error(`Provider error: ${JSON.stringify(openaiResponse)}`)
+  }
+}
+
+/**
+ * Convert OpenAI streaming response to Anthropic SSE format
+ */
+export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStream): Promise<ReadableStream> {
+  const readable = new ReadableStream({
+    start: async (controller) => {
+      const encoder = new TextEncoder()
+      const messageId = `msg_${Date.now()}`
+      let stopReasonMessageDelta: null | Record<string, any> = null
+      let model = 'unknown'
+      let hasStarted = false
+      let hasTextContentStarted = false
+      const toolCalls = new Map<number, any>()
+      const toolCallIndexToContentBlockIndex = new Map<number, number>()
+      let toolCallChunks = 0
+      let contentChunks = 0
+      let isClosed = false
+      let isThinkingStarted = false
+      let contentIndex = 0
+      let currentContentBlockIndex = -1 // Track the current content block index
+
+      const safeEnqueue = (data: Uint8Array): void => {
+        if (!isClosed) {
+          try {
+            controller.enqueue(data)
+            new TextDecoder().decode(data)
+          }
+          catch (error) {
+            if (
+              error instanceof TypeError
+              && error.message.includes('Controller is already closed')
+            ) {
+              isClosed = true
+            }
+            else {
+              throw error
+            }
+          }
+        }
+      }
+
+      const safeClose = (): void => {
+        if (!isClosed) {
+          try {
+            // Close any remaining open content block
+            if (currentContentBlockIndex >= 0) {
+              const contentBlockStop = {
+                type: 'content_block_stop',
+                index: currentContentBlockIndex,
+              }
+              safeEnqueue(
+                encoder.encode(
+                  `event: content_block_stop\ndata: ${JSON.stringify(
+                    contentBlockStop,
+                  )}\n\n`,
+                ),
+              )
+              currentContentBlockIndex = -1
+            }
+
+            if (stopReasonMessageDelta) {
+              safeEnqueue(
+                encoder.encode(
+                  `event: message_delta\ndata: ${JSON.stringify(
+                    stopReasonMessageDelta,
+                  )}\n\n`,
+                ),
+              )
+              stopReasonMessageDelta = null
+            }
+            else {
+              safeEnqueue(
+                encoder.encode(
+                  `event: message_delta\ndata: ${JSON.stringify({
+                    type: 'message_delta',
+                    delta: {
+                      stop_reason: 'end_turn',
+                      stop_sequence: null,
+                    },
+                    usage: {
+                      input_tokens: 0,
+                      output_tokens: 0,
+                      cache_read_input_tokens: 0,
+                    },
+                  })}\n\n`,
+                ),
+              )
+            }
+            const messageStop = {
+              type: 'message_stop',
+            }
+            safeEnqueue(
+              encoder.encode(
+                `event: message_stop\ndata: ${JSON.stringify(
+                  messageStop,
+                )}\n\n`,
+              ),
+            )
+            controller.close()
+            isClosed = true
+          }
+          catch (error) {
+            if (
+              error instanceof TypeError
+              && error.message.includes('Controller is already closed')
+            ) {
+              isClosed = true
+            }
+            else {
+              throw error
+            }
+          }
+        }
+      }
+
+      let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+
+      try {
+        reader = openaiStream.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          if (isClosed)
+            break
+
+          const { done, value } = await reader.read()
+          if (done)
+            break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (isClosed)
+              break
+
+            if (!line.startsWith('data: '))
+              continue
+            const data = line.slice(6)
+
+            if (data === '[DONE]')
+              continue
+
+            try {
+              const chunk = JSON.parse(data)
+
+              if (chunk.error) {
+                const errorMessage = {
+                  type: 'error',
+                  message: {
+                    type: 'api_error',
+                    message: JSON.stringify(chunk.error),
+                  },
+                }
+                safeEnqueue(encoder.encode(`event: error\ndata: ${JSON.stringify(errorMessage)}\n\n`))
+                continue
+              }
+
+              model = chunk.model || model
+
+              if (!hasStarted && !isClosed) {
+                hasStarted = true
+
+                const messageStart = {
+                  type: 'message_start',
+                  message: {
+                    id: messageId,
+                    type: 'message',
+                    role: 'assistant',
+                    content: [],
+                    model,
+                    stop_reason: null,
+                    stop_sequence: null,
+                    usage: {
+                      input_tokens: 0,
+                      output_tokens: 0,
+                    },
+                  },
+                }
+
+                safeEnqueue(
+                  encoder.encode(
+                    `event: message_start\ndata: ${JSON.stringify(
+                      messageStart,
+                    )}\n\n`,
+                  ),
+                )
+              }
+
+              const choice = chunk.choices?.[0]
+              if (chunk.usage) {
+                if (!stopReasonMessageDelta) {
+                  stopReasonMessageDelta = {
+                    type: 'message_delta',
+                    delta: {
+                      stop_reason: 'end_turn',
+                      stop_sequence: null,
+                    },
+                    usage: {
+                      input_tokens: chunk.usage?.prompt_tokens || 0,
+                      output_tokens: chunk.usage?.completion_tokens || 0,
+                      cache_read_input_tokens:
+                        chunk.usage?.cache_read_input_tokens || 0,
+                    },
+                  }
+                }
+                else {
+                  stopReasonMessageDelta.usage = {
+                    input_tokens: chunk.usage?.prompt_tokens || 0,
+                    output_tokens: chunk.usage?.completion_tokens || 0,
+                    cache_read_input_tokens:
+                      chunk.usage?.cache_read_input_tokens || 0,
+                  }
+                }
+              }
+              if (!choice)
+                continue
+
+              if (choice?.delta?.thinking && !isClosed) {
+                // Close any previous content block if open
+                if (currentContentBlockIndex >= 0) {
+                  const contentBlockStop = {
+                    type: 'content_block_stop',
+                    index: currentContentBlockIndex,
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_stop\ndata: ${JSON.stringify(
+                        contentBlockStop,
+                      )}\n\n`,
+                    ),
+                  )
+                  currentContentBlockIndex = -1
+                }
+
+                if (!isThinkingStarted) {
+                  const contentBlockStart = {
+                    type: 'content_block_start',
+                    index: contentIndex,
+                    content_block: { type: 'thinking', thinking: '' },
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_start\ndata: ${JSON.stringify(
+                        contentBlockStart,
+                      )}\n\n`,
+                    ),
+                  )
+                  currentContentBlockIndex = contentIndex
+                  isThinkingStarted = true
+                }
+                if (choice.delta.thinking.signature) {
+                  const thinkingSignature = {
+                    type: 'content_block_delta',
+                    index: contentIndex,
+                    delta: {
+                      type: 'signature_delta',
+                      signature: choice.delta.thinking.signature,
+                    },
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_delta\ndata: ${JSON.stringify(
+                        thinkingSignature,
+                      )}\n\n`,
+                    ),
+                  )
+                  const contentBlockStop = {
+                    type: 'content_block_stop',
+                    index: contentIndex,
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_stop\ndata: ${JSON.stringify(
+                        contentBlockStop,
+                      )}\n\n`,
+                    ),
+                  )
+                  currentContentBlockIndex = -1
+                  contentIndex++
+                }
+                else if (choice.delta.thinking.content) {
+                  const thinkingChunk = {
+                    type: 'content_block_delta',
+                    index: contentIndex,
+                    delta: {
+                      type: 'thinking_delta',
+                      thinking: choice.delta.thinking.content || '',
+                    },
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_delta\ndata: ${JSON.stringify(
+                        thinkingChunk,
+                      )}\n\n`,
+                    ),
+                  )
+                }
+              }
+
+              if (choice?.delta?.content && !isClosed) {
+                contentChunks++
+                // Close any previous content block if open and it's not a text content block
+                if (currentContentBlockIndex >= 0) {
+                  // Check if current content block is text type
+                  const isCurrentTextBlock = hasTextContentStarted
+                  if (!isCurrentTextBlock) {
+                    const contentBlockStop = {
+                      type: 'content_block_stop',
+                      index: currentContentBlockIndex,
+                    }
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_stop\ndata: ${JSON.stringify(
+                          contentBlockStop,
+                        )}\n\n`,
+                      ),
+                    )
+                    currentContentBlockIndex = -1
+                  }
+                }
+
+                if (!hasTextContentStarted) {
+                  hasTextContentStarted = true
+                  const contentBlockStart = {
+                    type: 'content_block_start',
+                    index: contentIndex,
+                    content_block: {
+                      type: 'text',
+                      text: '',
+                    },
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_start\ndata: ${JSON.stringify(
+                        contentBlockStart,
+                      )}\n\n`,
+                    ),
+                  )
+                  currentContentBlockIndex = contentIndex
+                }
+
+                if (!isClosed) {
+                  const anthropicChunk = {
+                    type: 'content_block_delta',
+                    index: currentContentBlockIndex, // Use current content block index
+                    delta: {
+                      type: 'text_delta',
+                      text: choice.delta.content,
+                    },
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_delta\ndata: ${JSON.stringify(
+                        anthropicChunk,
+                      )}\n\n`,
+                    ),
+                  )
+                }
+              }
+
+              if (
+                choice?.delta?.annotations?.length
+                && !isClosed
+              ) {
+                // Close text content block if open
+                if (currentContentBlockIndex >= 0 && hasTextContentStarted) {
+                  const contentBlockStop = {
+                    type: 'content_block_stop',
+                    index: currentContentBlockIndex,
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_stop\ndata: ${JSON.stringify(
+                        contentBlockStop,
+                      )}\n\n`,
+                    ),
+                  )
+                  currentContentBlockIndex = -1
+                  hasTextContentStarted = false
+                }
+
+                choice?.delta?.annotations.forEach((annotation: any) => {
+                  contentIndex++
+                  const contentBlockStart = {
+                    type: 'content_block_start',
+                    index: contentIndex,
+                    content_block: {
+                      type: 'web_search_tool_result',
+                      tool_use_id: `srvtoolu_${uuidv4()}`,
+                      content: [
+                        {
+                          type: 'web_search_result',
+                          title: annotation.url_citation.title,
+                          url: annotation.url_citation.url,
+                        },
+                      ],
+                    },
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_start\ndata: ${JSON.stringify(
+                        contentBlockStart,
+                      )}\n\n`,
+                    ),
+                  )
+
+                  const contentBlockStop = {
+                    type: 'content_block_stop',
+                    index: contentIndex,
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_stop\ndata: ${JSON.stringify(
+                        contentBlockStop,
+                      )}\n\n`,
+                    ),
+                  )
+                  currentContentBlockIndex = -1
+                })
+              }
+
+              // Handle tool calls
+              if (choice?.delta?.tool_calls && !isClosed) {
+                toolCallChunks++
+                const processedInThisChunk = new Set<number>()
+
+                for (const toolCall of choice.delta.tool_calls) {
+                  if (isClosed)
+                    break
+                  const toolCallIndex = toolCall.index ?? 0
+                  if (processedInThisChunk.has(toolCallIndex))
+                    continue
+                  processedInThisChunk.add(toolCallIndex)
+
+                  const isUnknownIndex = !toolCallIndexToContentBlockIndex.has(toolCallIndex)
+
+                  if (isUnknownIndex) {
+                    // Close any previous content block if open
+                    if (currentContentBlockIndex >= 0) {
+                      const contentBlockStop = {
+                        type: 'content_block_stop',
+                        index: currentContentBlockIndex,
+                      }
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_stop\ndata: ${JSON.stringify(
+                            contentBlockStop,
+                          )}\n\n`,
+                        ),
+                      )
+                      currentContentBlockIndex = -1
+                    }
+
+                    const newContentBlockIndex = contentIndex
+                    toolCallIndexToContentBlockIndex.set(
+                      toolCallIndex,
+                      newContentBlockIndex,
+                    )
+                    contentIndex++ // Increment contentIndex after setting the mapping
+                    const toolCallId
+                      = toolCall.id || `call_${Date.now()}_${toolCallIndex}`
+                    const toolCallName
+                      = toolCall.function?.name || `tool_${toolCallIndex}`
+                    const contentBlockStart = {
+                      type: 'content_block_start',
+                      index: newContentBlockIndex,
+                      content_block: {
+                        type: 'tool_use',
+                        id: toolCallId,
+                        name: toolCallName,
+                        input: {},
+                      },
+                    }
+
+                    safeEnqueue(
+                      encoder.encode(
+                        `event: content_block_start\ndata: ${JSON.stringify(
+                          contentBlockStart,
+                        )}\n\n`,
+                      ),
+                    )
+                    currentContentBlockIndex = newContentBlockIndex
+
+                    const toolCallInfo = {
+                      id: toolCallId,
+                      name: toolCallName,
+                      arguments: '',
+                      contentBlockIndex: newContentBlockIndex,
+                    }
+                    toolCalls.set(toolCallIndex, toolCallInfo)
+                  }
+                  else if (toolCall.id && toolCall.function?.name) {
+                    const existingToolCall = toolCalls.get(toolCallIndex)!
+                    const wasTemporary
+                      = existingToolCall.id.startsWith('call_')
+                        && existingToolCall.name.startsWith('tool_')
+
+                    if (wasTemporary) {
+                      existingToolCall.id = toolCall.id
+                      existingToolCall.name = toolCall.function.name
+                    }
+                  }
+
+                  if (
+                    toolCall.function?.arguments
+                    && !isClosed
+                  ) {
+                    const blockIndex
+                      = toolCallIndexToContentBlockIndex.get(toolCallIndex)
+                    if (blockIndex === undefined)
+                      continue
+                    const currentToolCall = toolCalls.get(toolCallIndex)
+                    if (currentToolCall) {
+                      currentToolCall.arguments
+                        += toolCall.function.arguments
+                    }
+
+                    try {
+                      const anthropicChunk = {
+                        type: 'content_block_delta',
+                        index: blockIndex, // Use the correct content block index
+                        delta: {
+                          type: 'input_json_delta',
+                          partial_json: toolCall.function.arguments,
+                        },
+                      }
+                      safeEnqueue(
+                        encoder.encode(
+                          `event: content_block_delta\ndata: ${JSON.stringify(
+                            anthropicChunk,
+                          )}\n\n`,
+                        ),
+                      )
+                    }
+                    catch {
+                      try {
+                        const fixedArgument = toolCall.function.arguments
+                          // eslint-disable-next-line no-control-regex
+                          .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+                          .replace(/\\/g, '\\\\')
+                          .replace(/"/g, '\\"')
+
+                        const fixedChunk = {
+                          type: 'content_block_delta',
+                          index: blockIndex, // Use the correct content block index
+                          delta: {
+                            type: 'input_json_delta',
+                            partial_json: fixedArgument,
+                          },
+                        }
+                        safeEnqueue(
+                          encoder.encode(
+                            `event: content_block_delta\ndata: ${JSON.stringify(
+                              fixedChunk,
+                            )}\n\n`,
+                          ),
+                        )
+                      }
+                      catch (fixError) {
+                        console.error(fixError)
+                      }
+                    }
+                  }
+                }
+              }
+
+              // Handle finish reason
+              if (choice?.finish_reason && !isClosed) {
+                if (contentChunks === 0 && toolCallChunks === 0) {
+                  console.error(
+                    'Warning: No content in the stream response!',
+                  )
+                }
+
+                // Close any remaining open content block
+                if (currentContentBlockIndex >= 0) {
+                  const contentBlockStop = {
+                    type: 'content_block_stop',
+                    index: currentContentBlockIndex,
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_stop\ndata: ${JSON.stringify(
+                        contentBlockStop,
+                      )}\n\n`,
+                    ),
+                  )
+                  currentContentBlockIndex = -1
+                }
+
+                if (!isClosed) {
+                  const stopReasonMapping: Record<string, string> = {
+                    stop: 'end_turn',
+                    length: 'max_tokens',
+                    tool_calls: 'tool_use',
+                    content_filter: 'stop_sequence',
+                  }
+
+                  const anthropicStopReason
+                    = stopReasonMapping[choice.finish_reason] || 'end_turn'
+
+                  stopReasonMessageDelta = {
+                    type: 'message_delta',
+                    delta: {
+                      stop_reason: anthropicStopReason,
+                      stop_sequence: null,
+                    },
+                    usage: {
+                      input_tokens: chunk.usage?.prompt_tokens || 0,
+                      output_tokens: chunk.usage?.completion_tokens || 0,
+                      cache_read_input_tokens:
+                        chunk.usage?.cache_read_input_tokens || 0,
+                    },
+                  }
+                }
+
+                break
+              }
+            }
+            catch {
+              // Skip malformed chunks
+              continue
+            }
+          }
+        }
+        safeClose()
+      }
+      catch (error) {
+        if (!isClosed) {
+          try {
+            controller.error(error)
+          }
+          catch {
+            // Ignore controller error if already closed
+          }
+        }
+      }
+      finally {
+        if (reader) {
+          try {
+            reader.releaseLock()
+          }
+          catch {
+            // Ignore release error
+          }
+        }
+      }
+    },
+    cancel: () => {
+      // Handle cancellation
+    },
+  })
+
+  return readable
+}
+
+/**
+ * Check if response content is in OpenAI format (needs conversion to Anthropic)
+ */
+export function isOpenAIFormat(responseBody: string): boolean {
+  try {
+    const parsed = JSON.parse(responseBody)
+    // Check for OpenAI-specific structure
+    return !!(parsed.choices && Array.isArray(parsed.choices)
+      && (parsed.object === 'chat.completion' || parsed.object === 'chat.completion.chunk'))
+  }
+  catch {
+    return false
+  }
+}
+
+/**
+ * Check if streaming response is in OpenAI SSE format
+ */
+export function isOpenAIStreamFormat(responseBody: string): boolean {
+  // Check if it contains OpenAI-style SSE chunks
+  return responseBody.includes('"object":"chat.completion.chunk"')
+    || responseBody.includes('"choices":[{')
+    || responseBody.includes('"delta":{')
+}

@@ -5,7 +5,7 @@ import { displayError, displayInfo, displayVerbose, displayWelcome } from '../ut
 export async function handleS3SetupCommand(options: { verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
-  const s3SyncManager = new S3SyncManager()
+  const s3SyncManager = S3SyncManager.getInstance()
 
   interface S3SetupAnswers {
     serviceType: 's3' | 'r2' | 'b2' | 'custom'
@@ -122,8 +122,8 @@ export async function handleS3SetupCommand(options: { verbose?: boolean } = {}):
 export async function handleS3SyncCommand(options: { verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
-  const s3SyncManager = new S3SyncManager()
-  if (!s3SyncManager.isS3Configured()) {
+  const s3SyncManager = S3SyncManager.getInstance()
+  if (!(await s3SyncManager.isS3Configured())) {
     displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
     return
   }
@@ -134,8 +134,8 @@ export async function handleS3SyncCommand(options: { verbose?: boolean } = {}): 
 export async function handleS3UploadCommand(options: { force?: boolean, verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
-  const s3SyncManager = new S3SyncManager()
-  if (!s3SyncManager.isS3Configured()) {
+  const s3SyncManager = S3SyncManager.getInstance()
+  if (!(await s3SyncManager.isS3Configured())) {
     displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
     return
   }
@@ -147,9 +147,9 @@ export async function handleS3UploadCommand(options: { force?: boolean, verbose?
 export async function handleS3DownloadCommand(options: { force?: boolean, verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
-  const s3SyncManager = new S3SyncManager()
+  const s3SyncManager = S3SyncManager.getInstance()
 
-  if (!s3SyncManager.isS3Configured()) {
+  if (!(await s3SyncManager.isS3Configured())) {
     displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
     return
   }
@@ -160,12 +160,12 @@ export async function handleS3DownloadCommand(options: { force?: boolean, verbos
 
 export async function handleS3StatusCommand(options: { verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
-  const s3SyncManager = new S3SyncManager()
-  displayInfo(`S3 Sync Status: ${s3SyncManager.getS3Status()}`)
+  const s3SyncManager = S3SyncManager.getInstance()
+  displayInfo(`S3 Sync Status: ${await s3SyncManager.getS3Status()}`)
 
   if (options.verbose) {
     // Additional verbose status information could be added here
-    const settings = s3SyncManager.getSystemSettings()
+    const settings = await s3SyncManager.getSystemSettings()
     if (settings.s3Sync) {
       displayVerbose(`S3 Configuration Details:`, options.verbose)
       displayVerbose(`  Bucket: ${settings.s3Sync.bucket}`, options.verbose)

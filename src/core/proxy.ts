@@ -11,8 +11,7 @@ import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
 import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/cli/ui'
 import { fileLogger } from '../utils/logging/file-logger'
-import { convertOpenAIResponseToAnthropic, isOpenAIFormat } from '../utils/network/openai-to-anthropic'
-import { handleStreamingResponse } from '../utils/network/sse'
+import { convertOpenAIResponseToAnthropic, convertOpenAIStreamToAnthropic, isOpenAIFormat } from '../utils/transformer/openai-to-anthropic'
 
 const log = console.log
 
@@ -121,18 +120,13 @@ export class ProxyServer {
     if (this.enableLoadBalance) {
       // Include configs that either have API credentials OR transformer enabled
       // Note: transformer-enabled configs MUST have real external API credentials
-      console.log('configs', configs)
       const validConfigs = configs.filter((c) => {
         const hasApiCredentials = c.baseUrl && c.apiKey
-        const hasTransformerEnabled = 'transformerEnabled' in c && c.transformerEnabled === true
+        const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabled(c.transformerEnabled)
 
         if (hasTransformerEnabled && !hasApiCredentials) {
-          throw new Error(`Configuration "${c.name}" has transformerEnabled=true but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
+          throw new Error(`Configuration "${c.name}" has transformerEnabled but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
         }
-
-        console.log('c', c)
-        console.log('hasApiCredentials', hasApiCredentials)
-        console.log('hasTransformerEnabled', hasTransformerEnabled)
 
         return hasApiCredentials || hasTransformerEnabled
       })
@@ -165,11 +159,11 @@ export class ProxyServer {
       if (this.enableTransform) {
         // Filter for transformer-enabled configs - they MUST have real API credentials
         const transformerConfigs = configs.filter((c) => {
-          const hasTransformerEnabled = 'transformerEnabled' in c && c.transformerEnabled === true
+          const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabled(c.transformerEnabled)
           const hasApiCredentials = c.baseUrl && c.apiKey
 
           if (hasTransformerEnabled && !hasApiCredentials) {
-            throw new Error(`Configuration "${c.name}" has transformerEnabled=true but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
+            throw new Error(`Configuration "${c.name}" has transformerEnabled but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
           }
 
           return hasTransformerEnabled
@@ -188,7 +182,7 @@ export class ProxyServer {
           }))
         }
         else {
-          throw new Error('No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled: true.')
+          throw new Error('No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled enabled.')
         }
       }
       else {
@@ -205,12 +199,8 @@ export class ProxyServer {
     headers: any,
     res: http.ServerResponse,
   ): Promise<string | null> {
-    // First check if this is a streaming response and handle it
-    const streamingResult = await handleStreamingResponse(responseBody, statusCode, headers, res)
-    if (streamingResult === null) {
-      // SSE response was already sent
-      return null
-    }
+    // This method is only for non-streaming responses
+    // Streaming responses are handled directly in handleDirectStreamConversion
 
     try {
       // Check if this is OpenAI format that needs conversion to Anthropic
@@ -383,7 +373,7 @@ export class ProxyServer {
       else if (this.enableTransform) {
         // Transformer-only mode - use the first transformer-enabled endpoint
         const transformerEndpoint = this.endpoints.find(e =>
-          'transformerEnabled' in e.config && e.config.transformerEnabled === true,
+          'transformerEnabled' in e.config && TransformerService.isTransformerEnabled(e.config.transformerEnabled),
         )
 
         if (!transformerEndpoint) {
@@ -648,30 +638,165 @@ export class ProxyServer {
       transformerName?: string
       provider?: any
       targetUrl?: URL
+      clientExpectsStream?: boolean
     } = {},
   ): Promise<void> {
     const initialResponseHeaders = this.prepareResponseHeaders(proxyRes.headers)
+
+    // Record first token timing immediately when data starts flowing
+    if (requestTiming) {
+      proxyRes.once('data', () => {
+        this.recordFirstToken(requestTiming)
+        // Record response time for Speed First strategy
+        if (requestTiming.duration !== undefined) {
+          this.recordResponseTime(endpoint, requestTiming.duration)
+        }
+      })
+    }
+
+    // Check if this is a streaming response that needs conversion
+    const isSSE = this.isStreamingResponse(proxyRes.headers)
+
+    if (isSSE && context.isTransformer) {
+      // Handle streaming conversion directly
+      await this.handleDirectStreamConversion(proxyRes, res, initialResponseHeaders, context)
+    }
+    else {
+      // Handle non-streaming responses or regular proxy
+      await this.handleBufferedResponse(proxyRes, res, initialResponseHeaders, context, endpoint)
+    }
+
+    // Mark endpoint health based on status code
+    if (proxyRes.statusCode && proxyRes.statusCode < 500) {
+      this.markEndpointHealthy(endpoint)
+    }
+    else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
+      this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
+    }
+  }
+
+  private isStreamingResponse(headers: http.IncomingHttpHeaders): boolean {
+    const contentType = headers['content-type'] || headers['Content-Type'] || ''
+    return contentType.includes('text/event-stream')
+  }
+
+  private async handleDirectStreamConversion(
+    proxyRes: http.IncomingMessage,
+    res: http.ServerResponse,
+    headers: any,
+    context: {
+      transformer?: any
+      transformerName?: string
+      provider?: any
+    },
+  ): Promise<void> {
+    try {
+      // Create a ReadableStream directly from the incoming response
+      const incomingStream = new ReadableStream({
+        start(controller) {
+          proxyRes.on('data', (chunk) => {
+            controller.enqueue(new Uint8Array(chunk))
+          })
+
+          proxyRes.on('end', () => {
+            controller.close()
+          })
+
+          proxyRes.on('error', (error) => {
+            controller.error(error)
+          })
+        },
+      })
+
+      // Convert the stream using the transformer
+      const convertedStream = await convertOpenAIStreamToAnthropic(incomingStream)
+
+      // Set SSE headers
+      if (!res.headersSent) {
+        const finalHeaders = {
+          ...headers,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        }
+        res.writeHead(proxyRes.statusCode || 200, finalHeaders)
+      }
+
+      // Stream the converted response directly to the client
+      const reader = convertedStream.getReader()
+      const decoder = new TextDecoder()
+
+      try {
+        let chunkCount = 0
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done)
+            break
+
+          chunkCount++
+          res.write(decoder.decode(value))
+
+          if (this.debug && chunkCount <= 5) { // Log first few chunks
+            fileLogger.debug('STREAMING_CHUNK', `Streaming chunk ${chunkCount}`, {
+              transformerName: context.transformerName,
+              chunkSize: value.length,
+              content: decoder.decode(value).substring(0, 200),
+            })
+          }
+        }
+
+        if (this.debug) {
+          fileLogger.info('STREAMING_COMPLETE', 'Direct stream conversion completed', {
+            transformerName: context.transformerName,
+            totalChunks: chunkCount,
+          })
+        }
+      }
+      finally {
+        reader.releaseLock()
+        res.end()
+      }
+    }
+    catch (error) {
+      if (this.debug) {
+        fileLogger.error('DIRECT_STREAM_ERROR', 'Direct streaming conversion failed', {
+          transformerName: context.transformerName,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+
+      // Fallback to buffered response handling
+      await this.handleBufferedResponse(proxyRes, res, headers, context, null)
+    }
+  }
+
+  private async handleBufferedResponse(
+    proxyRes: http.IncomingMessage,
+    res: http.ServerResponse,
+    headers: any,
+    context: {
+      isTransformer?: boolean
+      transformer?: any
+      transformerName?: string
+      provider?: any
+      targetUrl?: URL
+      clientExpectsStream?: boolean
+    },
+    endpoint: EndpointStatus | null,
+  ): Promise<void> {
     let rawResponseBody = ''
     const passThrough = new PassThrough()
 
     // Collect response data
     passThrough.on('data', (chunk) => {
-      if (requestTiming) {
-        this.recordFirstToken(requestTiming)
-      }
       rawResponseBody += chunk.toString()
     })
 
     passThrough.on('end', () => {
       void (async () => {
         try {
-          // Record response time for Speed First strategy
-          if (requestTiming && requestTiming.duration !== undefined) {
-            this.recordResponseTime(endpoint, requestTiming.duration)
-          }
-
           let finalResponseBody = rawResponseBody
-          let finalResponseHeaders = { ...initialResponseHeaders }
+          let finalResponseHeaders = { ...headers }
 
           // Apply transformer formatResponse if available
           if (context.isTransformer && context.transformer?.formatResponse) {
@@ -714,7 +839,7 @@ export class ProxyServer {
             }
           }
 
-          // Apply universal response formatting
+          // Apply universal response formatting for non-streaming responses only
           const formattedFinalResponseBody = await this.formatUniversalResponse(
             finalResponseBody,
             proxyRes.statusCode || 200,
@@ -722,13 +847,18 @@ export class ProxyServer {
             res,
           )
 
-          // For streaming responses, formatUniversalResponse handles everything
+          // formatUniversalResponse always returns a formatted body for non-streaming responses
           if (formattedFinalResponseBody === null) {
+            // This shouldn't happen since we removed streaming handling from formatUniversalResponse
+            fileLogger.error('RESPONSE_FORMAT_ERROR', 'Unexpected null response from formatUniversalResponse', {
+              statusCode: proxyRes.statusCode || 200,
+              bodySize: finalResponseBody.length,
+            })
             return
           }
 
           // Log response if debug enabled
-          if (this.debug) {
+          if (this.debug && endpoint) {
             const logType = context.isTransformer ? 'EXTERNAL_API_RESPONSE' : 'REGULAR_API_RESPONSE'
             const logMessage = context.isTransformer ? 'Raw response from external API' : 'Raw response from external API (direct proxy)'
 
@@ -741,6 +871,35 @@ export class ProxyServer {
               body: rawResponseBody,
               formattedBody: formattedFinalResponseBody,
             })
+          }
+
+          // Handle case where client expects streaming but got regular response
+          if (context.clientExpectsStream && formattedFinalResponseBody) {
+            // Convert regular response to SSE format for streaming clients
+            const sseHeaders = {
+              ...finalResponseHeaders,
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            }
+
+            if (!res.headersSent) {
+              res.writeHead(proxyRes.statusCode || 200, sseHeaders)
+            }
+
+            // Send as SSE data event
+            res.write(`data: ${formattedFinalResponseBody}\n\n`)
+            res.write(`data: [DONE]\n\n`)
+            res.end()
+
+            if (this.debug) {
+              fileLogger.info('STREAM_CONVERSION', 'Converted regular response to SSE format for streaming client', {
+                ...(context.transformerName ? { transformerName: context.transformerName } : {}),
+                statusCode: proxyRes.statusCode || 200,
+                bodySize: formattedFinalResponseBody.length,
+              })
+            }
+            return
           }
 
           // Send headers and response
@@ -761,12 +920,12 @@ export class ProxyServer {
           const formattedFallbackResponse = await this.formatUniversalResponse(
             rawResponseBody,
             proxyRes.statusCode || 200,
-            initialResponseHeaders,
+            headers,
             res,
           )
 
           if (!res.headersSent) {
-            res.writeHead(proxyRes.statusCode || 200, initialResponseHeaders)
+            res.writeHead(proxyRes.statusCode || 200, headers)
           }
           res.end(formattedFallbackResponse)
         }
@@ -775,14 +934,6 @@ export class ProxyServer {
 
     // Pipe the response through our processing stream
     proxyRes.pipe(passThrough)
-
-    // Mark endpoint health based on status code
-    if (proxyRes.statusCode && proxyRes.statusCode < 500) {
-      this.markEndpointHealthy(endpoint)
-    }
-    else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
-      this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
-    }
   }
 
   private async proxyRequest(
@@ -835,9 +986,9 @@ export class ProxyServer {
           }
 
           // Check if this endpoint has transformer enabled and we have transformer service
-          if (this.enableTransform && 'transformerEnabled' in endpoint.config && endpoint.config.transformerEnabled) {
+          if (this.enableTransform && 'transformerEnabled' in endpoint.config && TransformerService.isTransformerEnabled(endpoint.config.transformerEnabled)) {
             displayVerbose(`Checking for transformer for endpoint: ${endpoint.config.baseUrl}`, this.verbose)
-            const transformer = this.transformerService.findTransformerByDomain(endpoint.config.baseUrl)
+            const transformer = this.transformerService.findTransformerByDomain(endpoint.config.baseUrl, endpoint.config.transformerEnabled, endpoint.config.transformer)
 
             if (transformer) {
               // Find the transformer name for logging
@@ -946,6 +1097,7 @@ export class ProxyServer {
                   transformerName,
                   provider,
                   targetUrl,
+                  clientExpectsStream: Boolean(requestData.stream),
                 })
               })
 
@@ -1047,7 +1199,7 @@ export class ProxyServer {
             const nextEndpoint = this.getNextHealthyEndpoint()
             if (nextEndpoint && nextEndpoint !== endpoint) {
               displayVerbose(`Retrying with next endpoint: ${nextEndpoint.config.name}`, this.verbose)
-              void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, nextEndpoint)
+              void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, nextEndpoint, Boolean(requestData.stream))
               return
             }
 
@@ -1094,6 +1246,7 @@ export class ProxyServer {
             void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
               isTransformer: false,
               targetUrl,
+              clientExpectsStream: Boolean(requestData.stream),
             })
           })
 
@@ -1115,7 +1268,7 @@ export class ProxyServer {
               const retryEndpoint = this.getNextHealthyEndpoint()
               if (retryEndpoint && retryEndpoint !== endpoint) {
                 // Create a new proxy request with the same data
-                void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, retryEndpoint)
+                void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, retryEndpoint, Boolean(requestData.stream))
                 return
               }
 
@@ -1188,7 +1341,7 @@ export class ProxyServer {
               endpointUrl: endpoint.config.baseUrl,
               method: req.method || 'UNKNOWN',
               url: req.url || '/',
-              hasTransformer: this.enableTransform && 'transformerEnabled' in endpoint.config && endpoint.config.transformerEnabled,
+              hasTransformer: this.enableTransform && 'transformerEnabled' in endpoint.config && TransformerService.isTransformerEnabled(endpoint.config.transformerEnabled),
             })
           }
 
@@ -1226,6 +1379,7 @@ export class ProxyServer {
     body: Buffer,
     res: http.ServerResponse,
     endpoint: EndpointStatus,
+    clientExpectsStream?: boolean,
   ): Promise<void> {
     const targetUrl = new URL(url, endpoint.config.baseUrl)
 
@@ -1258,6 +1412,7 @@ export class ProxyServer {
       void this.processResponseStream(proxyRes, res, endpoint, null, {
         isTransformer: false,
         targetUrl,
+        clientExpectsStream: Boolean(clientExpectsStream),
       })
     })
 

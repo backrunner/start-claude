@@ -2,6 +2,7 @@ import type { LLMChatRequest, LLMProvider } from '../types/llm'
 import type { Transformer, TransformerOptions } from '../types/transformer'
 import { v4 as uuidv4 } from 'uuid'
 import { createTransformerUrl } from '../utils/network/transformer-url'
+import { buildOpenAIRequestBody, convertAnthropicToOpenAI } from '../utils/transformer/anthropic-to-openai'
 
 export class OpenrouterTransformer implements Transformer {
   static TransformerName = 'openrouter'
@@ -16,7 +17,7 @@ export class OpenrouterTransformer implements Transformer {
     provider?: LLMProvider,
   ): Promise<Record<string, any>> {
     return {
-      body: request,
+      body: await convertAnthropicToOpenAI(request),
       config: {
         url: createTransformerUrl('v1/chat/completions', provider?.baseUrl, 'https://openrouter.ai/api'),
         headers: {
@@ -28,11 +29,12 @@ export class OpenrouterTransformer implements Transformer {
   }
 
   async formatRequest(request: Record<string, any>): Promise<Record<string, any>> {
-    // Process the request for OpenRouter specifics
-    const processedRequest = { ...request }
+    // Start with the standardized OpenAI format
+    const body = buildOpenAIRequestBody(request as any)
 
-    if (!processedRequest.model.includes('claude')) {
-      processedRequest.messages.forEach((msg: any) => {
+    // Apply OpenRouter-specific processing
+    if (!body.model.includes('claude')) {
+      body.messages.forEach((msg: any) => {
         if (Array.isArray(msg.content)) {
           msg.content.forEach((item: any) => {
             if (item.cache_control) {
@@ -52,7 +54,7 @@ export class OpenrouterTransformer implements Transformer {
       })
     }
     else {
-      processedRequest.messages.forEach((msg: any) => {
+      body.messages.forEach((msg: any) => {
         if (Array.isArray(msg.content)) {
           msg.content.forEach((item: any) => {
             if (item.type === 'image_url') {
@@ -67,18 +69,8 @@ export class OpenrouterTransformer implements Transformer {
     }
 
     // Apply any additional options from transformer configuration
-    Object.assign(processedRequest, this.options || {})
-
-    const body = {
-      model: processedRequest.model,
-      messages: processedRequest.messages || [],
-      max_tokens: processedRequest.max_tokens,
-      temperature: processedRequest.temperature,
-      top_p: processedRequest.top_p,
-      stream: processedRequest.stream,
-      tools: processedRequest.tools,
-      tool_choice: processedRequest.tool_choice,
-      stop: processedRequest.stop_sequences,
+    if (this.options) {
+      Object.assign(body, this.options)
     }
 
     return body

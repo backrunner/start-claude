@@ -2,35 +2,82 @@ import type { ClaudeConfig, ConfigFile } from './types'
 import { ConfigFileManager } from './file-manager'
 
 export class ConfigManager {
-  private autoSyncCallback?: () => Promise<void>
+  private static instance: ConfigManager
   private configFileManager: ConfigFileManager
 
   constructor() {
-    // Auto-sync callback will be set by S3SyncManager when needed
     this.configFileManager = ConfigFileManager.getInstance()
   }
 
-  setAutoSyncCallback(callback: (() => Promise<void>) | null): void {
-    this.autoSyncCallback = callback || undefined
+  static getInstance(): ConfigManager {
+    if (!ConfigManager.instance) {
+      ConfigManager.instance = new ConfigManager()
+    }
+    return ConfigManager.instance
   }
 
   load(): ConfigFile {
     return this.configFileManager.load()
   }
 
-  save(config: ConfigFile): void {
+  async save(config: ConfigFile, skipSync = false): Promise<void> {
+    // Check if content has actually changed to avoid unnecessary syncs
+    if (!skipSync) {
+      const currentConfig = this.load()
+      const hasChanges = this.hasConfigChanges(currentConfig, config)
+
+      if (!hasChanges) {
+        // No changes detected, just save without sync
+        this.configFileManager.save(config)
+        return
+      }
+    }
+
     this.configFileManager.save(config)
 
-    // Trigger auto-sync if callback is set
-    if (this.autoSyncCallback) {
-      // Run async without blocking
-      this.autoSyncCallback().catch((error) => {
-        console.error('Auto-sync failed:', error)
-      })
+    // Trigger S3 sync unless explicitly skipped
+    if (!skipSync) {
+      await this.triggerS3Sync()
     }
   }
 
-  addConfig(config: ClaudeConfig): void {
+  /**
+   * Compare two config files to detect meaningful changes
+   * Excludes version field and other auto-generated fields from comparison
+   */
+  private hasConfigChanges(current: ConfigFile, updated: ConfigFile): boolean {
+    // Create normalized copies for comparison (exclude auto-generated fields)
+    const normalizeConfig = (config: ConfigFile): Partial<ConfigFile> => ({
+      ...config,
+      // Exclude fields that don't represent user changes
+      version: undefined,
+    })
+
+    const currentNormalized = normalizeConfig(current)
+    const updatedNormalized = normalizeConfig(updated)
+
+    // Deep comparison of the config objects
+    return JSON.stringify(currentNormalized) !== JSON.stringify(updatedNormalized)
+  }
+
+  private async triggerS3Sync(): Promise<void> {
+    try {
+      // Lazy import to avoid circular dependency at module level
+      const { S3SyncManager } = await import('../storage/s3-sync')
+      const s3SyncManager = S3SyncManager.getInstance()
+
+      // Only sync if S3 is configured
+      if (await s3SyncManager.isS3Configured()) {
+        await s3SyncManager.autoUploadAfterChange()
+      }
+    }
+    catch (error) {
+      // Silent fail for auto-sync, but log for debugging
+      console.error('S3 sync failed:', error)
+    }
+  }
+
+  async addConfig(config: ClaudeConfig): Promise<void> {
     const configFile = this.load()
 
     const existingIndex = configFile.configs.findIndex(c => c.name.toLowerCase() === config.name.toLowerCase())
@@ -41,40 +88,49 @@ export class ConfigManager {
       configFile.configs.push(config)
     }
 
-    this.save(configFile)
+    await this.save(configFile)
   }
 
-  removeConfig(name: string): boolean {
+  async removeConfig(name: string): Promise<boolean> {
     const configFile = this.load()
-    const initialLength = configFile.configs.length
-    configFile.configs = configFile.configs.filter(c => c.name.toLowerCase() !== name.toLowerCase())
+    const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
 
-    if (configFile.configs.length < initialLength) {
-      this.save(configFile)
-      return true
+    if (!targetConfig) {
+      return false
     }
-    return false
+
+    // Mark config as deleted (tombstone approach)
+    targetConfig.isDeleted = true
+    targetConfig.deletedAt = new Date().toISOString()
+
+    // Clear sensitive data from deleted config
+    delete targetConfig.apiKey
+
+    await this.save(configFile)
+    return true
   }
 
   getConfig(name: string): ClaudeConfig | undefined {
     const configFile = this.load()
-    return configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
+    const config = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
+    return config?.isDeleted ? undefined : config
   }
 
   getDefaultConfig(): ClaudeConfig | undefined {
     const configFile = this.load()
-    return configFile.configs.find(c => c.isDefault)
+    const config = configFile.configs.find(c => c.isDefault && !c.isDeleted)
+    return config
   }
 
-  setDefaultConfig(name: string): boolean {
+  async setDefaultConfig(name: string): Promise<boolean> {
     const configFile = this.load()
 
     configFile.configs.forEach(c => c.isDefault = false)
 
-    const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
+    const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase() && !c.isDeleted)
     if (targetConfig) {
       targetConfig.isDefault = true
-      this.save(configFile)
+      await this.save(configFile)
       return true
     }
     return false
@@ -82,13 +138,13 @@ export class ConfigManager {
 
   listConfigs(): ClaudeConfig[] {
     const configFile = this.load()
-    return configFile.configs
+    return configFile.configs.filter(c => !c.isDeleted)
   }
 
-  updateSettings(settings: Partial<ConfigFile['settings']>): void {
+  async updateSettings(settings: Partial<ConfigFile['settings']>, skipSync = false): Promise<void> {
     const configFile = this.load()
     configFile.settings = { ...configFile.settings, ...settings }
-    this.save(configFile)
+    await this.save(configFile, skipSync)
   }
 
   getSettings(): ConfigFile['settings'] {
@@ -100,7 +156,96 @@ export class ConfigManager {
     return this.load()
   }
 
-  saveConfigFile(configFile: ConfigFile): void {
-    this.save(configFile)
+  async saveConfigFile(configFile: ConfigFile, skipSync = false): Promise<void> {
+    await this.save(configFile, skipSync)
+  }
+
+  async initializeS3Sync(): Promise<void> {
+    try {
+      // Lazy import to avoid circular dependency at module level
+      const { S3SyncManager } = await import('../storage/s3-sync')
+      const s3SyncManager = S3SyncManager.getInstance()
+
+      // Check if S3 is configured and perform initial sync if needed
+      if (await s3SyncManager.isS3Configured()) {
+        // Perform any initial S3 sync operations if necessary
+        // This is a no-op for now but provides a hook for future initialization
+      }
+    }
+    catch (error) {
+      // Silent fail for initialization, but log for debugging
+      console.error('S3 sync initialization failed:', error)
+    }
+  }
+
+  /**
+   * Permanently delete a config (cleanup tombstone)
+   */
+  async cleanupDeletedConfig(name: string): Promise<boolean> {
+    const configFile = this.load()
+    const initialLength = configFile.configs.length
+
+    configFile.configs = configFile.configs.filter(c =>
+      c.name.toLowerCase() !== name.toLowerCase() || !c.isDeleted,
+    )
+
+    if (configFile.configs.length < initialLength) {
+      await this.save(configFile)
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Restore a deleted config
+   */
+  async restoreConfig(name: string): Promise<boolean> {
+    const configFile = this.load()
+
+    const config = configFile.configs.find(c =>
+      c.name.toLowerCase() === name.toLowerCase() && c.isDeleted,
+    )
+
+    if (!config) {
+      return false // Not found or not deleted
+    }
+
+    // Restore the config
+    config.isDeleted = false
+    delete config.deletedAt
+
+    await this.save(configFile)
+    return true
+  }
+
+  /**
+   * Clean up old deleted configs (older than specified days)
+   */
+  async cleanupOldDeletions(daysOld = 30): Promise<number> {
+    const configFile = this.load()
+    const cutoffDate = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000)
+    const initialLength = configFile.configs.length
+
+    configFile.configs = configFile.configs.filter((config) => {
+      if (!config.isDeleted || !config.deletedAt) {
+        return true // Keep non-deleted configs
+      }
+      return new Date(config.deletedAt) > cutoffDate // Keep recent deletions
+    })
+
+    const cleaned = initialLength - configFile.configs.length
+    if (cleaned > 0) {
+      await this.save(configFile)
+    }
+
+    return cleaned
+  }
+
+  /**
+   * Get list of deleted configs
+   */
+  getDeletedConfigs(): ClaudeConfig[] {
+    const configFile = this.load()
+    return configFile.configs.filter(c => c.isDeleted)
   }
 }

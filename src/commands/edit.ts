@@ -8,7 +8,7 @@ import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
 export async function handleEditCommand(name: string, options: { useEditor?: boolean }): Promise<void> {
   displayWelcome()
 
-  const configManager = new ConfigManager()
+  const configManager = ConfigManager.getInstance()
   const config = configManager.getConfig(name)
   if (!config) {
     displayError(`Configuration "${name}" not found`)
@@ -23,7 +23,7 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
         configs.forEach(c => c.isDefault = false)
       }
 
-      configManager.addConfig(updatedConfig)
+      await configManager.addConfig(updatedConfig)
       displaySuccess(`Configuration "${name}" updated successfully!`)
     }
     return
@@ -123,10 +123,10 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
     isDefault: answers.isDefault,
   }
 
-  configManager.addConfig(updatedConfig)
+  await configManager.addConfig(updatedConfig)
 
   if (updatedConfig.isDefault && !config.isDefault) {
-    configManager.setDefaultConfig(updatedConfig.name)
+    await configManager.setDefaultConfig(updatedConfig.name)
   }
 
   displaySuccess(`Configuration "${name}" updated successfully!`)

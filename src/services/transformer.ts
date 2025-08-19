@@ -35,6 +35,14 @@ export class TransformerService {
     return this.transformers.get(name)
   }
 
+  findTransformerByName(name: string): Transformer | null {
+    const transformer = this.getTransformer(name)
+    if (transformer && typeof transformer === 'object') {
+      return transformer
+    }
+    return null
+  }
+
   getAllTransformers(): Map<string, Transformer | TransformerConstructor> {
     return new Map(this.transformers)
   }
@@ -150,8 +158,22 @@ export class TransformerService {
     }
   }
 
-  // Find transformer by endpoint domain from config baseUrl
-  findTransformerByDomain(baseUrl?: string): Transformer | null {
+  // Find transformer by endpoint domain from config baseUrl or by manual selection
+  findTransformerByDomain(baseUrl?: string, transformerEnabled?: boolean, transformer?: string): Transformer | null {
+    // If transformer is explicitly specified and not 'auto', use it directly
+    if (transformer && transformer !== 'auto') {
+      const specificTransformer = this.findTransformerByName(transformer)
+      if (specificTransformer) {
+        displayVerbose(`Using manually selected transformer: ${transformer}`, this.verbose)
+        return specificTransformer
+      }
+      else {
+        displayVerbose(`Manually selected transformer "${transformer}" not found`, this.verbose)
+        return null // Don't fall back to domain matching if user explicitly specified a transformer
+      }
+    }
+
+    // Only do domain matching if no transformer was specified or it was set to 'auto'
     if (!baseUrl) {
       return null
     }
@@ -200,5 +222,18 @@ export class TransformerService {
       displayVerbose(`Failed to parse baseUrl ${baseUrl} for transformer matching`, this.verbose)
       return null
     }
+  }
+
+  // Helper function to check if transformer is enabled
+  static isTransformerEnabled(transformerEnabled?: boolean): boolean {
+    return transformerEnabled === true
+  }
+
+  // Helper function to get transformer type from config (keeping for backward compatibility)
+  static getTransformerType(transformerEnabled?: boolean | string): string | 'auto' {
+    if (typeof transformerEnabled === 'string' && transformerEnabled !== 'true') {
+      return transformerEnabled === 'auto' ? 'auto' : transformerEnabled
+    }
+    return 'auto'
   }
 }

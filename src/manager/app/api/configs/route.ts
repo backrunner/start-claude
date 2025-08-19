@@ -8,12 +8,11 @@ import { ConfigManager } from '../../../../config/manager'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const configManager = new ConfigManager()
+const configManager = ConfigManager.getInstance()
 
 function getConfigs(): ClaudeConfig[] {
   try {
-    const configFile = configManager.load()
-    return configFile.configs || []
+    return configManager.listConfigs()
   }
   catch (error) {
     console.error('Error reading configs:', error)
@@ -29,23 +28,6 @@ function getSettings(): any {
   catch (error) {
     console.error('Error reading settings:', error)
     return { overrideClaudeCommand: false }
-  }
-}
-
-function saveConfigs(configs: ClaudeConfig[], settings?: any): void {
-  try {
-    const configFile = configManager.load()
-    const updatedConfigFile = {
-      ...configFile,
-      configs,
-      settings: settings || configFile.settings,
-    }
-
-    configManager.save(updatedConfigFile)
-  }
-  catch (error) {
-    console.error('Error saving configs:', error)
-    throw error
   }
 }
 
@@ -80,6 +62,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Configuration name is required' }, { status: 400 })
     }
 
+    // Use ConfigManager.addConfig() to ensure proper S3 sync
     const configs = getConfigs()
     const existingIndex = configs.findIndex(c => c.name === config.name)
 
@@ -97,7 +80,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }, { status: 400 })
       }
 
-      configs[existingIndex] = updatedConfigResult.data
+      // Use ConfigManager.addConfig() which triggers S3 sync
+      await configManager.addConfig(updatedConfigResult.data)
     }
     else {
       // Calculate the next order value as max existing order + 1
@@ -117,11 +101,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }, { status: 400 })
       }
 
-      configs.push(newConfigResult.data)
+      // Use ConfigManager.addConfig() which triggers S3 sync
+      await configManager.addConfig(newConfigResult.data)
     }
 
-    saveConfigs(configs)
-    return NextResponse.json({ success: true, configs })
+    const updatedConfigs = getConfigs()
+    return NextResponse.json({ success: true, configs: updatedConfigs })
   }
   catch (error) {
     console.error('POST /api/configs error:', error)
@@ -159,7 +144,13 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       validatedConfigs.push(configValidation.data)
     }
 
-    saveConfigs(validatedConfigs)
+    // Use ConfigManager.saveConfigFile() to ensure proper S3 sync
+    const configFile = configManager.load()
+    await configManager.saveConfigFile({
+      ...configFile,
+      configs: validatedConfigs,
+    })
+
     return NextResponse.json({ success: true, configs: validatedConfigs })
   }
   catch (error) {
@@ -180,23 +171,29 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Config name is required' }, { status: 400 })
     }
 
-    const configs = getConfigs()
-    const filteredConfigs = configs.filter(c => c.name !== name)
+    // Use ConfigManager.removeConfig() to ensure proper S3 sync
+    const success = await configManager.removeConfig(name)
 
-    if (filteredConfigs.length === configs.length) {
+    if (!success) {
       return NextResponse.json({ error: 'Config not found' }, { status: 404 })
     }
 
     // Re-order remaining configs to create a continuous sequence
-    // Sort by current order first, then reassign sequential order values
-    const reorderedConfigs = filteredConfigs
+    const configs = getConfigs()
+    const reorderedConfigs = configs
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map((config, index) => ({
         ...config,
         order: index,
       }))
 
-    saveConfigs(reorderedConfigs)
+    // Save reordered configs using ConfigManager
+    const configFile = configManager.load()
+    await configManager.saveConfigFile({
+      ...configFile,
+      configs: reorderedConfigs,
+    })
+
     return NextResponse.json({ success: true, configs: reorderedConfigs })
   }
   catch (error) {
