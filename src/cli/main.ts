@@ -74,7 +74,7 @@ program
   .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
   .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
   .option('--disallowedTools <tools>', 'Comma-separated list of disallowed tools', value => value.split(','))
-  .option('-p, --print', 'Print output to stdout')
+  .option('-p, --print [query]', 'Print output to stdout with optional query')
   .option('--output-format <format>', 'Output format')
   .option('--input-format <format>', 'Input format')
   .option('--verbose', 'Enable verbose output')

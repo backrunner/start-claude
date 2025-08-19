@@ -14,7 +14,7 @@ export interface ProgramOptions {
   addDir?: string[]
   allowedTools?: string[]
   disallowedTools?: string[]
-  print?: boolean
+  print?: boolean | string
   outputFormat?: string
   inputFormat?: string
   verbose?: boolean
@@ -98,7 +98,11 @@ export function buildClaudeArgs(options: ProgramOptions, config?: ClaudeConfig):
   }
 
   if (options.print) {
-    claudeArgs.push('--print')
+    if (typeof options.print === 'string') {
+      claudeArgs.push('--print', options.print)
+    } else {
+      claudeArgs.push('--print')
+    }
   }
 
   if (options.outputFormat) {
@@ -194,6 +198,10 @@ export function filterProcessArgs(configArg?: string): string[] {
     if (skipFlags.some(flag => arg.startsWith(flag)))
       return false
 
+    // Special handling for --print which can be used with or without a value
+    if (arg.startsWith('--print='))
+      return false
+
     // Skip values that follow flags we handle
     const prevArg = process.argv[process.argv.indexOf(arg) - 1]
     const flagsWithValues = [
@@ -202,6 +210,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--add-dir',
       '--allowedTools',
       '--disallowedTools',
+      '--print',
       '--output-format',
       '--input-format',
       '--max-turns',
