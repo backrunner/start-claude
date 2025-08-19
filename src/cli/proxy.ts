@@ -47,7 +47,17 @@ export async function handleProxyMode(
   setupProxyCleanup()
 
   // Get configurations for proxy mode - use forced configs or all configs
-  const configs = forcedConfigs || configManager.listConfigs()
+  // If a specific config was requested, use only that config
+  let configs = forcedConfigs || configManager.listConfigs()
+
+  const requestedConfigName = options.config || configArg
+  if (requestedConfigName && !forcedConfigs) {
+    // User specified a particular config, so only use that one for the proxy
+    const specificConfig = configManager.getConfig(requestedConfigName)
+    if (specificConfig) {
+      configs = [specificConfig]
+    }
+  }
 
   // Include configs that have complete API credentials (baseUrl, apiKey, and model) OR have transformer enabled
   const proxyableConfigs = configs.filter((c) => {
