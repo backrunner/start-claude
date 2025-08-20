@@ -1,6 +1,6 @@
 import type { ClaudeConfig } from '../config/types'
 import inquirer from 'inquirer'
-import { ConfigManager } from '../config/config-manager'
+import { ConfigManager } from '../config/manager'
 import { createConfigInEditor } from '../utils/cli/editor'
 import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
 
@@ -21,7 +21,7 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
 
       if (newConfig.isDefault) {
         const configs = await configManager.listConfigs()
-        configs.forEach(c => c.isDefault = false)
+        configs.forEach((c: ClaudeConfig) => c.isDefault = false)
       }
 
       await configManager.addConfig(newConfig)

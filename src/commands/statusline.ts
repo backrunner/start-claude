@@ -1,4 +1,4 @@
-import { ConfigManager } from '../config/config-manager'
+import { ConfigManager } from '../config/manager'
 import { displayError, displayInfo, displaySuccess, displayVerbose, displayWelcome } from '../utils/cli/ui'
 import { StatusLineManager } from '../utils/statusline/manager'
 

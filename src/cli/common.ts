@@ -1,4 +1,4 @@
-import type { ConfigManager } from '../config/config-manager'
+import type { ConfigManager } from '../config/manager'
 import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'

@@ -33,12 +33,12 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [transformers, setTransformers] = useState<Array<{value: string, label: string, description: string}>>([])
+  const [transformers, setTransformers] = useState<Array<{ value: string, label: string, description: string }>>([])
   const [loadingTransformers, setLoadingTransformers] = useState(false)
 
   // Fetch available transformers
   useEffect(() => {
-    const fetchTransformers = async () => {
+    const fetchTransformers = async (): Promise<void> => {
       setLoadingTransformers(true)
       try {
         const response = await fetch('/api/transformers')
@@ -46,13 +46,15 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
           const data = await response.json()
           setTransformers(data.transformers || [])
         }
-      } catch (error) {
+      }
+      catch (error) {
         console.error('Failed to fetch transformers:', error)
-      } finally {
+      }
+      finally {
         setLoadingTransformers(false)
       }
     }
-    fetchTransformers()
+    void fetchTransformers()
   }, [])
 
   const validateFormData = (data: ClaudeConfig): boolean => {
@@ -351,14 +353,14 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                     </p>
                     <Select
                       value={formData.transformer || 'auto'}
-                      onValueChange={(value) => handleChange('transformer', value)}
+                      onValueChange={value => handleChange('transformer', value)}
                       disabled={loadingTransformers}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder={loadingTransformers ? "Loading transformers..." : "Select transformer"} />
+                        <SelectValue placeholder={loadingTransformers ? 'Loading transformers...' : 'Select transformer'} />
                       </SelectTrigger>
                       <SelectContent>
-                        {transformers.map((transformer) => (
+                        {transformers.map(transformer => (
                           <SelectItem key={transformer.value} value={transformer.value}>
                             {transformer.label}
                           </SelectItem>

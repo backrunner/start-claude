@@ -1,6 +1,5 @@
 import * as fs from 'node:fs'
 import * as os from 'node:os'
-import * as inquirer from 'inquirer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the filesystem
@@ -24,7 +23,7 @@ vi.mock('node:os', () => ({
 // Mock inquirer
 vi.mock('inquirer', () => ({
   default: {
-    prompt: vi.fn(),
+    prompt: vi.fn().mockResolvedValue({}),
   },
 }))
 
@@ -47,7 +46,7 @@ const mockS3SyncManager = {
 }
 
 // Mock ConfigManager
-vi.mock('../src/config/config-manager', () => ({
+vi.mock('../src/config/manager', () => ({
   ConfigManager: vi.fn().mockImplementation(() => mockConfigManager),
 }))
 
@@ -66,13 +65,17 @@ vi.mock('../src/utils/cli/ui', () => ({
 
 const mockFs = vi.mocked(fs)
 const mockOs = vi.mocked(os)
-const mockInquirer = vi.mocked(inquirer)
+const mockInquirer = {
+  default: {
+    prompt: vi.fn().mockResolvedValue({}),
+  },
+}
 
 describe('syncManager', () => {
   let SyncManager: any
   let syncManager: any
   const mockHomedir = '/home/test'
-  const _mockConfigDir = '/home/test/.start-claude'
+  // const _mockConfigDir = '/home/test/.start-claude' // unused
   const mockConfigFile = '/home/test/.start-claude/config.json'
   const mockSyncConfigFile = '/home/test/.start-claude/sync.json'
 

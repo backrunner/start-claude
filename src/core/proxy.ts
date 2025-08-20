@@ -13,8 +13,6 @@ import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarni
 import { fileLogger } from '../utils/logging/file-logger'
 import { convertOpenAIResponseToAnthropic, convertOpenAIStreamToAnthropic, isOpenAIFormat } from '../utils/transformer/openai-to-anthropic'
 
-const log = console.log
-
 interface ResponseTiming {
   startTime: number
   firstTokenTime?: number // Time when first chunk/response data received
@@ -1747,10 +1745,8 @@ export class ProxyServer {
     // Check if we have any healthy endpoints left
     const healthyCount = this.endpoints.filter(e => e.isHealthy).length
     if (healthyCount === 0) {
-      log()
       displayError('❌ All endpoints failed initial health checks!')
       displayWarning('⚠️ Load balancer will continue but may not work properly')
-      log()
     }
   }
 

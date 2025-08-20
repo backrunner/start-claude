@@ -1,6 +1,5 @@
 import * as fs from 'node:fs'
 import * as os from 'node:os'
-import * as process from 'node:process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { detectiCloud, detectOneDrive, getAvailableCloudServices, getCloudStorageStatus } from '../src/utils/cloud-storage/detector'
 
@@ -23,14 +22,17 @@ vi.mock('node:process', () => ({
 
 const mockFs = vi.mocked(fs)
 const mockOs = vi.mocked(os)
-const mockProcess = vi.mocked(process)
+const mockProcess = {
+  platform: 'darwin',
+  env: {},
+}
 
 describe('cloud Storage Detection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockOs.homedir.mockReturnValue('/home/user')
-    mockProcess.default.platform = 'darwin'
-    mockProcess.default.env = {}
+    ;(mockProcess as any).platform = 'darwin'
+    ;(mockProcess as any).env = {}
   })
 
   afterEach(() => {
@@ -40,7 +42,7 @@ describe('cloud Storage Detection', () => {
   describe('oneDrive Detection', () => {
     describe('macOS', () => {
       beforeEach(() => {
-        mockProcess.default.platform = 'darwin'
+        mockProcess.platform = 'darwin'
       })
 
       it('should detect OneDrive when app and folder exist', () => {
@@ -83,8 +85,8 @@ describe('cloud Storage Detection', () => {
 
     describe('windows', () => {
       beforeEach(() => {
-        mockProcess.default.platform = 'win32'
-        mockProcess.default.env = {
+        mockProcess.platform = 'win32'
+        mockProcess.env = {
           OneDrive: 'C:\\Users\\user\\OneDrive',
           LOCALAPPDATA: 'C:\\Users\\user\\AppData\\Local',
         }
@@ -122,7 +124,7 @@ describe('cloud Storage Detection', () => {
 
     describe('unsupported platforms', () => {
       it('should return not supported for Linux', () => {
-        mockProcess.default.platform = 'linux'
+        mockProcess.platform = 'linux'
 
         const result = detectOneDrive()
 
@@ -136,7 +138,7 @@ describe('cloud Storage Detection', () => {
   describe('iCloud Detection', () => {
     describe('macOS', () => {
       beforeEach(() => {
-        mockProcess.default.platform = 'darwin'
+        mockProcess.platform = 'darwin'
       })
 
       it('should detect iCloud when properly configured', () => {
@@ -167,8 +169,8 @@ describe('cloud Storage Detection', () => {
 
     describe('windows', () => {
       beforeEach(() => {
-        mockProcess.default.platform = 'win32'
-        mockProcess.default.env = {
+        mockProcess.platform = 'win32'
+        mockProcess.env = {
           APPDATA: 'C:\\Users\\user\\AppData\\Roaming',
         }
       })
@@ -202,7 +204,7 @@ describe('cloud Storage Detection', () => {
 
     describe('unsupported platforms', () => {
       it('should return not supported for Linux', () => {
-        mockProcess.default.platform = 'linux'
+        mockProcess.platform = 'linux'
 
         const result = detectiCloud()
 
@@ -215,7 +217,7 @@ describe('cloud Storage Detection', () => {
 
   describe('cloud Storage Status', () => {
     it('should return status for both OneDrive and iCloud', () => {
-      mockProcess.default.platform = 'darwin'
+      mockProcess.platform = 'darwin'
       mockFs.existsSync.mockReturnValue(true)
       mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any)
 
@@ -232,7 +234,7 @@ describe('cloud Storage Detection', () => {
 
   describe('available Cloud Services', () => {
     it('should return list of available services', () => {
-      mockProcess.default.platform = 'darwin'
+      mockProcess.platform = 'darwin'
       mockFs.existsSync.mockReturnValue(true)
       mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any)
 

@@ -11,7 +11,7 @@ export async function handleSyncVerification(options: { verbose?: boolean } = {}
     displayVerbose('🔍 Verifying configuration sync status...', options.verbose)
 
     const syncManager = new SyncManager()
-    const syncStatus = syncManager.getSyncStatus()
+    const syncStatus = await syncManager.getSyncStatus()
 
     if (syncStatus.isConfigured) {
       displayVerbose(`📊 Sync provider: ${syncStatus.provider}`, options.verbose)

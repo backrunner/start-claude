@@ -5,7 +5,7 @@ import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
 
 export async function handleRemoveCommand(name: string): Promise<void> {
   const configManager = ConfigManager.getInstance()
-  const config = configManager.getConfig(name)
+  const config = await configManager.getConfig(name)
   if (!config) {
     displayError(`Configuration "${name}" not found`)
     process.exit(1)
@@ -31,7 +31,7 @@ export async function handleRemoveCommand(name: string): Promise<void> {
 
 export async function handleListCommand(): Promise<void> {
   const configManager = ConfigManager.getInstance()
-  const configs = configManager.listConfigs()
+  const configs = await configManager.listConfigs()
   const { displayConfigList, displayWelcome } = await import('../utils/cli/ui')
   displayWelcome()
   displayConfigList(configs)

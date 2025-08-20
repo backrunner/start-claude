@@ -53,7 +53,7 @@ export class SyncManager {
       displayInfo('🔄 Setting up configuration synchronization...\n')
 
       // Check current sync status
-      const currentStatus = this.getSyncStatus()
+      const currentStatus = await this.getSyncStatus()
       if (currentStatus.isConfigured) {
         displayWarning('⚠️  Sync is already configured!')
         displayInfo(`Current provider: ${currentStatus.provider}`)
@@ -150,7 +150,7 @@ export class SyncManager {
     })
 
     // Check if S3 is already configured
-    const s3Status = this.s3SyncManager.getS3Status()
+    const s3Status = await this.s3SyncManager.getS3Status()
     if (s3Status.includes('Not configured')) {
       options.push({
         name: '🗄️  S3 Storage - Configure S3 sync',
@@ -236,7 +236,7 @@ export class SyncManager {
         linkedAt: new Date().toISOString(),
       }
 
-      this.saveSyncConfigPrivate(syncConfig)
+      this.saveSyncConfig(syncConfig)
 
       // Update S3 settings if S3 is configured
       await this.updateS3Settings(true)
@@ -335,7 +335,7 @@ export class SyncManager {
         linkedAt: new Date().toISOString(),
       }
 
-      this.saveSyncConfigPrivate(syncConfig)
+      this.saveSyncConfig(syncConfig)
 
       // Update S3 settings if S3 is configured
       await this.updateS3Settings(true)
@@ -365,7 +365,7 @@ export class SyncManager {
       await handleS3SetupCommand({ verbose: false })
 
       // Check if S3 was successfully configured
-      if (this.s3SyncManager.isS3Configured()) {
+      if (await this.s3SyncManager.isS3Configured()) {
         // Save sync configuration for S3
         const syncConfig: SyncConfig = {
           enabled: true,
@@ -373,11 +373,11 @@ export class SyncManager {
           linkedAt: new Date().toISOString(),
         }
 
-        this.saveSyncConfigPrivate(syncConfig)
+        this.saveSyncConfig(syncConfig)
         displaySuccess('✅ Successfully configured S3 sync!')
       }
 
-      return this.s3SyncManager.isS3Configured()
+      return await this.s3SyncManager.isS3Configured()
     }
     catch (error) {
       displayError(`❌ Failed to setup S3 sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -456,7 +456,7 @@ export class SyncManager {
    * Update S3 settings when cloud sync is enabled
    */
   private async updateS3Settings(cloudSyncEnabled: boolean): Promise<void> {
-    if (this.s3SyncManager.isS3Configured()) {
+    if (await this.s3SyncManager.isS3Configured()) {
       // When cloud sync is enabled, disable auto-download from S3 but keep upload
       // This treats S3 as backup when cloud sync is primary
       displayInfo(cloudSyncEnabled
@@ -471,7 +471,7 @@ export class SyncManager {
    */
   async disableSync(): Promise<boolean> {
     try {
-      const syncConfig = this.getSyncConfigPrivate()
+      const syncConfig = this.getSyncConfig()
       if (!syncConfig?.enabled) {
         displayInfo('ℹ️  Sync is not currently enabled')
         return true
@@ -550,13 +550,13 @@ export class SyncManager {
   /**
    * Get current sync status
    */
-  getSyncStatus(): SyncStatus {
+  async getSyncStatus(): Promise<SyncStatus> {
     const issues: string[] = []
     let isConfigured = false
     let isValid = false
     let cloudPath: string | undefined
 
-    const syncConfig = this.getSyncConfigPrivate()
+    const syncConfig = this.getSyncConfig()
 
     if (!syncConfig?.enabled) {
       return {
@@ -614,7 +614,7 @@ export class SyncManager {
           issues.push('Config file should not be a symlink for S3 sync')
         }
         else {
-          isValid = this.s3SyncManager.isS3Configured()
+          isValid = await this.s3SyncManager.isS3Configured()
           if (!isValid) {
             issues.push('S3 is not properly configured')
           }
@@ -636,7 +636,7 @@ export class SyncManager {
    * Verify sync status on startup
    */
   async verifySync(): Promise<boolean> {
-    const status = this.getSyncStatus()
+    const status = await this.getSyncStatus()
 
     if (!status.isConfigured) {
       return true // No sync configured, nothing to verify
@@ -644,10 +644,10 @@ export class SyncManager {
 
     if (status.isValid) {
       // Update last verified timestamp
-      const syncConfig = this.getSyncConfigPrivate()
+      const syncConfig = this.getSyncConfig()
       if (syncConfig) {
         syncConfig.lastVerified = new Date().toISOString()
-        this.saveSyncConfigPrivate(syncConfig)
+        this.saveSyncConfig(syncConfig)
       }
       return true
     }
@@ -676,23 +676,6 @@ export class SyncManager {
    * Save sync configuration (public method)
    */
   saveSyncConfig(config: SyncConfig): void {
-    try {
-      if (!existsSync(this.configDir)) {
-        mkdirSync(this.configDir, { recursive: true })
-      }
-
-      const configData = JSON.stringify(config, null, 2)
-      writeFileSync(this.syncConfigFile, configData, 'utf-8')
-    }
-    catch (error) {
-      throw new Error(`Failed to save sync config: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  }
-
-  /**
-   * Save sync configuration (private method - deprecated, use public saveSyncConfig)
-   */
-  private saveSyncConfigPrivate(config: SyncConfig): void {
     try {
       if (!existsSync(this.configDir)) {
         mkdirSync(this.configDir, { recursive: true })
@@ -738,23 +721,6 @@ export class SyncManager {
   }
 
   /**
-   * Get sync configuration (private method - deprecated, use public getSyncConfig)
-   */
-  private getSyncConfigPrivate(): SyncConfig | null {
-    try {
-      if (!existsSync(this.syncConfigFile)) {
-        return null
-      }
-
-      const configData = readFileSync(this.syncConfigFile, 'utf-8')
-      return JSON.parse(configData) as SyncConfig
-    }
-    catch {
-      return null
-    }
-  }
-
-  /**
    * Automatically setup sync from an existing cloud storage configuration
    */
   async autoSetupFromCloudConfig(provider: 'icloud' | 'onedrive', cloudPath: string, configPath: string): Promise<boolean> {
@@ -773,7 +739,7 @@ export class SyncManager {
         lastVerified: new Date().toISOString(), // Mark as verified since we just found it
       }
 
-      this.saveSyncConfigPrivate(syncConfig)
+      this.saveSyncConfig(syncConfig)
 
       // Update S3 settings if S3 is configured
       await this.updateS3Settings(true)

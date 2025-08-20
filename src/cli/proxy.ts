@@ -1,5 +1,5 @@
-import type { ConfigManager } from '../config/config-manager'
-import type { LoadBalancerStrategy } from '../config/types'
+import type { ConfigManager } from '../config/manager'
+import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { ProgramOptions } from './common'
 import process from 'node:process'
 import { ProxyServer } from '../core/proxy'
@@ -47,12 +47,12 @@ export async function handleProxyMode(
   setupProxyCleanup()
 
   // If a specific config was requested, use only that config
-  let configs = forcedConfigs || configManager.listConfigs()
+  let configs: ClaudeConfig[] = forcedConfigs || await configManager.listConfigs()
 
   const requestedConfigName = options.config || configArg
   if (requestedConfigName && !forcedConfigs) {
     // User specified a particular config, so only use that one for the proxy
-    const specificConfig = configManager.getConfig(requestedConfigName)
+    const specificConfig = await configManager.getConfig(requestedConfigName)
     if (specificConfig) {
       configs = [specificConfig]
     }

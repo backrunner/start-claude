@@ -28,7 +28,7 @@ export async function setupSyncCommand(): Promise<void> {
 export async function syncStatusCommand(): Promise<void> {
   try {
     const syncManager = new SyncManager()
-    const status = syncManager.getSyncStatus()
+    const status = await syncManager.getSyncStatus()
 
     displayInfo('🔄 Sync Status')
     displayInfo('==============\n')
