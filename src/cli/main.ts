@@ -40,21 +40,8 @@ async function handleStatusLineSync(options: { verbose?: boolean } = {}): Promis
 
     displayVerbose('🔍 Checking statusline integration...', options.verbose)
 
-    // Check if local ccstatusline config exists
-    if (!statusLineManager.hasStatusLineConfig()) {
-      displayVerbose('📥 Local ccstatusline config missing, syncing from start-claude config...', options.verbose)
-      await statusLineManager.syncStatusLineConfig(statusLineConfig.config, options)
-    }
-
-    // Ensure Claude Code settings.json has statusline config
-    const claudeSettings = await statusLineManager.loadClaudeSettings(options)
-    if (!claudeSettings.statusLine) {
-      displayVerbose('🔧 Claude Code statusline config missing, updating...', options.verbose)
-      await statusLineManager.enableStatusLineInClaude(options)
-    }
-    else {
-      displayVerbose('✅ Claude Code statusline config present', options.verbose)
-    }
+    // Sync both ccstatusline config and Claude Code settings
+    await statusLineManager.syncStatusLineConfig(statusLineConfig.config, options)
   }
   catch (error) {
     // Don't fail the entire startup for statusline issues

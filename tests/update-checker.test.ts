@@ -4,7 +4,7 @@ import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../src/utils/co
 
 // Mock the package.json version
 vi.mock('../../../package.json', () => ({
-  version: '0.1.2',
+  version: '0.3.1',
 }))
 
 // Mock child_process
@@ -13,16 +13,16 @@ vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
 }))
 
-// Mock the entire update-check-cache module
+// Mock the entire cache-manager module
 const mockInstance = {
   shouldCheckForUpdates: vi.fn(),
-  setLastCheckTimestamp: vi.fn(),
-  getLastCheckTimestamp: vi.fn(),
+  setUpdateCheckTimestamp: vi.fn(),
+  getUpdateCheckTimestamp: vi.fn(),
   clear: vi.fn(),
 }
 
-vi.mock('../src/utils/config/update-check-cache', () => ({
-  UpdateCheckCache: {
+vi.mock('../src/utils/config/cache-manager', () => ({
+  CacheManager: {
     getInstance: vi.fn(() => mockInstance),
   },
 }))
@@ -68,7 +68,7 @@ describe('updateChecker', () => {
       const result = await checkForUpdates(false)
 
       expect(result).toEqual({
-        currentVersion: '0.3.0',
+        currentVersion: '0.3.1',
         latestVersion: '1.0.1',
         hasUpdate: true,
         updateCommand: 'pnpm add -g start-claude@latest',
@@ -86,7 +86,7 @@ describe('updateChecker', () => {
       // Mock successful pnpm command that returns the same version
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
-          callback(null, '0.3.0\n', '')
+          callback(null, '0.3.1\n', '')
         }
         return {} as any
       })
@@ -94,8 +94,8 @@ describe('updateChecker', () => {
       const result = await checkForUpdates(true)
 
       expect(result).toEqual({
-        currentVersion: '0.3.0',
-        latestVersion: '0.3.0',
+        currentVersion: '0.3.1',
+        latestVersion: '0.3.1',
         hasUpdate: false,
         updateCommand: 'pnpm add -g start-claude@latest',
       })
@@ -129,7 +129,7 @@ describe('updateChecker', () => {
 
       await checkForUpdates(false)
 
-      expect(mockInstance.setLastCheckTimestamp).toHaveBeenCalledWith(expect.any(Number), '0.3.0')
+      expect(mockInstance.setUpdateCheckTimestamp).toHaveBeenCalledWith(expect.any(Number), '0.3.1')
     })
   })
 
