@@ -12,7 +12,7 @@ interface ConfigFormModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   config?: ClaudeConfig | null
-  onSave: (config: ClaudeConfig) => void
+  onSave: (config: ClaudeConfig) => Promise<void>
   onCancel: () => void
 }
 
@@ -27,11 +27,13 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
 
     setSaving(true)
     try {
-      onSave(formData)
+      await onSave(formData)
+      // Only close modal if the API call succeeds
       onOpenChange(false)
     }
     catch (error) {
       console.error('Error saving configuration:', error)
+      // Don't close modal on error - let user see the error and retry
     }
     finally {
       setSaving(false)
@@ -40,8 +42,22 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
 
   const handleFormSave = (config: ClaudeConfig): void => {
     // This is called when form is submitted via Enter key
-    onSave(config)
-    onOpenChange(false)
+    // Use void to ignore the promise return to satisfy linter
+    void (async (): Promise<void> => {
+      setSaving(true)
+      try {
+        await onSave(config)
+        // Only close modal if the API call succeeds
+        onOpenChange(false)
+      }
+      catch (error) {
+        console.error('Error saving configuration:', error)
+        // Don't close modal on error
+      }
+      finally {
+        setSaving(false)
+      }
+    })()
   }
 
   const handleCancel = (): void => {

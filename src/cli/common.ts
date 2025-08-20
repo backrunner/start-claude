@@ -3,6 +3,7 @@ import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
 import inquirer from 'inquirer'
+import { TransformerService } from '../services/transformer'
 import { findClosestMatch, isSimilarEnough } from '../utils/cli/fuzzy-match'
 import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
 
@@ -13,7 +14,7 @@ export interface ProgramOptions {
   addDir?: string[]
   allowedTools?: string[]
   disallowedTools?: string[]
-  print?: boolean
+  print?: boolean | string
   outputFormat?: string
   inputFormat?: string
   verbose?: boolean
@@ -97,7 +98,12 @@ export function buildClaudeArgs(options: ProgramOptions, config?: ClaudeConfig):
   }
 
   if (options.print) {
-    claudeArgs.push('--print')
+    if (typeof options.print === 'string') {
+      claudeArgs.push('--print', options.print)
+    }
+    else {
+      claudeArgs.push('--print')
+    }
   }
 
   if (options.outputFormat) {
@@ -193,6 +199,10 @@ export function filterProcessArgs(configArg?: string): string[] {
     if (skipFlags.some(flag => arg.startsWith(flag)))
       return false
 
+    // Special handling for --print which can be used with or without a value
+    if (arg.startsWith('--print='))
+      return false
+
     // Skip values that follow flags we handle
     const prevArg = process.argv[process.argv.indexOf(arg) - 1]
     const flagsWithValues = [
@@ -201,6 +211,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--add-dir',
       '--allowedTools',
       '--disallowedTools',
+      '--print',
       '--output-format',
       '--input-format',
       '--max-turns',
@@ -240,13 +251,14 @@ async function handleS3ConfigLookup(
   s3SyncManager: S3SyncManager,
   configName: string,
 ): Promise<ClaudeConfig | undefined> {
-  if (!s3SyncManager.isS3Configured()) {
+  if (!(await s3SyncManager.isS3Configured())) {
     return undefined
   }
 
   displayInfo(`Configuration "${configName}" not found locally. Checking S3 for updates...`)
-  const downloadSuccess = await s3SyncManager.checkRemoteUpdates()
-  if (downloadSuccess) {
+  // Use silent auto-sync to avoid prompts during startup
+  const syncSuccess = await s3SyncManager.checkAutoSync()
+  if (syncSuccess) {
     return configManager.getConfig(configName)
   }
   return undefined
@@ -259,7 +271,7 @@ async function handleS3EmptyConfigDownload(
   configManager: ConfigManager,
   s3SyncManager: S3SyncManager,
 ): Promise<ClaudeConfig | undefined> {
-  if (!s3SyncManager.isS3Configured()) {
+  if (!(await s3SyncManager.isS3Configured())) {
     return undefined
   }
 
@@ -301,18 +313,19 @@ async function handleS3EmptyConfigDownload(
 }
 
 /**
- * Handle S3 update check for existing configs
+ * Handle S3 update check for existing configs (silent during startup)
  */
 async function handleS3UpdateCheck(
   configManager: ConfigManager,
   s3SyncManager: S3SyncManager,
 ): Promise<ClaudeConfig | undefined> {
-  if (!s3SyncManager.isS3Configured()) {
+  if (!(await s3SyncManager.isS3Configured())) {
     return undefined
   }
 
-  const downloadSuccess = await s3SyncManager.checkRemoteUpdates()
-  if (downloadSuccess) {
+  // Use silent auto-sync instead of interactive checkRemoteUpdates()
+  const syncSuccess = await s3SyncManager.checkAutoSync()
+  if (syncSuccess) {
     return configManager.getDefaultConfig()
   }
   return undefined
@@ -390,7 +403,7 @@ export async function resolveConfig(
       }
 
       // If still no config after S3 check, create a new one
-      return createNewConfig(configManager, s3SyncManager)
+      return createNewConfig(configManager)
     }
     else {
       // Check for newer remote configs even when we have local configs
@@ -432,7 +445,7 @@ export async function resolveConfig(
 /**
  * Create a new configuration interactively
  */
-async function createNewConfig(configManager: ConfigManager, s3SyncManager: S3SyncManager): Promise<ClaudeConfig> {
+async function createNewConfig(configManager: ConfigManager): Promise<ClaudeConfig> {
   displayWarning('No configurations found. Let\'s create your first one!')
 
   // First ask for profile type
@@ -540,22 +553,6 @@ async function createNewConfig(configManager: ConfigManager, s3SyncManager: S3Sy
 
   displaySuccess(`Configuration "${newConfig.name}" created successfully!`)
 
-  // If S3 is configured, ask if user wants to sync the new config
-  if (s3SyncManager.isS3Configured()) {
-    const syncAnswer = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'sync',
-        message: 'Would you like to sync this configuration to S3?',
-        default: true,
-      },
-    ])
-
-    if (syncAnswer.sync) {
-      await s3SyncManager.uploadConfigs()
-    }
-  }
-
   return newConfig
 }
 
@@ -578,7 +575,7 @@ export async function resolveBaseConfig(
       process.exit(1)
     }
     if (!balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
-      const hasTransformer = 'transformerEnabled' in baseConfig && baseConfig.transformerEnabled === true
+      const hasTransformer = 'transformerEnabled' in baseConfig && TransformerService.isTransformerEnabled(baseConfig.transformerEnabled)
       const missingCompleteApiCredentials = !baseConfig.baseUrl || !baseConfig.apiKey || !baseConfig.model
 
       if (hasTransformer && missingCompleteApiCredentials) {

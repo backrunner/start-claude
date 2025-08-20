@@ -131,7 +131,7 @@ export function buildRequestBody(
       return {
         name: tool.name,
         description: tool.description,
-        parameters: tool.input_schema,
+        parametersJsonSchema: tool.input_schema,
       }
     })
   if (functionDeclarations?.length) {

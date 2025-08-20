@@ -58,10 +58,12 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
     setSaving(true)
     try {
       await onSave(settings)
+      // Only close modal if the API call succeeds
       onClose()
     }
     catch (error) {
       console.error('Error saving system settings:', error)
+      // Don't close modal on error - let user see the error and retry
     }
     finally {
       setSaving(false)

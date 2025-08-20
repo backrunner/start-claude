@@ -2,7 +2,9 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import inquirer from 'inquirer'
 import { displayError, displayInfo, displaySuccess, displayVerbose, displayWarning } from '../cli/ui'
+import { CacheManager } from '../config/cache-manager'
 
 export interface ClaudeCodeSettings {
   statusLine?: {
@@ -18,8 +20,17 @@ export interface CCStatusLineConfig {
 }
 
 export class StatusLineManager {
+  private static instance: StatusLineManager
   private readonly CCSTATUSLINE_CONFIG_PATH = join(homedir(), '.config', 'ccstatusline', 'settings.json')
   private readonly CLAUDE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json')
+  private readonly cacheManager = CacheManager.getInstance()
+
+  static getInstance(): StatusLineManager {
+    if (!StatusLineManager.instance) {
+      StatusLineManager.instance = new StatusLineManager()
+    }
+    return StatusLineManager.instance
+  }
 
   /**
    * Run ccstatusline setup and monitor for completion
@@ -185,6 +196,105 @@ export class StatusLineManager {
   }
 
   /**
+   * Compare two statusline configurations to check if they are different
+   */
+  private configsAreDifferent(config1: any, config2: any): boolean {
+    return JSON.stringify(config1) !== JSON.stringify(config2)
+  }
+
+  /**
+   * Prompt user about statusline config conflict and handle the response
+   */
+  private async handleStatusLineConfigConflict(
+    existingConfig: any,
+    proposedConfig: any,
+    options: { verbose?: boolean } = {},
+  ): Promise<'replace' | 'keep'> {
+    // Check if we've already asked the user about this conflict
+    const cachedDecision = this.cacheManager.getStatuslineConflictDecision(existingConfig, proposedConfig)
+    if (cachedDecision) {
+      displayVerbose(`Using cached decision: ${cachedDecision} existing Claude statusline config`, options.verbose)
+      return cachedDecision
+    }
+
+    displayWarning('⚠️ Claude Code already has a statusline configuration that differs from start-claude config.')
+    displayInfo('\nExisting Claude Code statusline config:')
+    console.log(JSON.stringify(existingConfig, null, 2))
+    displayInfo('\nProposed start-claude statusline config:')
+    console.log(JSON.stringify(proposedConfig, null, 2))
+
+    const answer = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'action',
+        message: 'What would you like to do?',
+        choices: [
+          { name: 'Replace with start-claude config', value: 'replace' },
+          { name: 'Keep existing Claude Code config', value: 'keep' },
+        ],
+        default: 'keep',
+      },
+    ])
+
+    const userChoice = answer.action as 'replace' | 'keep'
+
+    // Cache the user's decision
+    this.cacheManager.setStatuslineConflictDecision(existingConfig, proposedConfig, userChoice)
+
+    return userChoice
+  }
+
+  /**
+   * Enable statusline in Claude Code settings with conflict detection
+   */
+  async enableStatusLineInClaudeWithConflictCheck(options: { verbose?: boolean } = {}): Promise<boolean> {
+    try {
+      const settings = await this.loadClaudeSettings(options)
+      const proposedConfig = {
+        type: 'command',
+        command: 'npx -y ccstatusline@latest',
+        padding: 0,
+      }
+
+      // Check if statusline config already exists and is different
+      if (settings.statusLine && this.configsAreDifferent(settings.statusLine, proposedConfig)) {
+        const userChoice = await this.handleStatusLineConfigConflict(
+          settings.statusLine,
+          proposedConfig,
+          options,
+        )
+
+        if (userChoice === 'keep') {
+          displayInfo('✅ Keeping existing Claude Code statusline configuration')
+          return true
+        }
+
+        displayInfo('🔄 Replacing Claude Code statusline configuration...')
+      }
+      else if (settings.statusLine) {
+        displayVerbose('Claude Code statusline config matches proposed config', options.verbose)
+        return true
+      }
+      else {
+        displayVerbose('No existing Claude Code statusline config found, adding new config', options.verbose)
+      }
+
+      // Update settings with our status line
+      settings.statusLine = proposedConfig
+
+      const success = await this.saveClaudeSettings(settings, options)
+      if (success) {
+        displaySuccess('✅ Claude Code statusline configuration updated!')
+      }
+      return success
+    }
+    catch (error) {
+      displayError(`❌ Failed to enable statusline in Claude: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      return false
+    }
+  }
+
+  /**
    * Disable statusline in Claude Code settings
    */
   async disableStatusLineInClaude(options: { verbose?: boolean } = {}): Promise<boolean> {
@@ -218,13 +328,25 @@ export class StatusLineManager {
    */
   async syncStatusLineConfig(ccstatuslineConfig: CCStatusLineConfig, options: { verbose?: boolean } = {}): Promise<boolean> {
     try {
-      if (this.hasStatusLineConfig()) {
-        displayVerbose('Local ccstatusline config already exists, skipping sync', options.verbose)
-        return true
+      let success = true
+
+      // Sync ccstatusline config if missing
+      if (!this.hasStatusLineConfig()) {
+        displayInfo('📥 Syncing statusline configuration to local ccstatusline...')
+        success = this.writeStatusLineConfig(ccstatuslineConfig, options)
+        if (!success) {
+          return false
+        }
+      }
+      else {
+        displayVerbose('Local ccstatusline config already exists, skipping ccstatusline sync', options.verbose)
       }
 
-      displayInfo('📥 Syncing statusline configuration to local ccstatusline...')
-      return this.writeStatusLineConfig(ccstatuslineConfig, options)
+      // Ensure Claude Code settings are also configured with conflict detection
+      displayVerbose('Checking Claude Code statusline configuration...', options.verbose)
+      success = await this.enableStatusLineInClaudeWithConflictCheck(options)
+
+      return success
     }
     catch (error) {
       displayError(`❌ Failed to sync statusline config: ${error instanceof Error ? error.message : 'Unknown error'}`)

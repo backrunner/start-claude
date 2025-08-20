@@ -10,36 +10,34 @@ export async function handleSetupCommand(): Promise<void> {
   displayInfo('🛠️  Start-Claude Setup Wizard')
   displayInfo('This wizard will help you configure your start-claude environment')
 
-  const setupOptions = await inquirer.prompt([
-    {
-      type: 'checkbox',
-      name: 'setupItems',
-      message: 'What would you like to set up?',
-      choices: [
-        {
-          name: 'S3 Sync - Configure AWS S3 for configuration synchronization',
-          value: 's3',
-          checked: false,
-        },
-        {
-          name: 'Status Line - Configure ccstatusline integration for Claude Code',
-          value: 'statusline',
-          checked: false,
-        },
-        {
-          name: 'System Settings - Configure global system preferences',
-          value: 'system',
-          checked: false,
-        },
-      ],
-      validate: (choices: string[]) => {
-        if (choices.length === 0) {
-          return 'Please select at least one setup option'
-        }
-        return true
+  const setupOptions = await inquirer.prompt({
+    type: 'checkbox',
+    name: 'setupItems',
+    message: 'What would you like to set up?',
+    choices: [
+      {
+        name: 'S3 Sync - Configure AWS S3 for configuration synchronization',
+        value: 's3',
+        checked: false,
       },
+      {
+        name: 'Status Line - Configure ccstatusline integration for Claude Code',
+        value: 'statusline',
+        checked: false,
+      },
+      {
+        name: 'System Settings - Configure global system preferences',
+        value: 'system',
+        checked: false,
+      },
+    ],
+    validate: (choices) => {
+      if (choices.length === 0) {
+        return 'Please select at least one setup option'
+      }
+      return true
     },
-  ])
+  })
 
   if (setupOptions.setupItems.length === 0) {
     displayWarning('No setup options selected. Exiting...')

@@ -8,8 +8,8 @@ import { StatusLineManager } from '../utils/statusline/manager'
 export async function handleStatusLineSetupCommand(options: { verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
-  const configManager = new ConfigManager()
-  const statusLineManager = new StatusLineManager()
+  const configManager = ConfigManager.getInstance()
+  const statusLineManager = StatusLineManager.getInstance()
 
   try {
     displayInfo('🛠️ Setting up ccstatusline integration...')
@@ -60,8 +60,8 @@ export async function handleStatusLineSetupCommand(options: { verbose?: boolean 
 export async function handleStatusLineDisableCommand(options: { verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
-  const configManager = new ConfigManager()
-  const statusLineManager = new StatusLineManager()
+  const configManager = ConfigManager.getInstance()
+  const statusLineManager = StatusLineManager.getInstance()
 
   try {
     displayInfo('🔧 Disabling statusline integration...')
@@ -90,8 +90,8 @@ export async function handleStatusLineDisableCommand(options: { verbose?: boolea
 export async function handleStatusLineStatusCommand(options: { verbose?: boolean } = {}): Promise<void> {
   displayWelcome()
 
-  const configManager = new ConfigManager()
-  const statusLineManager = new StatusLineManager()
+  const configManager = ConfigManager.getInstance()
+  const statusLineManager = StatusLineManager.getInstance()
 
   try {
     const settings = await configManager.getSettings()

@@ -7,8 +7,8 @@ import { displayError, displayInfo, displaySuccess, displayWarning, displayWelco
 export async function handleOverrideCommand(): Promise<void> {
   displayWelcome()
 
-  const configManager = new ConfigManager()
-  const overrideManager = new OverrideManager()
+  const configManager = ConfigManager.getInstance()
+  const overrideManager = OverrideManager.getInstance()
 
   const shellInfo = overrideManager.getShellInfo()
   const isActive = overrideManager.isOverrideActive()
@@ -69,8 +69,8 @@ export async function handleOverrideCommand(): Promise<void> {
 export async function handleOverrideDisableCommand(): Promise<void> {
   displayWelcome()
 
-  const configManager = new ConfigManager()
-  const overrideManager = new OverrideManager()
+  const configManager = ConfigManager.getInstance()
+  const overrideManager = OverrideManager.getInstance()
 
   const isActive = overrideManager.isOverrideActive()
 
@@ -107,7 +107,7 @@ export async function handleOverrideDisableCommand(): Promise<void> {
 export async function handleOverrideStatusCommand(): Promise<void> {
   displayWelcome()
 
-  const overrideManager = new OverrideManager()
+  const overrideManager = OverrideManager.getInstance()
   const shellInfo = overrideManager.getShellInfo()
   const isActive = overrideManager.isOverrideActive()
 
@@ -125,7 +125,7 @@ export async function handleOverrideStatusCommand(): Promise<void> {
 export async function handleOverrideShellsCommand(): Promise<void> {
   displayWelcome()
 
-  const overrideManager = new OverrideManager()
+  const overrideManager = OverrideManager.getInstance()
   const shellInfo = overrideManager.getShellInfo()
   const supportedShells = overrideManager.getSupportedShells()
 

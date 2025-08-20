@@ -1,7 +1,7 @@
 import { exec, spawn } from 'node:child_process'
 import process from 'node:process'
 import { version } from '../../../package.json'
-import { UpdateCheckCache } from './update-check-cache'
+import { CacheManager } from './cache-manager'
 
 export interface UpdateInfo {
   currentVersion: string
@@ -12,7 +12,7 @@ export interface UpdateInfo {
 
 export async function checkForUpdates(forceCheck = false): Promise<UpdateInfo | null> {
   try {
-    const cache = UpdateCheckCache.getInstance()
+    const cache = CacheManager.getInstance()
 
     // Check if we should skip the update check based on last check time
     if (!forceCheck && !cache.shouldCheckForUpdates()) {
@@ -33,7 +33,7 @@ export async function checkForUpdates(forceCheck = false): Promise<UpdateInfo | 
     const hasUpdate = compareVersions(version, latestVersion) < 0
 
     // Update the last check timestamp
-    cache.setLastCheckTimestamp(Date.now(), version)
+    cache.setUpdateCheckTimestamp(Date.now(), version)
 
     return {
       currentVersion: version,

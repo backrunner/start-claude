@@ -1,15 +1,21 @@
 import type { S3ClientConfig } from '@aws-sdk/client-s3'
-import type { S3Config } from '../config/s3-config'
 import type { ConfigFile, SystemSettings } from '../config/types'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import inquirer from 'inquirer'
-import { ConfigManager } from '../config/config-manager'
-import { S3ConfigFileManager } from '../config/s3-config'
 import { displayError, displayInfo, displaySuccess, displayVerbose, displayWarning } from '../utils/cli/ui'
 import { displayConflictResolution, resolveConfigConflicts } from '../utils/config/conflict-resolver'
+
+export interface S3Config {
+  bucket: string
+  region: string
+  accessKeyId: string
+  secretAccessKey: string
+  key: string
+  endpointUrl?: string // For S3-compatible services like Cloudflare R2, Backblaze B2
+}
 
 export interface FileMetadata {
   lastModified: Date
@@ -43,45 +49,19 @@ interface AwsError {
 }
 
 export class S3SyncManager {
+  private static instance: S3SyncManager
   private s3Client: S3Client | null = null
-  private configManager: ConfigManager
-  private s3ConfigManager: S3ConfigFileManager
   private readonly CONFIG_PATH = join(homedir(), '.start-claude', 'config.json')
 
   constructor() {
-    this.configManager = new ConfigManager()
-    this.s3ConfigManager = S3ConfigFileManager.getInstance()
-
-    // Set up auto-sync callback when config changes
-    this.configManager.setAutoSyncCallback(async () => this.autoUploadAfterChange())
+    // Simplified constructor - no dependencies or callbacks
   }
 
-  /**
-   * Check if cloud sync is enabled (iCloud, OneDrive, or custom folder)
-   */
-  private isCloudSyncEnabled(): boolean {
-    try {
-      const syncConfigFile = join(homedir(), '.start-claude', 'sync.json')
-      if (!existsSync(syncConfigFile)) {
-        return false
-      }
-
-      const syncConfigData = readFileSync(syncConfigFile, 'utf-8')
-      const syncConfig = JSON.parse(syncConfigData)
-
-      return syncConfig.enabled && ['icloud', 'onedrive', 'custom'].includes(syncConfig.provider)
+  static getInstance(): S3SyncManager {
+    if (!S3SyncManager.instance) {
+      S3SyncManager.instance = new S3SyncManager()
     }
-    catch {
-      return false
-    }
-  }
-
-  private disableAutoSync(): void {
-    this.configManager.setAutoSyncCallback(null)
-  }
-
-  private enableAutoSync(): void {
-    this.configManager.setAutoSyncCallback(async () => this.autoUploadAfterChange())
+    return S3SyncManager.instance
   }
 
   private formatAwsError(error: unknown): string {
@@ -109,12 +89,20 @@ export class S3SyncManager {
     return `${errorMessage}${statusCode}`
   }
 
-  private getS3Config(): S3Config | null {
-    return this.s3ConfigManager.getS3Config()
+  private async getS3Config(): Promise<S3Config | null> {
+    const configManager = await this.getConfigManager()
+    return configManager.getSettings().s3Sync || null
   }
 
   public async getSystemSettings(): Promise<SystemSettings> {
-    return this.configManager.getSettings()
+    const configManager = await this.getConfigManager()
+    return configManager.getSettings()
+  }
+
+  private async getConfigManager(): Promise<any> {
+    // Get ConfigManager instance when needed to avoid circular dependency
+    const { ConfigManager } = await import('../config/manager')
+    return ConfigManager.getInstance()
   }
 
   private normalizeS3Key(key: string): string {
@@ -154,40 +142,38 @@ export class S3SyncManager {
       displayVerbose(`🔍 Checking remote storage for existing configuration...`, options.verbose)
       const remoteExists = await this.checkS3KeyExists(config, options)
 
-      // Prepare S3 configuration - normalize S3 key
-      const normalizedConfig: S3Config = {
-        ...config,
-        key: this.normalizeS3Key(config.key),
-      }
+      // Save the S3 configuration with normalized key
+      const configManager = await this.getConfigManager()
+      await configManager.updateSettings({
+        s3Sync: {
+          ...config,
+          key: this.normalizeS3Key(config.key),
+        },
+      })
+
+      displaySuccess('S3 sync configuration saved successfully!')
 
       // Check local configs existence
-      const localConfigs = await this.configManager.listConfigs()
+      const localConfigs = configManager.listConfigs()
       const hasLocalConfigs = localConfigs.length > 0
 
       displayVerbose(`📁 Local configurations found: ${hasLocalConfigs ? 'Yes' : 'No'}`, options.verbose)
       displayVerbose(`☁️  Remote configuration found: ${remoteExists ? 'Yes' : 'No'}`, options.verbose)
 
       if (remoteExists && !hasLocalConfigs) {
-        // Remote exists, no local configs - save S3 config, then auto download
-        this.s3ConfigManager.save(normalizedConfig)
-        displaySuccess('S3 sync configuration saved successfully!')
+        // Remote exists, no local configs - auto download
         displayInfo('📥 Remote configuration found, downloading automatically...')
         await this.downloadConfigs(true)
         return true
       }
       else if (!remoteExists && hasLocalConfigs) {
-        // No remote, has local configs - save S3 config, then upload
-        // This is clean now - no timestamp manipulation needed!
-        this.s3ConfigManager.save(normalizedConfig)
-        displaySuccess('S3 sync configuration saved successfully!')
+        // No remote, has local configs - auto upload
         displayInfo('📤 No remote configuration found, uploading local configs...')
         await this.uploadConfigs()
         return false
       }
       else if (remoteExists && hasLocalConfigs) {
-        // Both exist - save S3 config first, then prompt user to decide
-        this.s3ConfigManager.save(normalizedConfig)
-        displaySuccess('S3 sync configuration saved successfully!')
+        // Both exist - prompt user to decide
         displayWarning('⚠️  Both remote and local configurations exist.')
 
         const overwriteAnswer = await inquirer.prompt([
@@ -205,9 +191,7 @@ export class S3SyncManager {
         return true
       }
 
-      // Neither exists - just save S3 config and return false
-      this.s3ConfigManager.save(normalizedConfig)
-      displaySuccess('S3 sync configuration saved successfully!')
+      // Neither exists - just return false
       displayVerbose('ℹ️  No configurations found locally or remotely', options.verbose)
       return false
     }
@@ -363,7 +347,10 @@ export class S3SyncManager {
     displayVerbose(`📊 Fetching remote configuration for detailed comparison...`, options.verbose)
     let remoteConfig: ConfigFile | null = null
     try {
-      const s3Config = this.getS3Config()!
+      const s3Config = await this.getS3Config()
+      if (!s3Config) {
+        throw new Error('S3 configuration not found')
+      }
       const command = new GetObjectCommand({
         Bucket: s3Config.bucket,
         Key: this.normalizeS3Key(s3Config.key),
@@ -491,7 +478,7 @@ export class S3SyncManager {
   }
 
   async uploadConfigs(force = false, options: { verbose?: boolean } = {}): Promise<boolean> {
-    const s3Config = this.getS3Config()
+    const s3Config = await this.getS3Config()
     if (!s3Config) {
       displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
       return false
@@ -527,7 +514,8 @@ export class S3SyncManager {
       }
 
       displayVerbose(`📝 Preparing configuration data for upload...`, options.verbose)
-      const configFile = await this.configManager.getConfigFile()
+      const configManager = await this.getConfigManager()
+      const configFile = configManager.getConfigFile()
       const configData = JSON.stringify(configFile, null, 2)
       const now = new Date()
 
@@ -557,7 +545,7 @@ export class S3SyncManager {
   }
 
   async downloadConfigs(force = false, options: { silent?: boolean, verbose?: boolean } = {}): Promise<boolean> {
-    const s3Config = this.getS3Config()
+    const s3Config = await this.getS3Config()
     if (!s3Config) {
       displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
       return false
@@ -574,7 +562,8 @@ export class S3SyncManager {
       }
 
       // Get local config for comparison
-      const localConfig = await this.configManager.getConfigFile()
+      const configManager = await this.getConfigManager()
+      const localConfig = configManager.getConfigFile()
       const localFile = this.getLocalFileInfo(options)
 
       // Fetch remote config
@@ -641,35 +630,23 @@ export class S3SyncManager {
           }
 
           // Save the resolved configuration
-
           displayVerbose(`💾 Saving resolved configuration...`, options.verbose)
 
-          this.disableAutoSync()
-          try {
-            this.configManager.saveConfigFile(configToSave)
-            displaySuccess(`✅ Configuration synchronized with conflict resolution! (${this.formatTimestamp(remoteInfo.lastModified)})`)
-            return true
-          }
-          finally {
-            this.enableAutoSync()
-          }
+          const configManager = await this.getConfigManager()
+          await configManager.saveConfigFile(configToSave, true) // skipSync = true
+          displaySuccess(`✅ Configuration synchronized with conflict resolution! (${this.formatTimestamp(remoteInfo.lastModified)})`)
+          return true
         }
         else if (conflictResolution.hasConflicts && options.silent) {
           // Silent mode with conflicts - use smart merge
-
           displayVerbose(`🔄 Applying silent conflict resolution (${conflictResolution.conflicts.length} conflicts)...`, options.verbose)
 
-          this.disableAutoSync()
-          try {
-            this.configManager.saveConfigFile(conflictResolution.resolvedConfig)
-            if (options.verbose) {
-              displayVerbose(`✅ Silent conflict resolution applied (${conflictResolution.conflicts.length} conflicts resolved)`)
-            }
-            return true
+          const configManager = await this.getConfigManager()
+          await configManager.saveConfigFile(conflictResolution.resolvedConfig, true) // skipSync = true
+          if (options.verbose) {
+            displayVerbose(`✅ Silent conflict resolution applied (${conflictResolution.conflicts.length} conflicts resolved)`)
           }
-          finally {
-            this.enableAutoSync()
-          }
+          return true
         }
         else {
           displayVerbose(`✅ No conflicts detected`, options.verbose)
@@ -677,20 +654,13 @@ export class S3SyncManager {
       }
 
       // No conflicts or force mode - direct download
-
       displayVerbose(`💾 Saving configuration file...`, options.verbose)
 
-      this.disableAutoSync()
-      try {
-        this.configManager.saveConfigFile(remoteConfigFile)
-        if (!options.silent || options.verbose) {
-          displaySuccess(`✅ Configuration downloaded from S3 successfully! (${this.formatTimestamp(remoteInfo.lastModified)})`)
-        }
-        return true
+      await configManager.saveConfigFile(remoteConfigFile, true) // skipSync = true
+      if (!options.silent || options.verbose) {
+        displaySuccess(`✅ Configuration downloaded from S3 successfully! (${this.formatTimestamp(remoteInfo.lastModified)})`)
       }
-      finally {
-        this.enableAutoSync()
-      }
+      return true
     }
     catch (error: unknown) {
       console.error(error)
@@ -700,7 +670,7 @@ export class S3SyncManager {
   }
 
   async syncConfigs(options: { verbose?: boolean } = {}): Promise<boolean> {
-    const s3Config = this.getS3Config()
+    const s3Config = await this.getS3Config()
     if (!s3Config) {
       displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
       return false
@@ -761,41 +731,21 @@ export class S3SyncManager {
    * Enhanced with version checking and smart conflict resolution
    */
   async checkAutoSync(): Promise<boolean> {
-    if (!this.isS3Configured()) {
+    if (!(await this.isS3Configured())) {
       return true // No S3 config, nothing to sync
     }
 
-    // Check if cloud sync is enabled - if so, treat S3 as backup (upload only)
-    if (this.isCloudSyncEnabled()) {
-      try {
-        this.initializeS3Client(this.getS3Config()!)
-
-        const localConfig = await this.configManager.getConfigFile()
-        const localFile = this.getLocalFileInfo()
-        const remoteInfo = await this.getS3ObjectInfo(this.getS3Config()!)
-
-        // Use enhanced sync analysis but only for uploads
-        const syncAnalysis = await this.analyzeSyncRequirements(localConfig, remoteInfo, localFile)
-
-        // Only upload when cloud sync is enabled - no downloads
-        if (syncAnalysis.shouldSync && syncAnalysis.syncDirection === 'upload') {
-          return await this.uploadConfigs(true)
-        }
-
-        return true // Skip downloads when cloud sync is enabled
-      }
-      catch {
-        // Silent fail for auto-sync
-        return true
-      }
-    }
-
     try {
-      this.initializeS3Client(this.getS3Config()!)
+      const s3Config = await this.getS3Config()
+      if (!s3Config) {
+        return true // No S3 config, nothing to sync
+      }
+      this.initializeS3Client(s3Config)
 
-      const localConfig = await this.configManager.getConfigFile()
+      const configManager = await this.getConfigManager()
+      const localConfig = configManager.getConfigFile()
       const localFile = this.getLocalFileInfo()
-      const remoteInfo = await this.getS3ObjectInfo(this.getS3Config()!)
+      const remoteInfo = await this.getS3ObjectInfo(s3Config)
 
       // Use enhanced sync analysis
       const syncAnalysis = await this.analyzeSyncRequirements(localConfig, remoteInfo, localFile)
@@ -831,15 +781,19 @@ export class S3SyncManager {
    * Check for remote updates with user prompt (for balance mode)
    */
   async checkRemoteUpdates(): Promise<boolean> {
-    if (!this.isS3Configured()) {
+    if (!(await this.isS3Configured())) {
       return false
     }
 
     try {
-      this.initializeS3Client(this.getS3Config()!)
+      const s3Config = await this.getS3Config()
+      if (!s3Config) {
+        return false // No S3 config
+      }
+      this.initializeS3Client(s3Config)
 
       const localFile = this.getLocalFileInfo()
-      const remoteInfo = await this.getS3ObjectInfo(this.getS3Config()!)
+      const remoteInfo = await this.getS3ObjectInfo(s3Config)
 
       if (!remoteInfo.exists) {
         return false
@@ -884,7 +838,7 @@ export class S3SyncManager {
    * Trigger automatic upload after local config changes
    */
   async autoUploadAfterChange(): Promise<void> {
-    if (!this.isS3Configured()) {
+    if (!(await this.isS3Configured())) {
       return
     }
 
@@ -900,12 +854,18 @@ export class S3SyncManager {
     }
   }
 
-  isS3Configured(): boolean {
-    return this.s3ConfigManager.isConfigured()
+  async isS3Configured(): Promise<boolean> {
+    try {
+      const config = await this.getS3Config()
+      return config !== null && config !== undefined
+    }
+    catch {
+      return false
+    }
   }
 
-  getS3Status(): string {
-    const config = this.getS3Config()
+  async getS3Status(): Promise<string> {
+    const config = await this.getS3Config()
     if (!config) {
       return 'Not configured'
     }

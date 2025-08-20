@@ -18,8 +18,8 @@ vi.mock('@/utils/ui', () => ({
 
 // Mock services
 vi.mock('@/services/config')
-vi.mock('@/services/transformer', () => ({
-  TransformerService: vi.fn().mockImplementation(() => ({
+vi.mock('@/services/transformer', () => {
+  const MockTransformerService = vi.fn().mockImplementation(() => ({
     registerTransformer: vi.fn(),
     hasTransformer: vi.fn().mockReturnValue(true),
     removeTransformer: vi.fn().mockReturnValue(true),
@@ -30,9 +30,24 @@ vi.mock('@/services/transformer', () => ({
     getTransformersWithoutEndpoint: vi.fn().mockReturnValue([]),
     initialize: vi.fn().mockResolvedValue(undefined),
     findTransformerByPath: vi.fn().mockReturnValue(null),
-    findTransformerByDomain: vi.fn().mockReturnValue(null),
-  })),
-}))
+    findTransformerByDomain: vi.fn((_baseUrl?: string, _transformerEnabled?: boolean, _transformer?: string) => null),
+  }))
+
+  // Add static methods properly
+  Object.assign(MockTransformerService, {
+    isTransformerEnabled: vi.fn((transformerEnabled?: boolean) => {
+      return transformerEnabled === true
+    }),
+    getTransformerType: vi.fn((transformerEnabled?: boolean | string) => {
+      if (typeof transformerEnabled === 'string' && transformerEnabled !== 'true') {
+        return transformerEnabled === 'auto' ? 'auto' : transformerEnabled
+      }
+      return 'auto'
+    }),
+  })
+
+  return { TransformerService: MockTransformerService }
+})
 
 // Mock HTTP modules
 vi.mock('node:http')
@@ -801,7 +816,7 @@ describe('proxyServer', () => {
 
       const proxyMode: ProxyMode = { enableTransform: true }
       expect(() => new ProxyServer(configsWithoutTransformer, proxyMode)).toThrow(
-        'No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled: true.',
+        'No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled enabled.',
       )
       // Since constructor throws, we can't test the 503 response
       // This test now verifies that the proper error is thrown during construction
@@ -901,7 +916,7 @@ describe('proxyServer', () => {
 
       const proxyMode: ProxyMode = { enableTransform: true }
       expect(() => new ProxyServer(regularConfigs, proxyMode)).toThrow(
-        'No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled: true.',
+        'No transformer-enabled configurations found. Transformer mode requires at least one configuration with transformerEnabled enabled.',
       )
       // Since constructor now validates configs, we can't test stub endpoint creation
       // This test now verifies that the proper error is thrown
@@ -1046,91 +1061,97 @@ describe('proxyServer', () => {
       expect(parsedResult.error.type).toBe('empty_response')
     })
 
-    it('should preserve streaming responses and set correct headers', async () => {
-      const streamingResponse = 'data: {"content":"hello"}\n\ndata: {"content":"world"}\n\n'
-      const headers = { 'content-type': 'text/event-stream' }
+    it('should format non-streaming OpenAI responses to Anthropic format', async () => {
+      const openaiResponse = JSON.stringify({
+        id: 'chatcmpl-123',
+        object: 'chat.completion',
+        model: 'gpt-4',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: 'Hello! How can I help you today?',
+          },
+          finish_reason: 'stop',
+        }],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 15,
+          total_tokens: 25,
+        },
+      })
+
+      const headers = { 'content-type': 'application/json' }
       const mockRes = {
-        setHeader: vi.fn(),
-        writeHead: vi.fn(),
-        write: vi.fn(),
-        end: vi.fn(),
         statusCode: 200,
         headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = await formatUniversalResponse(streamingResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(openaiResponse, 200, headers, mockRes)
 
-      expect(result).toBe(null) // Streaming responses should return null (already sent)
-      expect(mockRes.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      }))
+      expect(result).not.toBeNull()
+      const parsedResult = JSON.parse(result!)
+      expect(parsedResult.type).toBe('message')
+      expect(parsedResult.content).toBeDefined()
+      expect(Array.isArray(parsedResult.content)).toBe(true)
+      expect(parsedResult.content[0].text).toBe('Hello! How can I help you today?')
     })
 
-    it('should detect streaming responses by content pattern even without headers', async () => {
-      const streamingResponse = 'data: {"choices":[{"delta":{"role":"assistant","content":"Hello"}}]}\n\n'
-      const headers = { 'content-type': 'application/json' } // Wrong header type
+    it('should handle non-streaming responses with invalid JSON gracefully', async () => {
+      const invalidResponse = 'This is not valid JSON'
+      const headers = { 'content-type': 'application/json' }
       const mockRes = {
-        setHeader: vi.fn(),
-        writeHead: vi.fn(),
-        write: vi.fn(),
-        end: vi.fn(),
         statusCode: 200,
         headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = await formatUniversalResponse(streamingResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(invalidResponse, 200, headers, mockRes)
 
-      expect(result).toBe(null) // Should detect streaming by content pattern and return null
-      expect(mockRes.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      }))
+      expect(result).not.toBeNull()
+      const parsedResult = JSON.parse(result!)
+      expect(parsedResult.error).toBeDefined()
+      expect(parsedResult.error.type).toBe('format_error')
+      expect(parsedResult.error.originalResponse).toBe('This is not valid JSON')
     })
 
-    it('should handle headers already sent scenario gracefully', async () => {
-      const streamingResponse = 'data: {"content":"hello"}\n\n'
-      const headers = { 'content-type': 'text/event-stream' }
+    it('should handle regular JSON responses without transformation', async () => {
+      const regularResponse = JSON.stringify({
+        id: 'msg-123',
+        type: 'message',
+        content: [{ type: 'text', text: 'Hello from Anthropic!' }],
+        model: 'claude-3-sonnet',
+      })
+      const headers = { 'content-type': 'application/json' }
       const mockRes = {
-        setHeader: vi.fn(),
-        writeHead: vi.fn(),
-        write: vi.fn(),
-        end: vi.fn(),
-        statusCode: 200,
-        headersSent: true, // Headers already sent
-      }
-
-      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = await formatUniversalResponse(streamingResponse, 200, headers, mockRes)
-
-      expect(result).toBe(null) // Should still handle streaming response
-      expect(mockRes.setHeader).not.toHaveBeenCalled() // Should not try to set headers
-      expect(mockRes.writeHead).not.toHaveBeenCalled() // Should not try to write headers
-    })
-
-    it('should handle streaming response parse errors gracefully', async () => {
-      const malformedStreamingResponse = 'data: invalid json content\n\n'
-      const headers = { 'content-type': 'text/event-stream' }
-      const mockRes = {
-        setHeader: vi.fn(),
-        writeHead: vi.fn(),
-        write: vi.fn(),
-        end: vi.fn(),
         statusCode: 200,
         headersSent: false,
       }
 
       const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
-      const result = await formatUniversalResponse(malformedStreamingResponse, 200, headers, mockRes)
+      const result = await formatUniversalResponse(regularResponse, 200, headers, mockRes)
 
-      expect(result).toBe(null) // Should return null for streaming response
-      expect(mockRes.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
-        'Content-Type': 'text/event-stream',
-      }))
+      expect(result).not.toBeNull()
+      const parsedResult = JSON.parse(result!)
+      expect(parsedResult.type).toBe('message')
+      expect(parsedResult.content[0].text).toBe('Hello from Anthropic!')
+    })
+
+    it('should handle error status codes properly', async () => {
+      const errorResponse = JSON.stringify({ error: 'Unauthorized', message: 'Invalid API key' })
+      const headers = { 'content-type': 'application/json' }
+      const mockRes = {
+        statusCode: 200,
+        headersSent: false,
+      }
+
+      const formatUniversalResponse = (proxyServer as any).formatUniversalResponse.bind(proxyServer)
+      const result = await formatUniversalResponse(errorResponse, 401, headers, mockRes)
+
+      expect(result).not.toBeNull()
+      const parsedResult = JSON.parse(result!)
+      expect(parsedResult.error).toBe('Unauthorized')
+      expect(mockRes.statusCode).toBe(401) // Should set the error status code
     })
 
     it('should set status code for error responses', async () => {

@@ -9,6 +9,7 @@ export const claudeConfigSchema = z.object({
   model: z.string().optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'plan', 'bypassPermissions']).optional(),
   transformerEnabled: z.boolean().optional().default(false),
+  transformer: z.string().optional().default('auto'),
   isDefault: z.boolean().optional().default(false),
   order: z.number().int().min(0).optional(),
   enabled: z.boolean().optional().default(true),

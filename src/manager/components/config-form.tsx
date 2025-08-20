@@ -27,11 +27,33 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     model: '',
     permissionMode: 'default',
     transformerEnabled: false,
+    transformer: 'auto',
     isDefault: false,
     enabled: true,
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [transformers, setTransformers] = useState<Array<{value: string, label: string, description: string}>>([])
+  const [loadingTransformers, setLoadingTransformers] = useState(false)
+
+  // Fetch available transformers
+  useEffect(() => {
+    const fetchTransformers = async () => {
+      setLoadingTransformers(true)
+      try {
+        const response = await fetch('/api/transformers')
+        if (response.ok) {
+          const data = await response.json()
+          setTransformers(data.transformers || [])
+        }
+      } catch (error) {
+        console.error('Failed to fetch transformers:', error)
+      } finally {
+        setLoadingTransformers(false)
+      }
+    }
+    fetchTransformers()
+  }, [])
 
   const validateFormData = (data: ClaudeConfig): boolean => {
     if (!data.name?.trim())
@@ -62,6 +84,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         model: '',
         permissionMode: 'default' as const,
         transformerEnabled: false,
+        transformer: 'auto',
         isDefault: false,
         enabled: true,
       }
@@ -309,7 +332,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 <div className="flex-1">
                   <Label htmlFor="transformerEnabled" className="font-medium">Transformer</Label>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Transform OpenAI API compatible format to Claude Code compatible format
+                    Transform API requests to match different provider formats
                   </p>
                 </div>
                 <Switch
@@ -318,6 +341,33 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   onCheckedChange={checked => handleChange('transformerEnabled', checked)}
                 />
               </div>
+
+              {formData.transformerEnabled && (
+                <div className="p-3 rounded-lg border bg-muted/50">
+                  <div className="flex flex-col space-y-3">
+                    <Label htmlFor="transformer" className="font-medium">Transformer Type</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Select which transformer to use. &quot;Auto&quot; automatically detects based on the API endpoint domain.
+                    </p>
+                    <Select
+                      value={formData.transformer || 'auto'}
+                      onValueChange={(value) => handleChange('transformer', value)}
+                      disabled={loadingTransformers}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={loadingTransformers ? "Loading transformers..." : "Select transformer"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {transformers.map((transformer) => (
+                          <SelectItem key={transformer.value} value={transformer.value}>
+                            {transformer.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
                 <div className="flex-1">

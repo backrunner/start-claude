@@ -621,7 +621,7 @@ export default function HomePage(): ReactNode {
           open={isFormOpen}
           onOpenChange={setIsFormOpen}
           config={editingConfig}
-          onSave={(config) => { void saveConfig(config) }}
+          onSave={saveConfig}
           onCancel={() => {
             setIsFormOpen(false)
             setEditingConfig(null)
@@ -639,7 +639,7 @@ export default function HomePage(): ReactNode {
           open={!!deleteConfig}
           onClose={() => setDeleteConfig(null)}
           configName={deleteConfig}
-          onConfirm={() => { void handleDeleteConfirm() }}
+          onConfirm={handleDeleteConfirm}
         />
       </div>
     </div>

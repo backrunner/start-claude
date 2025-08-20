@@ -1,22 +1,18 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { settingsUpdateRequestSchema, systemSettingsSchema } from '@/lib/validation'
-import { ConfigManager } from '../../../../config/config-manager'
-import { S3ConfigFileManager } from '../../../../config/s3-config'
-import { SyncManager } from '../../../../sync/manager'
+import { ConfigManager } from '../../../../config/manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// Initialize the ConfigManager, S3ConfigManager, and SyncManager instances
-const configManager = new ConfigManager()
-const s3ConfigManager = S3ConfigFileManager.getInstance()
-const syncManager = new SyncManager()
+// Initialize the ConfigManager instance
+const configManager = ConfigManager.getInstance()
 
-async function getSettings(): Promise<any> {
+function getSettings(): any {
   try {
-    const configFile = await configManager.load()
+    const configFile = configManager.load()
     const settings = configFile.settings || { overrideClaudeCommand: false }
 
     // Ensure balanceMode structure exists with defaults
@@ -36,26 +32,6 @@ async function getSettings(): Promise<any> {
           minSamples: 2,
         },
       }
-    }
-
-    // Get sync configuration from the sync manager
-    const syncConfig = syncManager.getSyncConfig()
-    if (syncConfig) {
-      // Map SyncConfig to SystemSettings.sync format
-      settings.sync = {
-        enabled: syncConfig.enabled,
-        provider: syncConfig.provider,
-        cloudPath: syncConfig.cloudPath,
-        customPath: syncConfig.customPath,
-        linkedAt: syncConfig.linkedAt,
-        lastVerified: syncConfig.lastVerified,
-      }
-    }
-
-    // Get S3 configuration from separate file
-    const s3Config = s3ConfigManager.getS3Config()
-    if (s3Config) {
-      settings.s3Sync = s3Config
     }
 
     return settings
@@ -85,39 +61,14 @@ async function getSettings(): Promise<any> {
 
 async function saveSettings(settings: any): Promise<void> {
   try {
-    // Handle S3 configuration separately
-    if (settings.s3Sync) {
-      s3ConfigManager.save(settings.s3Sync)
-      // Remove s3Sync from settings to avoid saving it in the main config file
-      const { s3Sync, ...settingsWithoutS3 } = settings
-      settings = settingsWithoutS3
-    }
-
-    // Handle sync configuration separately
-    if (settings.sync) {
-      const syncConfig = {
-        enabled: settings.sync.enabled,
-        provider: settings.sync.provider,
-        cloudPath: settings.sync.cloudPath,
-        customPath: settings.sync.customPath,
-        linkedAt: settings.sync.linkedAt,
-        lastVerified: settings.sync.lastVerified,
-      }
-      syncManager.saveSyncConfig(syncConfig)
-
-      // Remove sync from settings to avoid saving it in the main config file
-      const { sync, ...settingsWithoutSync } = settings
-      settings = settingsWithoutSync
-    }
-
-    const configFile = await configManager.load()
+    const configFile = configManager.load()
     const updatedConfigFile = {
       ...configFile,
       settings: { ...configFile.settings, ...settings },
     }
 
     // Use ConfigManager.save() to trigger S3 auto-sync
-    configManager.save(updatedConfigFile)
+    return await configManager.save(updatedConfigFile)
   }
   catch (error) {
     console.error('Error saving settings:', error)
@@ -127,7 +78,7 @@ async function saveSettings(settings: any): Promise<void> {
 
 export async function GET(): Promise<NextResponse> {
   try {
-    const settings = await getSettings()
+    const settings = getSettings()
     return NextResponse.json({ settings })
   }
   catch (error) {
@@ -161,7 +112,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     }
 
     await saveSettings(settingsValidation.data)
-    return NextResponse.json({ success: true, settings: await getSettings() })
+    return NextResponse.json({ success: true, settings: getSettings() })
   }
   catch (error) {
     console.error('PUT /api/settings error:', error)
