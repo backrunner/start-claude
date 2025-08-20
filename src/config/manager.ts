@@ -248,4 +248,18 @@ export class ConfigManager {
     const configFile = this.load()
     return configFile.configs.filter(c => c.isDeleted)
   }
+
+  /**
+   * Check if an immediate update is needed due to outdated CLI
+   */
+  needsImmediateUpdate(): boolean {
+    return this.configFileManager.needsImmediateUpdate()
+  }
+
+  /**
+   * Reset the immediate update flag (for testing)
+   */
+  resetImmediateUpdateFlag(): void {
+    this.configFileManager.resetImmediateUpdateFlag()
+  }
 }

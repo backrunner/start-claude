@@ -125,7 +125,9 @@ program
     }
 
     // Check for updates (rate limited to once per day, unless forced)
-    const updateInfo = await checkForUpdates(options.checkUpdates)
+    // First check if an immediate update is needed due to outdated CLI
+    const needsImmediateUpdate = configManager.needsImmediateUpdate()
+    const updateInfo = await checkForUpdates(options.checkUpdates || needsImmediateUpdate)
 
     // Check for remote config updates (once per day, unless forced)
     let remoteUpdateResult = false
@@ -158,7 +160,7 @@ program
           type: 'confirm',
           name: 'autoUpdate',
           message: 'Would you like to update now?',
-          default: false,
+          default: needsImmediateUpdate, // Default to Y if immediate update is needed
         },
       ])
 
