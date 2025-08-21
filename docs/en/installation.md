@@ -56,7 +56,7 @@ start-claude override --enable
 start-claude --api-key sk-your-key
 
 # Create custom alias (PowerShell)
-Set-Alias sc start-claude
+Set-Alias scc start-claude
 ```
 
 ## Troubleshooting

@@ -29,7 +29,7 @@ pnpm add -g start-claude
 start-claude --api-key sk-your-key --model claude-3-sonnet
 
 # 使用短命令别名（在 Windows 上可能无效）
-sc --api-key sk-your-key --model claude-3-sonnet
+scc --api-key sk-your-key --model claude-3-sonnet
 
 # Windows 用户：启用覆盖以获得更好的兼容性
 start-claude override
@@ -113,7 +113,7 @@ start-claude manager
 
 # 短别名
 
-sc --api-key sk-key --model claude-3-haiku
+scc --api-key sk-key --model claude-3-haiku
 
 ````
 

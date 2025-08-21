@@ -15,6 +15,7 @@ export class ConfigFileManager {
   private static instance: ConfigFileManager | null = null
   private configCache: ConfigFile | null = null
   private lastFileModTime: number = 0
+  private _needsImmediateUpdate: boolean = false
 
   private constructor() {
     this.ensureConfigDir()
@@ -87,6 +88,11 @@ export class ConfigFileManager {
       }
 
       const config = rawConfig as ConfigFile
+
+      // Check if config version is higher than CLI version - indicates CLI is outdated
+      if (config.version > CURRENT_CONFIG_VERSION) {
+        this.handleOutdatedCLI(config.version)
+      }
 
       // Check if migration is needed - delegate to migrator package
       if (config.version < CURRENT_CONFIG_VERSION) {
@@ -388,5 +394,32 @@ export class ConfigFileManager {
    */
   getConfigDir(): string {
     return CONFIG_DIR
+  }
+
+  /**
+   * Handle case where config version is higher than CLI version
+   * This indicates the CLI tool is outdated and needs to be updated
+   */
+  private handleOutdatedCLI(configVersion: number): void {
+    displayWarning(`⚠️ Configuration version (${configVersion}) is newer than CLI version (${CURRENT_CONFIG_VERSION})`)
+    displayWarning('⚠️ Your CLI tool is outdated and needs to be updated to avoid compatibility issues.')
+    displayInfo('💡 An update check will be performed immediately.')
+
+    // Set a flag that can be checked by the CLI startup code
+    this._needsImmediateUpdate = true
+  }
+
+  /**
+   * Check if an immediate update is needed due to outdated CLI
+   */
+  needsImmediateUpdate(): boolean {
+    return this._needsImmediateUpdate
+  }
+
+  /**
+   * Reset the immediate update flag (for testing)
+   */
+  resetImmediateUpdateFlag(): void {
+    this._needsImmediateUpdate = false
   }
 }

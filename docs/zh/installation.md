@@ -39,7 +39,7 @@ npm link
 ```bash
 start-claude --help
 # 或使用短别名
-sc --help
+scc --help
 ```
 
 ## 故障排除

@@ -52,6 +52,9 @@ describe('configManager', () => {
     const configModule = await import('@/config/manager')
     ConfigManager = configModule.ConfigManager
     configManager = new ConfigManager()
+
+    // Reset the immediate update flag for each test
+    configManager.resetImmediateUpdateFlag()
   })
 
   afterEach(() => {
@@ -658,6 +661,221 @@ describe('configManager', () => {
       expect(result[0].profileType).toBe('default')
       expect(result[1].profileType).toBe('official')
       expect(result[2].profileType).toBeUndefined()
+    })
+  })
+
+  describe('outdated CLI detection', () => {
+    // Mock the UI functions for testing
+    const mockDisplayWarning = vi.fn()
+    const mockDisplayInfo = vi.fn()
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      vi.doMock('@/utils/cli/ui', () => ({
+        displayInfo: mockDisplayInfo,
+        displayWarning: mockDisplayWarning,
+        displaySuccess: vi.fn(),
+      }))
+    })
+
+    it('should detect when config version is higher than CLI version', () => {
+      const futureConfig = {
+        version: 5, // Higher than TEST_CONFIG_VERSION (1)
+        configs: [{ name: 'test-config', isDefault: true, enabled: true }],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
+
+      const result = configManager.load()
+
+      // Should still return the config but flag it as needing update
+      expect(result.version).toBe(5)
+      expect(result.configs).toHaveLength(1)
+    })
+
+    it('should set needsImmediateUpdate flag when config version is higher', () => {
+      const futureConfig = {
+        version: 3,
+        configs: [],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
+
+      // Load config should trigger outdated CLI detection
+      configManager.load()
+
+      // Check that the flag is set
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+    })
+
+    it('should not set needsImmediateUpdate flag for current version', () => {
+      const currentConfig = {
+        version: TEST_CONFIG_VERSION,
+        configs: [],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(currentConfig))
+
+      configManager.load()
+
+      expect(configManager.needsImmediateUpdate()).toBe(false)
+    })
+
+    it('should not set needsImmediateUpdate flag for older version', () => {
+      const olderConfig = {
+        version: TEST_CONFIG_VERSION - 1,
+        configs: [],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(olderConfig))
+
+      configManager.load()
+
+      expect(configManager.needsImmediateUpdate()).toBe(false)
+    })
+
+    it('should handle multiple loads with future version correctly', () => {
+      const futureConfig = {
+        version: 10,
+        configs: [],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
+
+      // First load
+      configManager.load()
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+
+      // Second load should maintain the flag
+      configManager.load()
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+    })
+
+    it('should reset flag after creating new ConfigFileManager instance', async () => {
+      const futureConfig = {
+        version: 99,
+        configs: [],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
+
+      configManager.load()
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+
+      // Create new instance (simulating restart)
+      const { ConfigManager: NewConfigManager } = await import('@/config/manager')
+      const newConfigManager = NewConfigManager.getInstance()
+
+      // Since ConfigFileManager is a singleton, manually reset for testing (simulating a process restart)
+      newConfigManager.resetImmediateUpdateFlag()
+
+      // New instance should have flag false after reset
+      expect(newConfigManager.needsImmediateUpdate()).toBe(false)
+
+      // Loading same future config should set flag again
+      newConfigManager.load()
+      expect(newConfigManager.needsImmediateUpdate()).toBe(true)
+    })
+
+    it('should handle edge case with version 0', () => {
+      const zeroVersionConfig = {
+        version: 0,
+        configs: [],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(zeroVersionConfig))
+
+      configManager.load()
+
+      // Version 0 is less than TEST_CONFIG_VERSION (1), should not trigger outdated CLI
+      expect(configManager.needsImmediateUpdate()).toBe(false)
+    })
+
+    it('should handle large version numbers correctly', () => {
+      const hugeVersionConfig = {
+        version: Number.MAX_SAFE_INTEGER,
+        configs: [],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(hugeVersionConfig))
+
+      configManager.load()
+
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+    })
+
+    it('should work correctly with migration scenario', () => {
+      // First, test with legacy config (no version)
+      const legacyConfig = {
+        configs: [{ name: 'legacy', isDefault: true }],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(legacyConfig))
+
+      let result = configManager.load()
+
+      // Legacy config should be migrated, no outdated CLI flag
+      expect(configManager.needsImmediateUpdate()).toBe(false)
+      expect(result.version).toBe(TEST_CONFIG_VERSION)
+
+      // Now test with future version after migration
+      const futureConfig = {
+        version: TEST_CONFIG_VERSION + 5,
+        configs: [{ name: 'future', isDefault: true, enabled: true }],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
+
+      result = configManager.load()
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+      expect(result.version).toBe(TEST_CONFIG_VERSION + 5)
+    })
+
+    it('should preserve needsImmediateUpdate state across config operations', async () => {
+      const futureConfig = {
+        version: 7,
+        configs: [{ name: 'test', isDefault: false, enabled: true }],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
+
+      // Load future config
+      configManager.load()
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+
+      // Perform various operations - flag should remain
+      await configManager.addConfig({ name: 'new-config', isDefault: false })
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+
+      await configManager.updateSettings({ overrideClaudeCommand: true })
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+
+      configManager.listConfigs()
+      expect(configManager.needsImmediateUpdate()).toBe(true)
+
+      configManager.getConfig('test')
+      expect(configManager.needsImmediateUpdate()).toBe(true)
     })
   })
 })

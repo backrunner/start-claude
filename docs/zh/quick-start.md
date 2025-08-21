@@ -9,7 +9,7 @@
 start-claude --api-key sk-your-key --model claude-3-sonnet
 
 # 使用短命令别名
-sc --api-key sk-your-key --model claude-3-sonnet
+scc --api-key sk-your-key --model claude-3-sonnet
 
 # 动态设置环境变量
 start-claude -e DEBUG=1 -e NODE_ENV=production --verbose
@@ -50,8 +50,8 @@ start-claude list
 
 ## 基础命令
 
-- `start-claude` 或 `sc` - 使用默认配置启动或直接启动（无配置）
-- `start-claude <config>` 或 `sc <config>` - 使用特定配置启动
+- `start-claude` 或 `scc` - 使用默认配置启动或直接启动（无配置）
+- `start-claude <config>` 或 `scc <config>` - 使用特定配置启动
 - `start-claude --config <name>` - 使用特定配置启动
 - `start-claude --list` - 列出所有配置
 - `start-claude add` - 添加新配置

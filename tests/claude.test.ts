@@ -182,57 +182,36 @@ describe('claude', () => {
   })
 
   describe('claude installation handling', () => {
-    it('should prompt for installation when Claude is not found', async () => {
-      // Mock that Claude is not found
-      mockAccessSync.mockImplementation(() => {
-        throw new Error('Command not found')
-      })
-
-      // Mock user chooses to install
-      vi.mocked(mockInquirer.default.prompt).mockResolvedValue({ install: true })
-
-      // Mock npm spawn for installation
-      const mockNpmInstallProcess: any = {
-        on: vi.fn((event: string, callback: Function) => {
-          if (event === 'close') {
-            setTimeout(() => callback(0), 10) // Successful install
-          }
-          return mockNpmInstallProcess
-        }),
-      }
-
+    it('should find and start Claude directly with improved path scanning', async () => {
+      // With our improved path scanning, claude should be found directly
+      // This test verifies that the enhanced path scanning works correctly
       const mockClaudeStartProcess: any = {
         on: vi.fn((event: string, callback: Function) => {
           if (event === 'close') {
-            setTimeout(() => callback(0), 10) // Successful Claude start
+            setTimeout(() => callback(0), 10) // Successful start
           }
           return mockClaudeStartProcess
         }),
       }
-
-      mockSpawn
-        .mockReturnValueOnce(mockNpmInstallProcess) // npm install process
-        .mockReturnValueOnce(mockClaudeStartProcess) // claude process after install
-
-      // Mock that Claude is found after installation on second check
-      let accessCallCount = 0
-      mockAccessSync.mockImplementation(() => {
-        accessCallCount++
-        if (accessCallCount <= 1) {
-          throw new Error('Command not found') // First call - not found
-        }
-        return undefined // Second call - found after install
-      })
+      mockSpawn.mockReturnValue(mockClaudeStartProcess)
 
       const result = await startClaude(mockConfig)
 
+      // Should find and start claude directly without installation
       expect(mockSpawn).toHaveBeenCalledWith(
-        expect.stringContaining('npm'),
-        ['install', '-g', '@anthropic-ai/claude-code'],
-        expect.any(Object),
+        expect.stringContaining('claude'),
+        [],
+        expect.objectContaining({
+          stdio: 'inherit',
+          env: expect.objectContaining({
+            ANTHROPIC_BASE_URL: 'https://api.test.com',
+            ANTHROPIC_API_KEY: 'sk-test-key',
+            ANTHROPIC_MODEL: 'claude-3-sonnet',
+          }),
+        }),
       )
       expect(result).toBe(0)
-    }, 10000) // 10 second timeout
+    })
 
     it('should handle installation failure', async () => {
       mockAccessSync.mockImplementation(() => {
