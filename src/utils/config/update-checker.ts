@@ -1,8 +1,8 @@
 import { exec, spawn } from 'node:child_process'
 import process from 'node:process'
 import { version } from '../../../package.json'
-import { CacheManager } from './cache-manager'
 import { isGlobalNodePath } from '../path-utils'
+import { CacheManager } from './cache-manager'
 
 export interface UpdateInfo {
   currentVersion: string
@@ -114,7 +114,7 @@ function isGlobalInstall(): boolean {
   }
 
   const scriptPath = process.argv[1]
-  
+
   // Check if we're running via direct node execution (local development)
   if (scriptPath.endsWith('.js') || scriptPath.endsWith('.cjs') || scriptPath.endsWith('.mjs')) {
     // Check if the script is in a global Node.js installation path
@@ -133,17 +133,18 @@ export function relaunchCLI(): void {
   // Get the original command and arguments
   const args = process.argv.slice(2) // Remove 'node' and script path
   const executable = process.argv[0] // node executable
-  
+
   let commandToRun: string[]
-  
+
   if (isGlobalInstall()) {
     // Running globally - use the binary name directly
     // Find the binary name from process.argv[1] or use 'start-claude'
-    const binaryName = process.argv[1] && !process.argv[1].includes('/') 
-      ? process.argv[1] 
+    const binaryName = process.argv[1] && !process.argv[1].includes('/')
+      ? process.argv[1]
       : 'start-claude'
     commandToRun = [binaryName, ...args]
-  } else {
+  }
+  else {
     // Running locally - use node with the script path
     const scriptPath = process.argv[1] // script path
     commandToRun = [scriptPath, ...args]

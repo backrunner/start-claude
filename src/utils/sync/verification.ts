@@ -1,49 +1,50 @@
 import inquirer from 'inquirer'
 import { SyncManager } from '../../sync/manager'
-import { displayInfo, displayVerbose, displayWarning } from '../cli/ui'
+import { UILogger } from '../cli/ui'
 import { detectExistingCloudStorageConfigs } from '../cloud-storage/detector'
 
 /**
  * Handle configuration sync verification on startup
  */
 export async function handleSyncVerification(options: { verbose?: boolean } = {}): Promise<void> {
+  const ui = new UILogger(options.verbose)
   try {
-    displayVerbose('🔍 Verifying configuration sync status...', options.verbose)
+    ui.verbose('🔍 Verifying configuration sync status...')
 
     const syncManager = new SyncManager()
     const syncStatus = await syncManager.getSyncStatus()
 
     if (syncStatus.isConfigured) {
-      displayVerbose(`📊 Sync provider: ${syncStatus.provider}`, options.verbose)
+      ui.verbose(`📊 Sync provider: ${syncStatus.provider}`)
 
       if (!syncStatus.isValid) {
-        displayWarning('⚠️  Configuration sync issues detected')
+        ui.displayWarning('⚠️  Configuration sync issues detected')
         syncStatus.issues.forEach((issue) => {
-          displayVerbose(`  • ${issue}`, options.verbose)
+          ui.verbose(`  • ${issue}`)
         })
 
         // Try to verify/fix sync in non-interactive mode
         await syncManager.verifySync()
       }
       else {
-        displayVerbose('✅ Configuration sync is working properly', options.verbose)
+        ui.verbose('✅ Configuration sync is working properly')
       }
     }
     else {
-      displayVerbose('ℹ️  Configuration sync is not configured', options.verbose)
+      ui.verbose('ℹ️  Configuration sync is not configured')
 
       // Check if there are existing cloud storage configurations that we can auto-setup
       const existingConfigs = detectExistingCloudStorageConfigs()
       const validConfigs = existingConfigs.filter(config => config.hasValidConfig)
 
       if (validConfigs.length > 0) {
-        displayVerbose(`🔍 Found ${validConfigs.length} existing cloud storage configuration(s)`, options.verbose)
+        ui.verbose(`🔍 Found ${validConfigs.length} existing cloud storage configuration(s)`)
 
         // Show the first valid config (prioritize iCloud over OneDrive if both exist)
         const selectedConfig = validConfigs.find(c => c.provider === 'icloud') || validConfigs[0]
 
-        displayInfo(`📱 Found existing Start Claude configuration in ${selectedConfig.provider === 'icloud' ? 'iCloud Drive' : 'OneDrive'}`)
-        displayInfo(`📂 Location: ${selectedConfig.configPath}`)
+        ui.displayInfo(`📱 Found existing Start Claude configuration in ${selectedConfig.provider === 'icloud' ? 'iCloud Drive' : 'OneDrive'}`)
+        ui.displayInfo(`📂 Location: ${selectedConfig.configPath}`)
 
         // Ask user if they want to automatically setup sync
         const { autoSetup } = await inquirer.prompt([{
@@ -61,20 +62,20 @@ export async function handleSyncVerification(options: { verbose?: boolean } = {}
           )
 
           if (success) {
-            displayVerbose('✅ Automatic sync setup completed successfully', options.verbose)
+            ui.verbose('✅ Automatic sync setup completed successfully')
           }
           else {
-            displayVerbose('❌ Automatic sync setup failed', options.verbose)
+            ui.verbose('❌ Automatic sync setup failed')
           }
         }
         else {
-          displayVerbose('ℹ️  Automatic sync setup skipped by user', options.verbose)
+          ui.verbose('ℹ️  Automatic sync setup skipped by user')
         }
       }
     }
   }
   catch (error) {
     // Don't fail the entire startup for sync issues
-    displayVerbose(`⚠️ Sync verification error: ${error instanceof Error ? error.message : 'Unknown error'}`, options.verbose)
+    ui.verbose(`⚠️ Sync verification error: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

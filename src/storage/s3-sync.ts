@@ -519,7 +519,8 @@ export class S3SyncManager {
             logger.displayInfo('Upload cancelled.')
             return false
           }
-        } else {
+        }
+        else {
           // In silent mode, don't overwrite newer remote files unless forced
           return false
         }

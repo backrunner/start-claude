@@ -2,7 +2,7 @@ import type { S3ConfigFile } from './types'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { displayInfo, displayWarning } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 import { CURRENT_S3_CONFIG_VERSION } from './types'
 
 const CONFIG_DIR = path.join(os.homedir(), '.start-claude')
@@ -75,13 +75,15 @@ export class S3ConfigFileManager {
 
       // Validate version (future-proofing for S3 config migrations)
       if (config.version > CURRENT_S3_CONFIG_VERSION) {
-        displayWarning(`S3 config file version ${config.version} is newer than supported version ${CURRENT_S3_CONFIG_VERSION}`)
+        const ui = new UILogger()
+        ui.displayWarning(`S3 config file version ${config.version} is newer than supported version ${CURRENT_S3_CONFIG_VERSION}`)
       }
 
       return config
     }
     catch (error) {
-      displayWarning(`Error loading S3 config file: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const ui = new UILogger()
+      ui.displayWarning(`Error loading S3 config file: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return null
     }
   }
@@ -150,6 +152,7 @@ export class S3ConfigFileManager {
 
     this.ensureConfigDir()
     fs.writeFileSync(S3_CONFIG_FILE, JSON.stringify(configFile, null, 2))
-    displayInfo(`S3 configuration migrated to separate file: ${S3_CONFIG_FILE}`)
+    const ui = new UILogger()
+    ui.displayInfo(`S3 configuration migrated to separate file: ${S3_CONFIG_FILE}`)
   }
 }

@@ -1750,10 +1750,10 @@ export class ProxyServer {
     // Check if we have any healthy endpoints left
     const healthyCount = this.endpoints.filter(e => e.isHealthy).length
     if (healthyCount === 0) {
-      log()
+      console.log()
       this.ui.error('❌ All endpoints failed initial health checks!')
       this.ui.warning('⚠️ Load balancer will continue but may not work properly')
-      log()
+      console.log()
     }
   }
 

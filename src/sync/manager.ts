@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import process from 'node:process'
 import inquirer from 'inquirer'
 import { S3SyncManager } from '../storage/s3-sync'
-import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 import { CloudConfigSyncer } from '../utils/cloud-storage/config-syncer'
 import { getAvailableCloudServices, getCloudStorageStatus } from '../utils/cloud-storage/detector'
 
@@ -37,12 +37,14 @@ export class SyncManager {
   private configDir: string
   private configFile: string
   private syncConfigFile: string
+  private ui: UILogger
 
   constructor() {
     this.s3SyncManager = new S3SyncManager()
     this.configDir = join(homedir(), '.start-claude')
     this.configFile = join(this.configDir, 'config.json')
     this.syncConfigFile = join(this.configDir, 'sync.json')
+    this.ui = new UILogger()
   }
 
   /**
@@ -50,15 +52,15 @@ export class SyncManager {
    */
   async setupSync(): Promise<boolean> {
     try {
-      displayInfo('🔄 Setting up configuration synchronization...\n')
+      this.ui.displayInfo('🔄 Setting up configuration synchronization...\n')
 
       // Check current sync status
       const currentStatus = await this.getSyncStatus()
       if (currentStatus.isConfigured) {
-        displayWarning('⚠️  Sync is already configured!')
-        displayInfo(`Current provider: ${currentStatus.provider}`)
+        this.ui.displayWarning('⚠️  Sync is already configured!')
+        this.ui.displayInfo(`Current provider: ${currentStatus.provider}`)
         if (currentStatus.cloudPath) {
-          displayInfo(`Current path: ${currentStatus.cloudPath}`)
+          this.ui.displayInfo(`Current path: ${currentStatus.cloudPath}`)
         }
 
         const { reconfigure } = await inquirer.prompt([{
@@ -75,7 +77,7 @@ export class SyncManager {
         // Disable current sync before setting up new one
         const disableResult = await this.disableSync()
         if (!disableResult) {
-          displayError('❌ Failed to disable existing sync configuration')
+          this.ui.displayError('❌ Failed to disable existing sync configuration')
           return false
         }
       }
@@ -84,7 +86,7 @@ export class SyncManager {
       const options = await this.getSyncOptions()
 
       if (options.length === 0) {
-        displayError('❌ No sync options available')
+        this.ui.displayError('❌ No sync options available')
         return false
       }
 
@@ -107,12 +109,12 @@ export class SyncManager {
         case 's3':
           return await this.setupS3Sync()
         default:
-          displayError(`❌ Unknown provider: ${provider}`)
+          this.ui.displayError(`❌ Unknown provider: ${provider}`)
           return false
       }
     }
     catch (error) {
-      displayError(`❌ Failed to setup sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      this.ui.displayError(`❌ Failed to setup sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -176,20 +178,20 @@ export class SyncManager {
       const serviceInfo = provider === 'icloud' ? cloudStatus.iCloud : cloudStatus.oneDrive
 
       if (!serviceInfo.isEnabled || !serviceInfo.path) {
-        displayError(`❌ ${provider} is not properly configured`)
+        this.ui.displayError(`❌ ${provider} is not properly configured`)
         return false
       }
 
       const cloudConfigDir = join(serviceInfo.path, '.start-claude')
       const cloudConfigFile = join(cloudConfigDir, 'config.json')
 
-      displayInfo(`📁 Setting up sync with ${provider}...`)
-      displayInfo(`Cloud path: ${serviceInfo.path}`)
+      this.ui.displayInfo(`📁 Setting up sync with ${provider}...`)
+      this.ui.displayInfo(`Cloud path: ${serviceInfo.path}`)
 
       // Create cloud config directory
       if (!existsSync(cloudConfigDir)) {
         mkdirSync(cloudConfigDir, { recursive: true })
-        displayInfo(`📁 Created directory: ${cloudConfigDir}`)
+        this.ui.displayInfo(`📁 Created directory: ${cloudConfigDir}`)
       }
 
       // Move existing config to cloud folder
@@ -203,23 +205,23 @@ export class SyncManager {
           }])
 
           if (!overwrite) {
-            displayInfo('📥 Using existing cloud config file')
+            this.ui.displayInfo('📥 Using existing cloud config file')
           }
           else {
             copyFileSync(this.configFile, cloudConfigFile)
-            displayInfo('📤 Copied local config to cloud folder')
+            this.ui.displayInfo('📤 Copied local config to cloud folder')
           }
         }
         else {
           copyFileSync(this.configFile, cloudConfigFile)
-          displayInfo('📤 Moved config to cloud folder')
+          this.ui.displayInfo('📤 Moved config to cloud folder')
         }
       }
       else {
         // Create empty config in cloud folder
         const emptyConfig = { version: 1, configs: [] }
         writeFileSync(cloudConfigFile, JSON.stringify(emptyConfig, null, 2))
-        displayInfo('📄 Created new config in cloud folder')
+        this.ui.displayInfo('📄 Created new config in cloud folder')
       }
 
       // Create symlink for main config
@@ -241,14 +243,14 @@ export class SyncManager {
       // Update S3 settings if S3 is configured
       await this.updateS3Settings(true)
 
-      displaySuccess(`✅ Successfully configured ${provider} sync!`)
-      displayInfo(`📂 Config file: ${cloudConfigFile}`)
-      displayInfo(`🔗 Linked to: ${this.configFile}`)
+      this.ui.displaySuccess(`✅ Successfully configured ${provider} sync!`)
+      this.ui.displayInfo(`📂 Config file: ${cloudConfigFile}`)
+      this.ui.displayInfo(`🔗 Linked to: ${this.configFile}`)
 
       return true
     }
     catch (error) {
-      displayError(`❌ Failed to setup ${provider} sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      this.ui.displayError(`❌ Failed to setup ${provider} sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -285,13 +287,13 @@ export class SyncManager {
       const customConfigDir = join(resolvedPath, '.start-claude')
       const customConfigFile = join(customConfigDir, 'config.json')
 
-      displayInfo('📁 Setting up custom folder sync...')
-      displayInfo(`Custom path: ${resolvedPath}`)
+      this.ui.displayInfo('📁 Setting up custom folder sync...')
+      this.ui.displayInfo(`Custom path: ${resolvedPath}`)
 
       // Create custom config directory
       if (!existsSync(customConfigDir)) {
         mkdirSync(customConfigDir, { recursive: true })
-        displayInfo(`📁 Created directory: ${customConfigDir}`)
+        this.ui.displayInfo(`📁 Created directory: ${customConfigDir}`)
       }
 
       // Move existing config to custom folder
@@ -305,23 +307,23 @@ export class SyncManager {
           }])
 
           if (!overwrite) {
-            displayInfo('📥 Using existing custom config file')
+            this.ui.displayInfo('📥 Using existing custom config file')
           }
           else {
             copyFileSync(this.configFile, customConfigFile)
-            displayInfo('📤 Copied local config to custom folder')
+            this.ui.displayInfo('📤 Copied local config to custom folder')
           }
         }
         else {
           copyFileSync(this.configFile, customConfigFile)
-          displayInfo('📤 Moved config to custom folder')
+          this.ui.displayInfo('📤 Moved config to custom folder')
         }
       }
       else {
         // Create empty config in custom folder
         const emptyConfig = { version: 1, configs: [] }
         writeFileSync(customConfigFile, JSON.stringify(emptyConfig, null, 2))
-        displayInfo('📄 Created new config in custom folder')
+        this.ui.displayInfo('📄 Created new config in custom folder')
       }
 
       // Create symlink
@@ -340,14 +342,14 @@ export class SyncManager {
       // Update S3 settings if S3 is configured
       await this.updateS3Settings(true)
 
-      displaySuccess('✅ Successfully configured custom folder sync!')
-      displayInfo(`📂 Config file: ${customConfigFile}`)
-      displayInfo(`🔗 Linked to: ${this.configFile}`)
+      this.ui.displaySuccess('✅ Successfully configured custom folder sync!')
+      this.ui.displayInfo(`📂 Config file: ${customConfigFile}`)
+      this.ui.displayInfo(`🔗 Linked to: ${this.configFile}`)
 
       return true
     }
     catch (error) {
-      displayError(`❌ Failed to setup custom sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      this.ui.displayError(`❌ Failed to setup custom sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -357,7 +359,7 @@ export class SyncManager {
    */
   private async setupS3Sync(): Promise<boolean> {
     try {
-      displayInfo('🗄️  Setting up S3 sync...')
+      this.ui.displayInfo('🗄️  Setting up S3 sync...')
 
       // Use existing S3 setup process
       // Import S3 setup handler dynamically
@@ -374,13 +376,13 @@ export class SyncManager {
         }
 
         this.saveSyncConfig(syncConfig)
-        displaySuccess('✅ Successfully configured S3 sync!')
+        this.ui.displaySuccess('✅ Successfully configured S3 sync!')
       }
 
       return await this.s3SyncManager.isS3Configured()
     }
     catch (error) {
-      displayError(`❌ Failed to setup S3 sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      this.ui.displayError(`❌ Failed to setup S3 sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -395,14 +397,14 @@ export class SyncManager {
         const stats = statSync(this.configFile)
         if (stats.isSymbolicLink()) {
           unlinkSync(this.configFile)
-          displayInfo('🗑️  Removed existing symlink')
+          this.ui.displayInfo('🗑️  Removed existing symlink')
         }
         else {
           // Backup existing file
           const backupPath = `${this.configFile}.backup.${Date.now()}`
           copyFileSync(this.configFile, backupPath)
           unlinkSync(this.configFile)
-          displayInfo(`💾 Backed up existing config to: ${backupPath}`)
+          this.ui.displayInfo(`💾 Backed up existing config to: ${backupPath}`)
         }
       }
 
@@ -416,7 +418,7 @@ export class SyncManager {
         symlinkSync(targetPath, this.configFile)
       }
 
-      displayInfo('🔗 Created symlink to cloud config')
+      this.ui.displayInfo('🔗 Created symlink to cloud config')
     }
     catch (error) {
       throw new Error(`Failed to create config link: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -437,7 +439,7 @@ export class SyncManager {
       )
 
       if (additionalConfigs.length === 0) {
-        displayInfo('ℹ️  No additional configuration files found to sync')
+        this.ui.displayInfo('ℹ️  No additional configuration files found to sync')
         return
       }
 
@@ -448,7 +450,7 @@ export class SyncManager {
       })
     }
     catch (error) {
-      displayWarning(`⚠️  Failed to sync additional config files: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      this.ui.displayWarning(`⚠️  Failed to sync additional config files: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -459,7 +461,7 @@ export class SyncManager {
     if (await this.s3SyncManager.isS3Configured()) {
       // When cloud sync is enabled, disable auto-download from S3 but keep upload
       // This treats S3 as backup when cloud sync is primary
-      displayInfo(cloudSyncEnabled
+      this.ui.displayInfo(cloudSyncEnabled
         ? '📤 S3 will be used for backup (upload only) when cloud sync is enabled'
         : '🔄 S3 sync restored to full sync mode',
       )
@@ -473,11 +475,11 @@ export class SyncManager {
     try {
       const syncConfig = this.getSyncConfig()
       if (!syncConfig?.enabled) {
-        displayInfo('ℹ️  Sync is not currently enabled')
+        this.ui.displayInfo('ℹ️  Sync is not currently enabled')
         return true
       }
 
-      displayInfo('🔄 Disabling sync...')
+      this.ui.displayInfo('🔄 Disabling sync...')
 
       // If config is symlinked, replace with actual file
       if (existsSync(this.configFile)) {
@@ -489,16 +491,16 @@ export class SyncManager {
           if (existsSync(targetPath)) {
             unlinkSync(this.configFile)
             copyFileSync(targetPath, this.configFile)
-            displayInfo('📥 Restored config from cloud location')
+            this.ui.displayInfo('📥 Restored config from cloud location')
           }
           else {
-            displayWarning('⚠️  Cloud config file not found, removing broken symlink')
+            this.ui.displayWarning('⚠️  Cloud config file not found, removing broken symlink')
             unlinkSync(this.configFile)
 
             // Create an empty config if no local config exists
             const emptyConfig = { version: 1, configs: [] }
             writeFileSync(this.configFile, JSON.stringify(emptyConfig, null, 2))
-            displayInfo('📄 Created new local config file')
+            this.ui.displayInfo('📄 Created new local config file')
           }
         }
       }
@@ -511,11 +513,11 @@ export class SyncManager {
       // Restore S3 auto-download if S3 is configured
       await this.updateS3Settings(false)
 
-      displaySuccess('✅ Sync disabled successfully')
+      this.ui.displaySuccess('✅ Sync disabled successfully')
       return true
     }
     catch (error) {
-      displayError(`❌ Failed to disable sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      this.ui.displayError(`❌ Failed to disable sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -653,9 +655,9 @@ export class SyncManager {
     }
 
     // Display sync issues
-    displayWarning('⚠️  Sync configuration issues detected:')
+    this.ui.displayWarning('⚠️  Sync configuration issues detected:')
     status.issues.forEach((issue) => {
-      displayWarning(`  • ${issue}`)
+      this.ui.displayWarning(`  • ${issue}`)
     })
 
     const { fix } = await inquirer.prompt([{
@@ -725,7 +727,7 @@ export class SyncManager {
    */
   async autoSetupFromCloudConfig(provider: 'icloud' | 'onedrive', cloudPath: string, configPath: string): Promise<boolean> {
     try {
-      displayInfo(`🔍 Found existing configuration in ${provider} - Setting up automatic sync...`)
+      this.ui.displayInfo(`🔍 Found existing configuration in ${provider} - Setting up automatic sync...`)
 
       // Create symlink to the existing cloud config
       await this.createConfigLink(configPath)
@@ -744,14 +746,14 @@ export class SyncManager {
       // Update S3 settings if S3 is configured
       await this.updateS3Settings(true)
 
-      displaySuccess(`✅ Automatically configured ${provider} sync!`)
-      displayInfo(`📂 Config file: ${configPath}`)
-      displayInfo(`🔗 Linked to: ${this.configFile}`)
+      this.ui.displaySuccess(`✅ Automatically configured ${provider} sync!`)
+      this.ui.displayInfo(`📂 Config file: ${configPath}`)
+      this.ui.displayInfo(`🔗 Linked to: ${this.configFile}`)
 
       return true
     }
     catch (error) {
-      displayError(`❌ Failed to auto-setup ${provider} sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      this.ui.displayError(`❌ Failed to auto-setup ${provider} sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }

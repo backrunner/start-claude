@@ -471,7 +471,7 @@ function resolveFieldConflict(
  */
 export function displayConflictResolution(resolution: ConflictResolution, options: ConflictResolutionOptions = {}): void {
   const logger = new UILogger(options.verbose)
-  
+
   if (!resolution.hasConflicts) {
     logger.displayVerbose('No configuration conflicts detected')
     return

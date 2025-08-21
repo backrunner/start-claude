@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import inquirer from 'inquirer'
-import { displayInfo, displayWarning } from '../cli/ui'
+import { UILogger } from '../cli/ui'
 
 export interface ConfigFileInfo {
   name: string
@@ -71,7 +71,7 @@ export class CloudConfigSyncer {
   ): Promise<void> {
     if (!existsSync(configInfo.localPath)) {
       if (options.verbose) {
-        displayInfo(`ℹ️  No ${configInfo.description} found to sync`)
+        new UILogger().displayInfo(`ℹ️  No ${configInfo.description} found to sync`)
       }
       return
     }
@@ -99,15 +99,15 @@ export class CloudConfigSyncer {
 
         if (overwrite) {
           copyFileSync(configInfo.localPath, cloudConfigPath)
-          displayInfo(`📤 Copied local ${configInfo.description} to cloud folder`)
+          new UILogger().displayInfo(`📤 Copied local ${configInfo.description} to cloud folder`)
         }
         else {
-          displayInfo(`📥 Using existing ${configInfo.description} from cloud folder`)
+          new UILogger().displayInfo(`📥 Using existing ${configInfo.description} from cloud folder`)
         }
       }
       else {
         copyFileSync(configInfo.localPath, cloudConfigPath)
-        displayInfo(`📤 Copied ${configInfo.description} to cloud folder`)
+        new UILogger().displayInfo(`📤 Copied ${configInfo.description} to cloud folder`)
       }
 
       // Create symlink if not already a symlink
@@ -116,17 +116,17 @@ export class CloudConfigSyncer {
         if (options.backupOnReplace) {
           const backupPath = `${configInfo.localPath}.backup.${Date.now()}`
           copyFileSync(configInfo.localPath, backupPath)
-          displayInfo(`💾 Backed up ${configInfo.description} to: ${backupPath}`)
+          new UILogger().displayInfo(`💾 Backed up ${configInfo.description} to: ${backupPath}`)
         }
 
         // Remove original and create symlink
         unlinkSync(configInfo.localPath)
         this.createSymlink(cloudConfigPath, configInfo.localPath)
-        displayInfo(`🔗 Created symlink for ${configInfo.description} to cloud storage`)
+        new UILogger().displayInfo(`🔗 Created symlink for ${configInfo.description} to cloud storage`)
       }
     }
     catch (error) {
-      displayWarning(`⚠️  Failed to sync ${configInfo.description} to cloud: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      new UILogger().displayWarning(`⚠️  Failed to sync ${configInfo.description} to cloud: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 

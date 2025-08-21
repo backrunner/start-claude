@@ -97,7 +97,7 @@ program
 
     if (options.list === true) {
       ui.displayWelcome()
-      const configs = configManager.listConfigs()
+      const configs = await configManager.listConfigs()
       ui.displayConfigList(configs)
       return
     }
@@ -140,20 +140,20 @@ program
 
       if (configName) {
         // Check config directly without fuzzy search to avoid prompts
-        config = configManager.getConfig(configName)
+        config = await configManager.getConfig(configName)
         if (!config) {
           // If config not found locally, check S3 silently
           if (await s3SyncManager.isS3Configured()) {
             const syncSuccess = await s3SyncManager.checkAutoSync({ verbose: options.verbose, silent: !options.verbose })
             if (syncSuccess) {
-              config = configManager.getConfig(configName)
+              config = await configManager.getConfig(configName)
             }
           }
         }
       }
       else {
         // For default config, we can check normally
-        config = configManager.getDefaultConfig()
+        config = await configManager.getDefaultConfig()
       }
 
       if (TransformerService.isTransformerEnabled(config?.transformerEnabled)) {

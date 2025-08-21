@@ -1,15 +1,15 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
     "baseUrl": "./src",
+    "rootDir": "./src",
+    "moduleResolution": "node",
     "paths": {},
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true,
     "noEmit": false,
-    "moduleResolution": "node",
+    "outDir": "./dist",
+    "sourceMap": true,
     "skipLibCheck": true
   },
   "include": ["src/**/*"],

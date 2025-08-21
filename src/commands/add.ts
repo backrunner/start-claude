@@ -126,7 +126,7 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
   // Check if config name already exists after getting the input
   const existing = await configManager.getConfig(answers.name.trim())
   if (existing) {
-    displayError('Configuration with this name already exists')
+    ui.displayError('Configuration with this name already exists')
     return
   }
 

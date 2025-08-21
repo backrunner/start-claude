@@ -33,7 +33,7 @@ export async function handleRemoveCommand(name: string): Promise<void> {
 export async function handleListCommand(): Promise<void> {
   const ui = new UILogger()
   const configManager = ConfigManager.getInstance()
-  const configs = configManager.listConfigs()
+  const configs = await configManager.listConfigs()
   ui.displayWelcome()
   ui.displayConfigList(configs)
 }
