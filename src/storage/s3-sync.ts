@@ -4,6 +4,7 @@ import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import dayjs from 'dayjs'
 import inquirer from 'inquirer'
 import { UILogger } from '../utils/cli/ui'
 import { displayConflictResolution, resolveConfigConflicts } from '../utils/config/conflict-resolver'
@@ -303,15 +304,7 @@ export class S3SyncManager {
   }
 
   private formatTimestamp(date: Date): string {
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZoneName: 'short',
-    })
+    return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
   }
 
   /**

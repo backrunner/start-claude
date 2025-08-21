@@ -2,6 +2,7 @@ import type { ConfigFile, LegacyConfigFile, MigrationInfo, SystemSettings } from
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import dayjs from 'dayjs'
 import { UILogger } from '../utils/cli/ui'
 import { migrationRegistry } from './migration'
 import { CURRENT_CONFIG_VERSION } from './types'
@@ -280,7 +281,7 @@ export class ConfigFileManager {
    * Log migration for audit trail
    */
   private logMigration(info: MigrationInfo): void {
-    const logEntry = `${new Date(info.timestamp).toISOString()} - Migration ${info.fromVersion} → ${info.toVersion}: ${info.description}\n`
+    const logEntry = `${dayjs(info.timestamp).format('YYYY-MM-DD HH:mm:ss')} - Migration ${info.fromVersion} → ${info.toVersion}: ${info.description}\n`
 
     try {
       fs.appendFileSync(MIGRATION_LOG_FILE, logEntry)

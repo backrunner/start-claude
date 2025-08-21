@@ -5,6 +5,7 @@ import { Buffer } from 'node:buffer'
 import * as http from 'node:http'
 import * as https from 'node:https'
 import { PassThrough } from 'node:stream'
+import dayjs from 'dayjs'
 import { HttpProxyAgent } from 'http-proxy-agent'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { ConfigService } from '../services/config'
@@ -1507,7 +1508,7 @@ export class ProxyServer {
     // If health checks are disabled, ban the endpoint for a duration
     if (!this.healthCheckEnabled) {
       endpoint.bannedUntil = Date.now() + (this.failedEndpointBanDurationSeconds * 1000)
-      this.ui.verbose(`Endpoint ${endpoint.config.name} banned until ${new Date(endpoint.bannedUntil).toLocaleTimeString()}`)
+      this.ui.verbose(`Endpoint ${endpoint.config.name} banned until ${dayjs(endpoint.bannedUntil).format('YYYY-MM-DD HH:mm:ss')}`)
     }
   }
 

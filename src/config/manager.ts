@@ -1,4 +1,5 @@
 import type { ClaudeConfig, ConfigFile } from './types'
+import dayjs from 'dayjs'
 import { ConfigFileManager } from './file-manager'
 
 export class ConfigManager {
@@ -101,7 +102,7 @@ export class ConfigManager {
 
     // Mark config as deleted (tombstone approach)
     targetConfig.isDeleted = true
-    targetConfig.deletedAt = new Date().toISOString()
+    targetConfig.deletedAt = dayjs().format('YYYY-MM-DD HH:mm:ss')
 
     // Clear sensitive data from deleted config
     delete targetConfig.apiKey
