@@ -3,15 +3,16 @@ import process from 'node:process'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
 import { editConfigInEditor } from '../utils/cli/editor'
-import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 
 export async function handleEditCommand(name: string, options: { useEditor?: boolean }): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger()
+  ui.displayWelcome()
 
   const configManager = ConfigManager.getInstance()
   const config = configManager.getConfig(name)
   if (!config) {
-    displayError(`Configuration "${name}" not found`)
+    ui.displayError(`Configuration "${name}" not found`)
     process.exit(1)
   }
 
@@ -24,7 +25,7 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
       }
 
       await configManager.addConfig(updatedConfig)
-      displaySuccess(`Configuration "${name}" updated successfully!`)
+      ui.displaySuccess(`Configuration "${name}" updated successfully!`)
     }
     return
   }
@@ -129,5 +130,5 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
     await configManager.setDefaultConfig(updatedConfig.name)
   }
 
-  displaySuccess(`Configuration "${name}" updated successfully!`)
+  ui.displaySuccess(`Configuration "${name}" updated successfully!`)
 }

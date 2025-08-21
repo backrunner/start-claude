@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import inquirer from 'inquirer'
-import { displayError, displayInfo, displaySuccess, displayVerbose, displayWarning } from '../cli/ui'
+import { UILogger } from '../cli/ui'
 import { CacheManager } from '../config/cache-manager'
 
 export interface ClaudeCodeSettings {
@@ -37,8 +37,9 @@ export class StatusLineManager {
    */
   async runStatusLineSetup(options: { verbose?: boolean } = {}): Promise<boolean> {
     try {
-      displayInfo('🚀 Starting ccstatusline setup...')
-      displayVerbose('Running: npx ccstatusline@latest', options.verbose)
+      const logger = new UILogger(options.verbose)
+      logger.displayInfo('🚀 Starting ccstatusline setup...')
+      logger.displayVerbose('Running: npx ccstatusline@latest')
 
       return await new Promise((resolve) => {
         const child = spawn('npx', ['ccstatusline@latest'], {
@@ -48,23 +49,24 @@ export class StatusLineManager {
 
         child.on('close', (code) => {
           if (code === 0) {
-            displaySuccess('✅ ccstatusline setup completed successfully!')
+            logger.displaySuccess('✅ ccstatusline setup completed successfully!')
             resolve(true)
           }
           else {
-            displayError(`❌ ccstatusline setup failed with exit code ${code}`)
+            logger.displayError(`❌ ccstatusline setup failed with exit code ${code}`)
             resolve(false)
           }
         })
 
         child.on('error', (error) => {
-          displayError(`❌ Failed to run ccstatusline setup: ${error.message}`)
+          logger.displayError(`❌ Failed to run ccstatusline setup: ${error.message}`)
           resolve(false)
         })
       })
     }
     catch (error) {
-      displayError(`❌ Failed to start ccstatusline setup: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to start ccstatusline setup: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -81,19 +83,21 @@ export class StatusLineManager {
    */
   readStatusLineConfig(options: { verbose?: boolean } = {}): CCStatusLineConfig | null {
     try {
+      const logger = new UILogger(options.verbose)
       if (!this.hasStatusLineConfig()) {
-        displayVerbose('No ccstatusline config found', options.verbose)
+        logger.displayVerbose('No ccstatusline config found')
         return null
       }
 
-      displayVerbose(`Reading ccstatusline config from: ${this.CCSTATUSLINE_CONFIG_PATH}`, options.verbose)
+      logger.displayVerbose(`Reading ccstatusline config from: ${this.CCSTATUSLINE_CONFIG_PATH}`)
       const content = readFileSync(this.CCSTATUSLINE_CONFIG_PATH, 'utf-8')
       const config = JSON.parse(content)
-      displayVerbose('✅ ccstatusline config loaded successfully', options.verbose)
+      logger.displayVerbose('✅ ccstatusline config loaded successfully')
       return config
     }
     catch (error) {
-      displayError(`❌ Failed to read ccstatusline config: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to read ccstatusline config: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return null
     }
   }
@@ -103,7 +107,8 @@ export class StatusLineManager {
    */
   writeStatusLineConfig(config: CCStatusLineConfig, options: { verbose?: boolean } = {}): boolean {
     try {
-      displayVerbose(`Writing ccstatusline config to: ${this.CCSTATUSLINE_CONFIG_PATH}`, options.verbose)
+      const logger = new UILogger(options.verbose)
+      logger.displayVerbose(`Writing ccstatusline config to: ${this.CCSTATUSLINE_CONFIG_PATH}`)
 
       // Ensure directory exists
       const configDir = join(homedir(), '.config', 'ccstatusline')
@@ -112,11 +117,12 @@ export class StatusLineManager {
       }
 
       writeFileSync(this.CCSTATUSLINE_CONFIG_PATH, JSON.stringify(config, null, 2))
-      displayVerbose('✅ ccstatusline config written successfully', options.verbose)
+      logger.displayVerbose('✅ ccstatusline config written successfully')
       return true
     }
     catch (error) {
-      displayError(`❌ Failed to write ccstatusline config: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to write ccstatusline config: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -126,20 +132,22 @@ export class StatusLineManager {
    */
   async loadClaudeSettings(options: { verbose?: boolean } = {}): Promise<ClaudeCodeSettings> {
     try {
+      const logger = new UILogger(options.verbose)
       if (!existsSync(this.CLAUDE_SETTINGS_PATH)) {
-        displayVerbose('No Claude settings file found, creating default', options.verbose)
+        logger.displayVerbose('No Claude settings file found, creating default')
         return {}
       }
 
-      displayVerbose(`Reading Claude settings from: ${this.CLAUDE_SETTINGS_PATH}`, options.verbose)
+      logger.displayVerbose(`Reading Claude settings from: ${this.CLAUDE_SETTINGS_PATH}`)
       const content = readFileSync(this.CLAUDE_SETTINGS_PATH, 'utf-8')
       const settings = JSON.parse(content)
-      displayVerbose('✅ Claude settings loaded successfully', options.verbose)
+      logger.displayVerbose('✅ Claude settings loaded successfully')
       return settings
     }
     catch (error) {
-      displayWarning(`⚠️ Failed to read Claude settings: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      displayVerbose('Using default Claude settings', options.verbose)
+      const logger = new UILogger()
+      logger.displayWarning(`⚠️ Failed to read Claude settings: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      logger.displayVerbose('Using default Claude settings')
       return {}
     }
   }
@@ -149,7 +157,8 @@ export class StatusLineManager {
    */
   async saveClaudeSettings(settings: ClaudeCodeSettings, options: { verbose?: boolean } = {}): Promise<boolean> {
     try {
-      displayVerbose(`Writing Claude settings to: ${this.CLAUDE_SETTINGS_PATH}`, options.verbose)
+      const logger = new UILogger(options.verbose)
+      logger.displayVerbose(`Writing Claude settings to: ${this.CLAUDE_SETTINGS_PATH}`)
 
       // Ensure directory exists
       const settingsDir = join(homedir(), '.claude')
@@ -158,11 +167,12 @@ export class StatusLineManager {
       }
 
       writeFileSync(this.CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2))
-      displayVerbose('✅ Claude settings saved successfully', options.verbose)
+      logger.displayVerbose('✅ Claude settings saved successfully')
       return true
     }
     catch (error) {
-      displayError(`❌ Failed to save Claude settings: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to save Claude settings: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -172,7 +182,8 @@ export class StatusLineManager {
    */
   async enableStatusLineInClaude(options: { verbose?: boolean } = {}): Promise<boolean> {
     try {
-      displayInfo('🔧 Configuring Claude Code statusline...')
+      const logger = new UILogger(options.verbose)
+      logger.displayInfo('🔧 Configuring Claude Code statusline...')
 
       const settings = await this.loadClaudeSettings(options)
 
@@ -185,12 +196,13 @@ export class StatusLineManager {
 
       const success = await this.saveClaudeSettings(settings, options)
       if (success) {
-        displaySuccess('✅ Claude Code statusline configuration updated!')
+        logger.displaySuccess('✅ Claude Code statusline configuration updated!')
       }
       return success
     }
     catch (error) {
-      displayError(`❌ Failed to enable statusline in Claude: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to enable statusline in Claude: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -213,14 +225,16 @@ export class StatusLineManager {
     // Check if we've already asked the user about this conflict
     const cachedDecision = this.cacheManager.getStatuslineConflictDecision(existingConfig, proposedConfig)
     if (cachedDecision) {
-      displayVerbose(`Using cached decision: ${cachedDecision} existing Claude statusline config`, options.verbose)
+      const logger = new UILogger(options.verbose)
+      logger.displayVerbose(`Using cached decision: ${cachedDecision} existing Claude statusline config`)
       return cachedDecision
     }
 
-    displayWarning('⚠️ Claude Code already has a statusline configuration that differs from start-claude config.')
-    displayInfo('\nExisting Claude Code statusline config:')
+    const logger = new UILogger()
+    logger.displayWarning('⚠️ Claude Code already has a statusline configuration that differs from start-claude config.')
+    logger.displayInfo('\nExisting Claude Code statusline config:')
     console.log(JSON.stringify(existingConfig, null, 2))
-    displayInfo('\nProposed start-claude statusline config:')
+    logger.displayInfo('\nProposed start-claude statusline config:')
     console.log(JSON.stringify(proposedConfig, null, 2))
 
     const answer = await inquirer.prompt([
@@ -249,6 +263,7 @@ export class StatusLineManager {
    */
   async enableStatusLineInClaudeWithConflictCheck(options: { verbose?: boolean } = {}): Promise<boolean> {
     try {
+      const logger = new UILogger(options.verbose)
       const settings = await this.loadClaudeSettings(options)
       const proposedConfig = {
         type: 'command',
@@ -265,18 +280,18 @@ export class StatusLineManager {
         )
 
         if (userChoice === 'keep') {
-          displayInfo('✅ Keeping existing Claude Code statusline configuration')
+          logger.displayInfo('✅ Keeping existing Claude Code statusline configuration')
           return true
         }
 
-        displayInfo('🔄 Replacing Claude Code statusline configuration...')
+        logger.displayInfo('🔄 Replacing Claude Code statusline configuration...')
       }
       else if (settings.statusLine) {
-        displayVerbose('Claude Code statusline config matches proposed config', options.verbose)
+        logger.displayVerbose('Claude Code statusline config matches proposed config')
         return true
       }
       else {
-        displayVerbose('No existing Claude Code statusline config found, adding new config', options.verbose)
+        logger.displayVerbose('No existing Claude Code statusline config found, adding new config')
       }
 
       // Update settings with our status line
@@ -284,12 +299,13 @@ export class StatusLineManager {
 
       const success = await this.saveClaudeSettings(settings, options)
       if (success) {
-        displaySuccess('✅ Claude Code statusline configuration updated!')
+        logger.displaySuccess('✅ Claude Code statusline configuration updated!')
       }
       return success
     }
     catch (error) {
-      displayError(`❌ Failed to enable statusline in Claude: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to enable statusline in Claude: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -299,7 +315,8 @@ export class StatusLineManager {
    */
   async disableStatusLineInClaude(options: { verbose?: boolean } = {}): Promise<boolean> {
     try {
-      displayInfo('🔧 Removing Claude Code statusline configuration...')
+      const logger = new UILogger(options.verbose)
+      logger.displayInfo('🔧 Removing Claude Code statusline configuration...')
 
       const settings = await this.loadClaudeSettings(options)
 
@@ -308,17 +325,18 @@ export class StatusLineManager {
         delete settings.statusLine
         const success = await this.saveClaudeSettings(settings, options)
         if (success) {
-          displaySuccess('✅ Claude Code statusline configuration removed!')
+          logger.displaySuccess('✅ Claude Code statusline configuration removed!')
         }
         return success
       }
       else {
-        displayInfo('ℹ️ No statusline configuration found in Claude settings')
+        logger.displayInfo('ℹ️ No statusline configuration found in Claude settings')
         return true
       }
     }
     catch (error) {
-      displayError(`❌ Failed to disable statusline in Claude: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to disable statusline in Claude: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -328,28 +346,30 @@ export class StatusLineManager {
    */
   async syncStatusLineConfig(ccstatuslineConfig: CCStatusLineConfig, options: { verbose?: boolean } = {}): Promise<boolean> {
     try {
+      const logger = new UILogger(options.verbose)
       let success = true
 
       // Sync ccstatusline config if missing
       if (!this.hasStatusLineConfig()) {
-        displayInfo('📥 Syncing statusline configuration to local ccstatusline...')
+        logger.displayInfo('📥 Syncing statusline configuration to local ccstatusline...')
         success = this.writeStatusLineConfig(ccstatuslineConfig, options)
         if (!success) {
           return false
         }
       }
       else {
-        displayVerbose('Local ccstatusline config already exists, skipping ccstatusline sync', options.verbose)
+        logger.displayVerbose('Local ccstatusline config already exists, skipping ccstatusline sync')
       }
 
       // Ensure Claude Code settings are also configured with conflict detection
-      displayVerbose('Checking Claude Code statusline configuration...', options.verbose)
+      logger.displayVerbose('Checking Claude Code statusline configuration...')
       success = await this.enableStatusLineInClaudeWithConflictCheck(options)
 
       return success
     }
     catch (error) {
-      displayError(`❌ Failed to sync statusline config: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to sync statusline config: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }

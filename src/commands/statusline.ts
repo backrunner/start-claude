@@ -1,40 +1,41 @@
 import { ConfigManager } from '../config/manager'
-import { displayError, displayInfo, displaySuccess, displayVerbose, displayWelcome } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 import { StatusLineManager } from '../utils/statusline/manager'
 
 /**
  * Handle statusline setup command
  */
 export async function handleStatusLineSetupCommand(options: { verbose?: boolean } = {}): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
 
   const configManager = ConfigManager.getInstance()
   const statusLineManager = StatusLineManager.getInstance()
 
   try {
-    displayInfo('🛠️ Setting up ccstatusline integration...')
+    ui.displayInfo('🛠️ Setting up ccstatusline integration...')
 
     // Run ccstatusline setup
     const setupSuccess = await statusLineManager.runStatusLineSetup(options)
     if (!setupSuccess) {
-      displayError('❌ ccstatusline setup failed')
+      ui.displayError('❌ ccstatusline setup failed')
       return
     }
 
     // Check if ccstatusline config was created
-    displayVerbose('Checking for ccstatusline configuration...', options.verbose)
+    ui.displayVerbose('Checking for ccstatusline configuration...')
     const ccstatuslineConfig = statusLineManager.readStatusLineConfig(options)
 
     if (!ccstatuslineConfig) {
-      displayError('❌ ccstatusline configuration not found after setup')
+      ui.displayError('❌ ccstatusline configuration not found after setup')
       return
     }
 
-    displaySuccess('✅ ccstatusline configuration detected!')
-    displayVerbose(`ccstatusline config: ${JSON.stringify(ccstatuslineConfig, null, 2)}`, options.verbose)
+    ui.displaySuccess('✅ ccstatusline configuration detected!')
+    ui.displayVerbose(`ccstatusline config: ${JSON.stringify(ccstatuslineConfig, null, 2)}`)
 
     // Save to start-claude config
-    displayInfo('💾 Saving statusline configuration to start-claude...')
+    ui.displayInfo('💾 Saving statusline configuration to start-claude...')
     await configManager.updateSettings({
       statusLine: {
         enabled: true,
@@ -45,12 +46,12 @@ export async function handleStatusLineSetupCommand(options: { verbose?: boolean 
     // Enable in Claude Code settings
     await statusLineManager.enableStatusLineInClaude(options)
 
-    displaySuccess('🎉 Statusline setup completed successfully!')
-    displayInfo('💡 The statusline will now be available in Claude Code')
-    displayInfo('💡 To disable: start-claude statusline disable')
+    ui.displaySuccess('🎉 Statusline setup completed successfully!')
+    ui.displayInfo('💡 The statusline will now be available in Claude Code')
+    ui.displayInfo('💡 To disable: start-claude statusline disable')
   }
   catch (error) {
-    displayError(`❌ Failed to setup statusline: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    ui.displayError(`❌ Failed to setup statusline: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
@@ -58,13 +59,14 @@ export async function handleStatusLineSetupCommand(options: { verbose?: boolean 
  * Handle statusline disable command
  */
 export async function handleStatusLineDisableCommand(options: { verbose?: boolean } = {}): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
 
   const configManager = ConfigManager.getInstance()
   const statusLineManager = StatusLineManager.getInstance()
 
   try {
-    displayInfo('🔧 Disabling statusline integration...')
+    ui.displayInfo('🔧 Disabling statusline integration...')
 
     // Update start-claude config
     await configManager.updateSettings({
@@ -76,11 +78,11 @@ export async function handleStatusLineDisableCommand(options: { verbose?: boolea
     // Remove from Claude Code settings
     await statusLineManager.disableStatusLineInClaude(options)
 
-    displaySuccess('✅ Statusline integration disabled successfully!')
-    displayInfo('💡 To re-enable: start-claude setup statusline')
+    ui.displaySuccess('✅ Statusline integration disabled successfully!')
+    ui.displayInfo('💡 To re-enable: start-claude setup statusline')
   }
   catch (error) {
-    displayError(`❌ Failed to disable statusline: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    ui.displayError(`❌ Failed to disable statusline: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
@@ -88,7 +90,8 @@ export async function handleStatusLineDisableCommand(options: { verbose?: boolea
  * Handle statusline status command
  */
 export async function handleStatusLineStatusCommand(options: { verbose?: boolean } = {}): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
 
   const configManager = ConfigManager.getInstance()
   const statusLineManager = StatusLineManager.getInstance()
@@ -97,31 +100,31 @@ export async function handleStatusLineStatusCommand(options: { verbose?: boolean
     const settings = configManager.getSettings()
     const statusLine = settings.statusLine
 
-    displayInfo('📊 Statusline Integration Status:')
+    ui.displayInfo('📊 Statusline Integration Status:')
 
     if (!statusLine || !statusLine.enabled) {
-      displayInfo('   Status: ❌ Disabled')
-      displayInfo('   To enable: start-claude setup statusline')
+      ui.displayInfo('   Status: ❌ Disabled')
+      ui.displayInfo('   To enable: start-claude setup statusline')
       return
     }
 
-    displayInfo('   Status: ✅ Enabled')
+    ui.displayInfo('   Status: ✅ Enabled')
 
     // Check local ccstatusline config
     const hasLocalConfig = statusLineManager.hasStatusLineConfig()
-    displayInfo(`   Local ccstatusline config: ${hasLocalConfig ? '✅ Found' : '❌ Missing'}`)
+    ui.displayInfo(`   Local ccstatusline config: ${hasLocalConfig ? '✅ Found' : '❌ Missing'}`)
 
     // Check Claude settings
     const claudeSettings = await statusLineManager.loadClaudeSettings(options)
     const hasClaudeConfig = !!claudeSettings.statusLine
-    displayInfo(`   Claude Code integration: ${hasClaudeConfig ? '✅ Configured' : '❌ Missing'}`)
+    ui.displayInfo(`   Claude Code integration: ${hasClaudeConfig ? '✅ Configured' : '❌ Missing'}`)
 
     if (statusLine.config && options.verbose) {
-      displayVerbose('Stored statusline config:', options.verbose)
-      displayVerbose(JSON.stringify(statusLine.config, null, 2), options.verbose)
+      ui.displayVerbose('Stored statusline config:')
+      ui.displayVerbose(JSON.stringify(statusLine.config, null, 2))
     }
   }
   catch (error) {
-    displayError(`❌ Failed to check statusline status: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    ui.displayError(`❌ Failed to check statusline status: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

@@ -1,5 +1,5 @@
 import type { ClaudeConfig, ConfigFile } from '../../config/types'
-import { displayInfo, displayVerbose, displayWarning } from '../cli/ui'
+import { UILogger } from '../cli/ui'
 
 export interface ConfigConflict {
   configName: string
@@ -468,28 +468,30 @@ function resolveFieldConflict(
  * Display conflict resolution summary
  */
 export function displayConflictResolution(resolution: ConflictResolution, options: ConflictResolutionOptions = {}): void {
+  const logger = new UILogger(options.verbose)
+  
   if (!resolution.hasConflicts) {
-    displayVerbose('No configuration conflicts detected', options.verbose)
+    logger.displayVerbose('No configuration conflicts detected')
     return
   }
 
-  displayWarning(`⚠️  Detected ${resolution.conflicts.length} configuration conflicts`)
+  logger.displayWarning(`⚠️  Detected ${resolution.conflicts.length} configuration conflicts`)
 
   if (options.verbose) {
-    displayInfo('\n🔍 Conflict Details:')
+    logger.displayInfo('\n🔍 Conflict Details:')
     for (const conflict of resolution.conflicts) {
-      displayInfo(`  • ${conflict.configName}.${conflict.field}: local="${conflict.localValue}" vs remote="${conflict.remoteValue}"`)
+      logger.displayInfo(`  • ${conflict.configName}.${conflict.field}: local="${conflict.localValue}" vs remote="${conflict.remoteValue}"`)
     }
   }
 
-  displayInfo(`\n🛠️  Resolution Strategy: ${resolution.resolutionStrategy}`)
+  logger.displayInfo(`\n🛠️  Resolution Strategy: ${resolution.resolutionStrategy}`)
 
   if (options.verbose && resolution.resolutionDetails.length > 0) {
-    displayInfo('\n📋 Resolution Details:')
+    logger.displayInfo('\n📋 Resolution Details:')
     for (const detail of resolution.resolutionDetails) {
-      displayInfo(`  • ${detail}`)
+      logger.displayInfo(`  • ${detail}`)
     }
   }
 
-  displayInfo(`\n✅ Conflicts resolved automatically using smart merge strategy`)
+  logger.displayInfo(`\n✅ Conflicts resolved automatically using smart merge strategy`)
 }

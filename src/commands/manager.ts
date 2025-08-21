@@ -1,10 +1,16 @@
 import process from 'node:process'
 import { ManagerServer } from '../core/manager-server'
 import { S3SyncManager } from '../storage/s3-sync'
-import { displayError, displayWelcome } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 
-export async function handleManagerCommand(options: { port?: string }): Promise<void> {
-  displayWelcome()
+export async function handleManagerCommand(options: { port?: string, verbose?: boolean, debug?: boolean } = {}): Promise<void> {
+  // Create UILogger with verbose mode configured
+  const ui = new UILogger(options.verbose || options.debug)
+
+  ui.displayWelcome()
+
+  // Display verbose mode status if enabled
+  ui.displayVerbose('Verbose mode enabled for manager startup')
 
   // Initialize S3 sync for config manager
   const { ConfigManager } = await import('../config/manager')
@@ -14,7 +20,12 @@ export async function handleManagerCommand(options: { port?: string }): Promise<
   // Check for remote config updates before starting manager
   const s3SyncManager = S3SyncManager.getInstance()
   if (await s3SyncManager.isS3Configured()) {
-    await s3SyncManager.checkAutoSync()
+    ui.displayVerbose('🔄 Checking for remote S3 configuration updates...')
+    await s3SyncManager.checkAutoSync({ verbose: options.verbose || options.debug })
+    ui.displayVerbose('✅ S3 config check completed')
+  }
+  else {
+    ui.displayVerbose('S3 not configured, skipping config check')
   }
 
   const port = options.port ? Number.parseInt(options.port) : 2334
@@ -37,7 +48,7 @@ export async function handleManagerCommand(options: { port?: string }): Promise<
     process.on('SIGTERM', cleanup)
   }
   catch (error) {
-    displayError(`Failed to start manager: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    ui.displayError(`Failed to start manager: ${error instanceof Error ? error.message : 'Unknown error'}`)
     process.exit(1)
   }
 }

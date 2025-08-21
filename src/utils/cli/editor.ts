@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, statSync, unlinkSync, unwatchFil
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
-import { displayError, displayInfo, displaySuccess, displayWarning } from './ui'
+import { UILogger } from './ui'
 
 const tempFiles = new Set<string>()
 
@@ -280,7 +280,8 @@ async function openEditorWithFallback(filePath: string, primaryEditor: string): 
     await openEditor(filePath, primaryEditor)
   }
   catch (error) {
-    displayWarning(`Failed to open ${primaryEditor}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const logger = new UILogger()
+    logger.displayWarning(`Failed to open ${primaryEditor}: ${error instanceof Error ? error.message : 'Unknown error'}`)
 
     // Try fallback editors based on platform
     const fallbackEditors = process.platform === 'win32'
@@ -291,12 +292,12 @@ async function openEditorWithFallback(filePath: string, primaryEditor: string): 
 
     for (const fallbackEditor of fallbackEditors) {
       try {
-        displayInfo(`Trying fallback editor: ${fallbackEditor}`)
+        logger.displayInfo(`Trying fallback editor: ${fallbackEditor}`)
         await openEditor(filePath, fallbackEditor)
         return // Success, exit the function
       }
       catch (fallbackError) {
-        displayWarning(`Fallback editor ${fallbackEditor} also failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`)
+        logger.displayWarning(`Fallback editor ${fallbackEditor} also failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`)
       }
     }
 
@@ -312,7 +313,8 @@ function parseConfigFromFile(filePath: string): ClaudeConfig | null {
 
     // Validate required fields
     if (!parsed.name || typeof parsed.name !== 'string' || !parsed.name.trim()) {
-      displayError('Configuration name is required')
+      const logger = new UILogger()
+      logger.displayError('Configuration name is required')
       return null
     }
 
@@ -372,7 +374,8 @@ function parseConfigFromFile(filePath: string): ClaudeConfig | null {
     return config
   }
   catch (error) {
-    displayError(`Failed to parse configuration: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const logger = new UILogger()
+    logger.displayError(`Failed to parse configuration: ${error instanceof Error ? error.message : 'Unknown error'}`)
     return null
   }
 }
@@ -380,11 +383,13 @@ function parseConfigFromFile(filePath: string): ClaudeConfig | null {
 export async function editConfigInEditor(config: ClaudeConfig): Promise<ClaudeConfig | null> {
   const editor = detectEditor()
   if (!editor) {
-    displayError('No suitable editor found. Please set EDITOR environment variable or install VS Code, Cursor, Windsurf, or another supported editor.')
+    const logger = new UILogger()
+    logger.displayError('No suitable editor found. Please set EDITOR environment variable or install VS Code, Cursor, Windsurf, or another supported editor.')
     return null
   }
 
-  displayInfo(`Opening configuration in ${editor}...`)
+  const logger = new UILogger()
+  logger.displayInfo(`Opening configuration in ${editor}...`)
 
   const tempFile = createTempConfigFile(config)
 
@@ -393,14 +398,15 @@ export async function editConfigInEditor(config: ClaudeConfig): Promise<ClaudeCo
 
     const updatedConfig = parseConfigFromFile(tempFile)
     if (updatedConfig) {
-      displaySuccess('Configuration updated successfully!')
+      logger.displaySuccess('Configuration updated successfully!')
       return updatedConfig
     }
 
     return null
   }
   catch (error) {
-    displayError(`Failed to open editor: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const logger = new UILogger()
+    logger.displayError(`Failed to open editor: ${error instanceof Error ? error.message : 'Unknown error'}`)
     return null
   }
   finally {
@@ -420,12 +426,14 @@ export async function editConfigInEditor(config: ClaudeConfig): Promise<ClaudeCo
 export async function createConfigInEditor(): Promise<ClaudeConfig | null> {
   const editor = detectEditor()
   if (!editor) {
-    displayError('No suitable editor found. Please set EDITOR environment variable or install VS Code, Cursor, Windsurf, or another supported editor.')
+    const logger = new UILogger()
+    logger.displayError('No suitable editor found. Please set EDITOR environment variable or install VS Code, Cursor, Windsurf, or another supported editor.')
     return null
   }
 
-  displayInfo(`Creating new configuration in ${editor}...`)
-  displayWarning('Please fill in the configuration details and save the file.')
+  const logger = new UILogger()
+  logger.displayInfo(`Creating new configuration in ${editor}...`)
+  logger.displayWarning('Please fill in the configuration details and save the file.')
 
   const tempFile = createTempConfigFile({})
 
@@ -434,14 +442,15 @@ export async function createConfigInEditor(): Promise<ClaudeConfig | null> {
 
     const newConfig = parseConfigFromFile(tempFile)
     if (newConfig) {
-      displaySuccess('Configuration created successfully!')
+      logger.displaySuccess('Configuration created successfully!')
       return newConfig
     }
 
     return null
   }
   catch (error) {
-    displayError(`Failed to open editor: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const logger = new UILogger()
+    logger.displayError(`Failed to open editor: ${error instanceof Error ? error.message : 'Unknown error'}`)
     return null
   }
   finally {
@@ -461,13 +470,15 @@ export async function createConfigInEditor(): Promise<ClaudeConfig | null> {
 export async function editConfigFileInEditor(configFilePath: string, onConfigReload: (config: any) => void): Promise<void> {
   const editor = detectEditor()
   if (!editor) {
-    displayError('No suitable editor found. Please set EDITOR environment variable or install VS Code, Cursor, Windsurf, or another supported editor.')
+    const logger = new UILogger()
+    logger.displayError('No suitable editor found. Please set EDITOR environment variable or install VS Code, Cursor, Windsurf, or another supported editor.')
     return
   }
 
-  displayInfo(`Opening configuration file in ${editor}...`)
-  displayInfo(`Config file: ${configFilePath}`)
-  displayInfo('💡 Save the file to reload the configuration automatically. Press Ctrl+C to stop watching.')
+  const logger = new UILogger()
+  logger.displayInfo(`Opening configuration file in ${editor}...`)
+  logger.displayInfo(`Config file: ${configFilePath}`)
+  logger.displayInfo('💡 Save the file to reload the configuration automatically. Press Ctrl+C to stop watching.')
 
   // Start watching the file for changes
   let isWatching = true
@@ -479,21 +490,21 @@ export async function editConfigFileInEditor(configFilePath: string, onConfigRel
       if (stats && stats.mtime.getTime() !== lastModified) {
         lastModified = stats.mtime.getTime()
 
-        displayInfo('🔄 Configuration file changed, reloading...')
+        logger.displayInfo('🔄 Configuration file changed, reloading...')
 
         try {
           const content = readFileSync(configFilePath, 'utf8')
           const config = JSON.parse(content)
           onConfigReload(config)
-          displaySuccess('✅ Configuration reloaded successfully!')
+          logger.displaySuccess('✅ Configuration reloaded successfully!')
         }
         catch (error) {
-          displayError(`❌ Failed to reload configuration: ${error instanceof Error ? error.message : 'Unknown error'}`)
+          logger.displayError(`❌ Failed to reload configuration: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
       }
     }
     catch (error) {
-      displayError(`❌ Error watching config file: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      logger.displayError(`❌ Error watching config file: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -511,7 +522,7 @@ export async function editConfigFileInEditor(configFilePath: string, onConfigRel
     if (isWatching) {
       unwatchFile(configFilePath, watchCallback)
       isWatching = false
-      displayInfo('🛑 Stopped watching configuration file.')
+      logger.displayInfo('🛑 Stopped watching configuration file.')
     }
   }
 
@@ -522,7 +533,7 @@ export async function editConfigFileInEditor(configFilePath: string, onConfigRel
     await openEditorWithFallback(configFilePath, editor)
   }
   catch (error) {
-    displayError(`Failed to open editor: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    logger.displayError(`Failed to open editor: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
   finally {
     cleanup()

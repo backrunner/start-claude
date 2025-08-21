@@ -9,7 +9,7 @@ import { HttpProxyAgent } from 'http-proxy-agent'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
-import { displayError, displayGrey, displaySuccess, displayVerbose, displayWarning } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 import { fileLogger } from '../utils/logging/file-logger'
 import { convertOpenAIResponseToAnthropic, convertOpenAIStreamToAnthropic, isOpenAIFormat } from '../utils/transformer/openai-to-anthropic'
 
@@ -36,6 +36,7 @@ interface EndpointStatus {
 }
 
 export class ProxyServer {
+  private ui: UILogger
   private endpoints: EndpointStatus[] = []
   private currentIndex = 0
   private server?: http.Server
@@ -75,6 +76,9 @@ export class ProxyServer {
       this.verbose = true
     }
 
+    // Initialize UILogger with verbose setting
+    this.ui = new UILogger(this.verbose)
+
     // Enable file logging if debug mode is on
     if (this.debug) {
       fileLogger.enable()
@@ -86,7 +90,7 @@ export class ProxyServer {
     if (this.proxyUrl) {
       this.httpAgent = new HttpProxyAgent(this.proxyUrl)
       this.httpsAgent = new HttpsProxyAgent(this.proxyUrl)
-      displayVerbose(`Proxy configured: ${this.proxyUrl}`, this.verbose)
+      this.ui.verbose(`Proxy configured: ${this.proxyUrl}`)
       fileLogger.debug('PROXY', `HTTP/HTTPS proxy configured: ${this.proxyUrl}`)
     }
 
@@ -114,7 +118,7 @@ export class ProxyServer {
     this.enableLoadBalance = this.proxyMode.enableLoadBalance || false
     this.enableTransform = this.proxyMode.enableTransform || false
 
-    displayVerbose(`Initializing proxy server - LoadBalance: ${this.enableLoadBalance}, Transform: ${this.enableTransform}`, this.verbose)
+    this.ui.verbose(`Initializing proxy server - LoadBalance: ${this.enableLoadBalance}, Transform: ${this.enableTransform}`)
 
     // If load balancing is enabled, set up endpoints
     if (this.enableLoadBalance) {
@@ -135,7 +139,7 @@ export class ProxyServer {
         throw new Error('No configurations found for load balancing (need either API credentials or transformer enabled)')
       }
 
-      displayVerbose(`Found ${validConfigs.length} valid configs for load balancing`, this.verbose)
+      this.ui.verbose(`Found ${validConfigs.length} valid configs for load balancing`)
 
       // Sort configs by order (lower numbers first), with undefined order treated as highest priority (0)
       validConfigs.sort((a, b) => {
@@ -190,7 +194,7 @@ export class ProxyServer {
       }
     }
 
-    displayVerbose(`Initialized with ${this.endpoints.length} endpoint(s)`, this.verbose)
+    this.ui.verbose(`Initialized with ${this.endpoints.length} endpoint(s)`)
   }
 
   private async formatUniversalResponse(
@@ -273,7 +277,7 @@ export class ProxyServer {
   async initialize(): Promise<void> {
     if (this.enableTransform) {
       await this.transformerService.initialize()
-      displaySuccess('🔧 Transformer service initialized')
+      this.ui.success('🔧 Transformer service initialized')
     }
   }
 
@@ -302,7 +306,7 @@ export class ProxyServer {
         }
 
         const featureText = features.length > 0 ? ` (${features.join(' + ')})` : ''
-        displaySuccess(`🚀 Proxy server started on port ${port}${featureText}`)
+        this.ui.success(`🚀 Proxy server started on port ${port}${featureText}`)
 
         // Start health checks only if load balancing is enabled and health checks are enabled
         if (this.enableLoadBalance && this.healthCheckEnabled) {
@@ -312,7 +316,7 @@ export class ProxyServer {
       })
 
       this.server.on('error', (error) => {
-        displayError(`❌ Failed to start proxy server: ${error.message}`)
+        this.ui.error(`❌ Failed to start proxy server: ${error.message}`)
         reject(error)
       })
     })
@@ -353,7 +357,7 @@ export class ProxyServer {
         return
       }
 
-      displayVerbose(`Handling ${req.method} ${req.url}`, this.verbose)
+      this.ui.verbose(`Handling ${req.method} ${req.url}`)
 
       // Handle requests - either through load balancer or transformer-only mode
       if (this.enableLoadBalance) {
@@ -401,7 +405,7 @@ export class ProxyServer {
       }
     }
     catch (error) {
-      displayError(`⚠️ Request handling error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      this.ui.error(`⚠️ Request handling error: ${error instanceof Error ? error.message : 'Unknown error'}`)
 
       // Log detailed request handling error
       if (this.debug) {
@@ -471,7 +475,7 @@ export class ProxyServer {
       case 'Speed First':
         return this.selectEndpointSpeedFirst(availableEndpoints)
       default:
-        displayWarning(`Unknown load balancer strategy: ${String(this.loadBalancerStrategy)}, falling back to Fallback mode`)
+        this.ui.warning(`Unknown load balancer strategy: ${String(this.loadBalancerStrategy)}, falling back to Fallback mode`)
         return this.selectEndpointFallback(availableEndpoints)
     }
   }
@@ -522,14 +526,14 @@ export class ProxyServer {
 
     if (endpointsWithSamples.length === 0) {
       // No endpoints have enough samples yet, fall back to round-robin to gather data
-      displayVerbose('Speed First: Not enough samples, using round-robin to gather data', this.verbose)
+      this.ui.verbose('Speed First: Not enough samples, using round-robin to gather data')
       return this.selectEndpointPolling(availableEndpoints)
     }
 
     // Sort by average response time (ascending - fastest first)
     const sortedBySpeed = endpointsWithSamples.sort((a, b) => a.averageResponseTime - b.averageResponseTime)
 
-    displayVerbose(`Speed First: Selected fastest endpoint ${sortedBySpeed[0].config.name} (avg: ${sortedBySpeed[0].averageResponseTime}ms, samples: ${sortedBySpeed[0].responseTimes.length})`, this.verbose)
+    this.ui.verbose(`Speed First: Selected fastest endpoint ${sortedBySpeed[0].config.name} (avg: ${sortedBySpeed[0].averageResponseTime}ms, samples: ${sortedBySpeed[0].responseTimes.length})`)
 
     return sortedBySpeed[0]
   }
@@ -974,7 +978,7 @@ export class ProxyServer {
             }
             catch {
               // If we can't parse JSON, just continue with regular proxy
-              displayVerbose('Could not parse request JSON for transformer check', this.verbose)
+              this.ui.verbose('Could not parse request JSON for transformer check')
               if (this.debug) {
                 fileLogger.info('REQUEST_PARSE_ERROR', 'Received non-JSON request body', {
                   bodySize: body.length,
@@ -987,14 +991,14 @@ export class ProxyServer {
 
           // Check if this endpoint has transformer enabled and we have transformer service
           if (this.enableTransform && 'transformerEnabled' in endpoint.config && TransformerService.isTransformerEnabled(endpoint.config.transformerEnabled)) {
-            displayVerbose(`Checking for transformer for endpoint: ${endpoint.config.baseUrl}`, this.verbose)
+            this.ui.verbose(`Checking for transformer for endpoint: ${endpoint.config.baseUrl}`)
             const transformer = this.transformerService.findTransformerByDomain(endpoint.config.baseUrl, endpoint.config.transformerEnabled, endpoint.config.transformer)
 
             if (transformer) {
               // Find the transformer name for logging
               const transformerName = Array.from(this.transformerService.getAllTransformers().entries())
                 .find(([, t]) => t === transformer)?.[0] || 'unknown'
-              displayVerbose(`Found transformer for domain ${endpoint.config.baseUrl}: ${transformerName}`, this.verbose)
+              this.ui.verbose(`Found transformer for domain ${endpoint.config.baseUrl}: ${transformerName}`)
 
               // Create provider for transformer using the real external API credentials
               // The endpoint.config should contain the actual API credentials for the external service
@@ -1020,14 +1024,14 @@ export class ProxyServer {
               let finalRequest = normalizeResult.body
               if (transformer.formatRequest) {
                 finalRequest = await transformer.formatRequest(normalizeResult.body)
-                displayVerbose(`Request formatted by ${transformer.domain || 'transformer'}`, this.verbose)
+                this.ui.verbose(`Request formatted by ${transformer.domain || 'transformer'}`)
 
                 if (this.debug) {
                   fileLogger.logTransform('FORMAT_REQUEST', transformerName, normalizeResult.body, finalRequest)
                 }
               }
               else {
-                displayVerbose(`Request normalized by ${transformer.domain || 'transformer'}`, this.verbose)
+                this.ui.verbose(`Request normalized by ${transformer.domain || 'transformer'}`)
 
                 if (this.debug) {
                   fileLogger.logTransform('NORMALIZE_REQUEST', transformerName, requestData, finalRequest)
@@ -1192,13 +1196,13 @@ export class ProxyServer {
           // Regular proxy request (no transformation)
           // Check if this endpoint has API credentials for regular requests
           if (!endpoint.config.baseUrl || !endpoint.config.apiKey) {
-            displayVerbose(`Endpoint ${endpoint.config.name} has no API credentials, skipping`, this.verbose)
+            this.ui.verbose(`Endpoint ${endpoint.config.name} has no API credentials, skipping`)
             this.markEndpointUnhealthy(endpoint, 'Missing API credentials')
 
             // Try next endpoint in rotation
             const nextEndpoint = this.getNextHealthyEndpoint()
             if (nextEndpoint && nextEndpoint !== endpoint) {
-              displayVerbose(`Retrying with next endpoint: ${nextEndpoint.config.name}`, this.verbose)
+              this.ui.verbose(`Retrying with next endpoint: ${nextEndpoint.config.name}`)
               void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, nextEndpoint, Boolean(requestData.stream))
               return
             }
@@ -1503,14 +1507,14 @@ export class ProxyServer {
     // If health checks are disabled, ban the endpoint for a duration
     if (!this.healthCheckEnabled) {
       endpoint.bannedUntil = Date.now() + (this.failedEndpointBanDurationSeconds * 1000)
-      displayVerbose(`Endpoint ${endpoint.config.name} banned until ${new Date(endpoint.bannedUntil).toLocaleTimeString()}`, this.verbose)
+      this.ui.verbose(`Endpoint ${endpoint.config.name} banned until ${new Date(endpoint.bannedUntil).toLocaleTimeString()}`)
     }
   }
 
   private startHealthChecks(): void {
     // Only start if health checks are enabled
     if (!this.healthCheckEnabled) {
-      displayVerbose('Health checks disabled', this.verbose)
+      this.ui.verbose('Health checks disabled')
       return
     }
 
@@ -1519,7 +1523,7 @@ export class ProxyServer {
       void this.performHealthChecks()
     }, this.healthCheckIntervalMs)
 
-    displayVerbose(`Health checks started with ${this.healthCheckIntervalMs}ms interval`, this.verbose)
+    this.ui.verbose(`Health checks started with ${this.healthCheckIntervalMs}ms interval`)
   }
 
   private async performHealthChecks(): Promise<void> {
@@ -1670,13 +1674,13 @@ export class ProxyServer {
   async performInitialHealthChecks(): Promise<void> {
     // Skip health checks if load balancing is disabled
     if (!this.enableLoadBalance) {
-      displaySuccess('🔧 Proxy ready - health checks skipped (load balancing disabled)')
+      this.ui.success('🔧 Proxy ready - health checks skipped (load balancing disabled)')
       return
     }
 
     // Skip initial health checks if health checking is disabled
     if (!this.healthCheckEnabled) {
-      displaySuccess('🔧 Proxy ready - health checks disabled, using ban system for failures')
+      this.ui.success('🔧 Proxy ready - health checks disabled, using ban system for failures')
       return
     }
 
@@ -1689,7 +1693,7 @@ export class ProxyServer {
 
       try {
         if (i === 0 && !hasShownQuietMessage) {
-          displayGrey('🔍 Testing endpoints...')
+          this.ui.displayGrey('🔍 Testing endpoints...')
           hasShownQuietMessage = true
         }
         await this.healthCheck(endpoint, true)
@@ -1708,17 +1712,17 @@ export class ProxyServer {
         const statusCode = statusMatch ? statusMatch[1] : null
 
         if (statusCode) {
-          displayError(`❌ ${configName} - HTTP ${statusCode}: ${this.getStatusMessage(statusCode)}`)
+          this.ui.error(`❌ ${configName} - HTTP ${statusCode}: ${this.getStatusMessage(statusCode)}`)
         }
         else {
-          displayError(`❌ ${configName} - ${errorMessage}`)
+          this.ui.error(`❌ ${configName} - ${errorMessage}`)
         }
 
         this.markEndpointUnhealthy(endpoint, errorMessage)
 
         // If first endpoint failed, try the next one
         if (i === 0) {
-          displayWarning('First endpoint failed, trying alternatives...')
+          this.ui.warning('First endpoint failed, trying alternatives...')
         }
       }
     }
@@ -1729,18 +1733,18 @@ export class ProxyServer {
       if (readyEndpoints.length > 0) {
         // Sort by average response time to show initial ranking
         const sorted = readyEndpoints.sort((a, b) => a.averageResponseTime - b.averageResponseTime)
-        displaySuccess(`🏁 Speed First ready with ${readyEndpoints.length} endpoints (fastest: ${sorted[0].config.name})`)
+        this.ui.success(`🏁 Speed First ready with ${readyEndpoints.length} endpoints (fastest: ${sorted[0].config.name})`)
 
         // Show sample counts for verification
         if (this.verbose) {
-          displayVerbose('📊 Speed First endpoint timing data:', this.verbose)
+          this.ui.verbose('📊 Speed First endpoint timing data:')
           for (const endpoint of sorted) {
-            displayVerbose(`   • ${endpoint.config.name}: ${endpoint.responseTimes.length} samples, avg ${endpoint.averageResponseTime.toFixed(1)}ms`, this.verbose)
+            this.ui.verbose(`   • ${endpoint.config.name}: ${endpoint.responseTimes.length} samples, avg ${endpoint.averageResponseTime.toFixed(1)}ms`)
           }
         }
       }
       else {
-        displayWarning('⚠️ Speed First: No healthy endpoints with timing data collected')
+        this.ui.warning('⚠️ Speed First: No healthy endpoints with timing data collected')
       }
     }
 
@@ -1748,8 +1752,8 @@ export class ProxyServer {
     const healthyCount = this.endpoints.filter(e => e.isHealthy).length
     if (healthyCount === 0) {
       log()
-      displayError('❌ All endpoints failed initial health checks!')
-      displayWarning('⚠️ Load balancer will continue but may not work properly')
+      this.ui.error('❌ All endpoints failed initial health checks!')
+      this.ui.warning('⚠️ Load balancer will continue but may not work properly')
       log()
     }
   }

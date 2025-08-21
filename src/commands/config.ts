@@ -1,13 +1,14 @@
 import process from 'node:process'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
-import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 
 export async function handleRemoveCommand(name: string): Promise<void> {
+  const ui = new UILogger()
   const configManager = ConfigManager.getInstance()
   const config = configManager.getConfig(name)
   if (!config) {
-    displayError(`Configuration "${name}" not found`)
+    ui.displayError(`Configuration "${name}" not found`)
     process.exit(1)
   }
 
@@ -22,29 +23,30 @@ export async function handleRemoveCommand(name: string): Promise<void> {
 
   if (answers.confirm) {
     await configManager.removeConfig(name)
-    displaySuccess(`Configuration "${name}" removed successfully!`)
+    ui.displaySuccess(`Configuration "${name}" removed successfully!`)
   }
   else {
-    displayInfo('Operation cancelled')
+    ui.displayInfo('Operation cancelled')
   }
 }
 
 export async function handleListCommand(): Promise<void> {
+  const ui = new UILogger()
   const configManager = ConfigManager.getInstance()
   const configs = configManager.listConfigs()
-  const { displayConfigList, displayWelcome } = await import('../utils/cli/ui')
-  displayWelcome()
-  displayConfigList(configs)
+  ui.displayWelcome()
+  ui.displayConfigList(configs)
 }
 
 export async function handleDefaultCommand(name: string): Promise<void> {
+  const ui = new UILogger()
   const configManager = ConfigManager.getInstance()
   const success = await configManager.setDefaultConfig(name)
   if (success) {
-    displaySuccess(`Configuration "${name}" set as default`)
+    ui.displaySuccess(`Configuration "${name}" set as default`)
   }
   else {
-    displayError(`Configuration "${name}" not found`)
+    ui.displayError(`Configuration "${name}" not found`)
     process.exit(1)
   }
 }

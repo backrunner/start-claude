@@ -2,7 +2,7 @@ import type { ConfigFile, LegacyConfigFile, MigrationInfo, SystemSettings } from
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 import { migrationRegistry } from './migration'
 import { CURRENT_CONFIG_VERSION } from './types'
 
@@ -92,14 +92,15 @@ export class ConfigFileManager {
       return this.validateAndNormalize(config)
     }
     catch (error) {
-      displayWarning(`Error loading config file: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      displayInfo('Creating new configuration file...')
+      const logger = new UILogger()
+      logger.displayWarning(`Error loading config file: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      logger.displayInfo('Creating new configuration file...')
 
       // Backup the corrupted file
       if (this.exists()) {
         const backupPath = `${CONFIG_FILE}.backup.${Date.now()}`
         fs.copyFileSync(CONFIG_FILE, backupPath)
-        displayInfo(`Corrupted config backed up to: ${backupPath}`)
+        logger.displayInfo(`Corrupted config backed up to: ${backupPath}`)
       }
 
       const defaultConfig = this.getDefaultConfigFile()
@@ -130,7 +131,8 @@ export class ConfigFileManager {
    * Migrate legacy configuration (no version field) to current version
    */
   private migrateLegacyConfig(legacyConfig: LegacyConfigFile): ConfigFile {
-    displayInfo('Migrating legacy configuration to version 1...')
+    const logger = new UILogger()
+    logger.displayInfo('Migrating legacy configuration to version 1...')
 
     // Convert legacy settings to new SystemSettings format
     const newSettings: SystemSettings = {
@@ -160,7 +162,7 @@ export class ConfigFileManager {
 
     // Save the migrated config
     this.save(migratedConfig)
-    displaySuccess('Successfully migrated configuration to version 1')
+    logger.displaySuccess('Successfully migrated configuration to version 1')
 
     return migratedConfig
   }
@@ -172,14 +174,15 @@ export class ConfigFileManager {
     const fromVersion = config.version
     const toVersion = CURRENT_CONFIG_VERSION
 
-    displayInfo(`Migrating configuration from version ${fromVersion} to ${toVersion}...`)
+    const logger = new UILogger()
+    logger.displayInfo(`Migrating configuration from version ${fromVersion} to ${toVersion}...`)
 
     try {
       // Find migration path
       const migrationPath = migrationRegistry.findMigrationPath(fromVersion, toVersion)
 
       if (migrationPath.length === 0) {
-        displayWarning(`No migration path found from version ${fromVersion} to ${toVersion}`)
+        logger.displayWarning(`No migration path found from version ${fromVersion} to ${toVersion}`)
         return config
       }
 
@@ -187,7 +190,7 @@ export class ConfigFileManager {
 
       // Apply migrations sequentially
       for (const migration of migrationPath) {
-        displayInfo(`Applying migration: ${migration.getMigrationInfo()}`)
+        logger.displayInfo(`Applying migration: ${migration.getMigrationInfo()}`)
 
         if (!migration.canMigrate(migratedConfig)) {
           throw new Error(`Migration ${migration.getMigrationInfo()} cannot be applied to current config`)
@@ -204,19 +207,19 @@ export class ConfigFileManager {
           timestamp: Date.now(),
         })
 
-        displaySuccess(`Applied migration: ${migration.getMigrationInfo()}`)
+        logger.displaySuccess(`Applied migration: ${migration.getMigrationInfo()}`)
       }
 
       // Save the fully migrated config
       this.save(migratedConfig)
-      displaySuccess(`Successfully migrated configuration to version ${toVersion}`)
+      logger.displaySuccess(`Successfully migrated configuration to version ${toVersion}`)
 
       return migratedConfig
     }
     catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-      displayWarning(`Migration failed: ${errorMsg}`)
-      displayInfo('Using configuration as-is without migration')
+      logger.displayWarning(`Migration failed: ${errorMsg}`)
+      logger.displayInfo('Using configuration as-is without migration')
       return config
     }
   }
@@ -315,7 +318,8 @@ export class ConfigFileManager {
       })
     }
     catch (error) {
-      displayWarning(`Error reading migration history: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayWarning(`Error reading migration history: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return []
     }
   }
@@ -383,9 +387,10 @@ export class ConfigFileManager {
    * This indicates the CLI tool is outdated and needs to be updated
    */
   private handleOutdatedCLI(configVersion: number): void {
-    displayWarning(`⚠️ Configuration version (${configVersion}) is newer than CLI version (${CURRENT_CONFIG_VERSION})`)
-    displayWarning('⚠️ Your CLI tool is outdated and needs to be updated to avoid compatibility issues.')
-    displayInfo('💡 An update check will be performed immediately.')
+    const logger = new UILogger()
+    logger.displayWarning(`⚠️ Configuration version (${configVersion}) is newer than CLI version (${CURRENT_CONFIG_VERSION})`)
+    logger.displayWarning('⚠️ Your CLI tool is outdated and needs to be updated to avoid compatibility issues.')
+    logger.displayInfo('💡 An update check will be performed immediately.')
 
     // Set a flag that can be checked by the CLI startup code
     this._needsImmediateUpdate = true
