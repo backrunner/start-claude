@@ -2,6 +2,7 @@ import { exec, spawn } from 'node:child_process'
 import process from 'node:process'
 import { version } from '../../../package.json'
 import { CacheManager } from './cache-manager'
+import { isGlobalNodePath } from '../path-utils'
 
 export interface UpdateInfo {
   currentVersion: string
@@ -102,6 +103,29 @@ export async function performAutoUpdate(): Promise<UpdateResult> {
 }
 
 /**
+ * Detect if the CLI is running from a global installation
+ */
+function isGlobalInstall(): boolean {
+  // Check if we're running via the global binary (not via node script.js)
+  // When running globally, process.argv[1] should be the global binary path
+  // or we can check if the script path is in a global node path
+  if (!process.argv[1]) {
+    return false
+  }
+
+  const scriptPath = process.argv[1]
+  
+  // Check if we're running via direct node execution (local development)
+  if (scriptPath.endsWith('.js') || scriptPath.endsWith('.cjs') || scriptPath.endsWith('.mjs')) {
+    // Check if the script is in a global Node.js installation path
+    return isGlobalNodePath(scriptPath)
+  }
+
+  // If we're running via a binary (like start-claude command), it's global
+  return true
+}
+
+/**
  * Restarts the CLI with the same arguments after an update
  * This ensures the user continues with their original command
  */
@@ -109,10 +133,24 @@ export function relaunchCLI(): void {
   // Get the original command and arguments
   const args = process.argv.slice(2) // Remove 'node' and script path
   const executable = process.argv[0] // node executable
-  const scriptPath = process.argv[1] // script path
+  
+  let commandToRun: string[]
+  
+  if (isGlobalInstall()) {
+    // Running globally - use the binary name directly
+    // Find the binary name from process.argv[1] or use 'start-claude'
+    const binaryName = process.argv[1] && !process.argv[1].includes('/') 
+      ? process.argv[1] 
+      : 'start-claude'
+    commandToRun = [binaryName, ...args]
+  } else {
+    // Running locally - use node with the script path
+    const scriptPath = process.argv[1] // script path
+    commandToRun = [scriptPath, ...args]
+  }
 
   // Spawn a new process with the same arguments
-  const child = spawn(executable, [scriptPath, ...args], {
+  const child = spawn(executable, commandToRun, {
     detached: true,
     stdio: 'inherit',
   })

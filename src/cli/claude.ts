@@ -2,11 +2,10 @@ import type { ChildProcess } from 'node:child_process'
 import type { ClaudeConfig } from '../config/types'
 import type { CliOverrides } from './common'
 import { spawn } from 'node:child_process'
-import { accessSync, constants } from 'node:fs'
-import path from 'node:path'
 import process from 'node:process'
 import inquirer from 'inquirer'
 import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
+import { findExecutable } from '../utils/path-utils'
 
 export async function startClaude(config: ClaudeConfig | undefined, args: string[] = [], cliOverrides?: CliOverrides): Promise<number> {
   const env: NodeJS.ProcessEnv = { ...process.env }
@@ -22,7 +21,7 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
   }
 
   // Check if claude command is available
-  const claudePath = findExecutable('claude', env)
+  const claudePath = findExecutableWithSkipDirs('claude', env)
 
   if (!claudePath) {
     // Claude is not installed, ask user if they want to install it
@@ -35,7 +34,7 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
       }
 
       // Try to find claude again after installation
-      const newClaudePath = findExecutable('claude', env)
+      const newClaudePath = findExecutableWithSkipDirs('claude', env)
       if (!newClaudePath) {
         displayError('Failed to find Claude Code after installation. Please restart your terminal.')
         return 1
@@ -74,7 +73,7 @@ async function installClaudeCode(): Promise<boolean> {
     displayInfo('Installing Claude Code CLI...')
 
     // Find npm executable in PATH
-    const npmPath = findExecutable('npm', process.env)
+    const npmPath = findExecutableWithSkipDirs('npm', process.env)
     if (!npmPath) {
       displayError('npm is not found in PATH. Please install Node.js and npm first.')
       resolve(false)
@@ -238,42 +237,7 @@ function applyCliOverrides(env: NodeJS.ProcessEnv, overrides: CliOverrides): voi
   }
 }
 
-// Function to find executable in PATH
-function findExecutable(command: string, env: NodeJS.ProcessEnv): string | null {
-  const pathEnv = env.PATH || env.Path || ''
-  let pathDirs = pathEnv.split(path.delimiter)
-
-  // On Windows, prioritize common Node.js global installation paths
-  if (process.platform === 'win32') {
-    const nodeGlobalPaths = [
-      path.join(process.env.APPDATA || '', 'npm'),
-      path.join(process.env.ProgramFiles || '', 'nodejs'),
-      path.join(process.env['ProgramFiles(x86)'] || '', 'nodejs'),
-    ].filter(p => p !== 'npm' && p !== 'nodejs') // Filter out empty paths
-
-    // Add Node.js paths to the beginning of search paths
-    pathDirs = [...nodeGlobalPaths, ...pathDirs]
-  }
-
-  const extensions = process.platform === 'win32' ? ['.cmd', '.ps1'] : ['']
-
-  for (const dir of pathDirs) {
-    // Skip .start-claude directory to avoid infinite loop
-    if (dir.includes('.start-claude')) {
-      continue
-    }
-
-    for (const ext of extensions) {
-      const fullPath = path.join(dir, command + ext)
-      try {
-        // Check if file exists and is executable
-        accessSync(fullPath, constants.F_OK)
-        return fullPath
-      }
-      catch {
-        // Continue searching
-      }
-    }
-  }
-  return null
+// Function to find executable in PATH (using shared utility)
+function findExecutableWithSkipDirs(command: string, env: NodeJS.ProcessEnv): string | null {
+  return findExecutable(command, { env, skipDirs: ['.start-claude'] })
 }

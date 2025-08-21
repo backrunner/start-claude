@@ -1,3 +1,4 @@
+import type { ClaudeConfig } from '../config/types'
 import type { ProgramOptions } from './common'
 
 import process from 'node:process'
@@ -98,7 +99,7 @@ program
     const balanceConfig = parseBalanceStrategy(options.balance)
     let shouldUseProxy = balanceConfig.enabled
     const cliStrategy = balanceConfig.strategy
-    let systemSettings: any = null
+    let systemSettings: unknown = null
 
     // Display strategy info if CLI strategy was provided
     if (cliStrategy && typeof options.balance === 'string') {
@@ -108,7 +109,10 @@ program
     if (!shouldUseProxy && options.balance !== false) {
       try {
         systemSettings = await s3SyncManager.getSystemSettings()
-        shouldUseProxy = systemSettings?.balanceMode?.enableByDefault === true
+        if (systemSettings && typeof systemSettings === 'object' && 'balanceMode' in systemSettings) {
+          const balanceMode = (systemSettings as { balanceMode?: { enableByDefault?: boolean } }).balanceMode
+          shouldUseProxy = balanceMode?.enableByDefault === true
+        }
       }
       catch {
         // Ignore errors getting system settings, just use default behavior
@@ -116,8 +120,29 @@ program
     }
 
     // If not yet using proxy, check if we need it for transformer-enabled configs
+    // We check config existence without triggering fuzzy search prompts to avoid double confirmation
     if (!shouldUseProxy) {
-      const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
+      const configName = options.config || configArg
+      let config: ClaudeConfig | undefined
+
+      if (configName) {
+        // Check config directly without fuzzy search to avoid prompts
+        config = configManager.getConfig(configName)
+        if (!config) {
+          // If config not found locally, check S3 silently
+          if (await s3SyncManager.isS3Configured()) {
+            const syncSuccess = await s3SyncManager.checkAutoSync()
+            if (syncSuccess) {
+              config = configManager.getConfig(configName)
+            }
+          }
+        }
+      }
+      else {
+        // For default config, we can check normally
+        config = configManager.getDefaultConfig()
+      }
+
       if (TransformerService.isTransformerEnabled(config?.transformerEnabled)) {
         shouldUseProxy = true
         displayInfo('🔧 Auto-enabling proxy mode for transformer-enabled configuration')
