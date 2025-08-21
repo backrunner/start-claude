@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import open from 'open'
-import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 
 export class ManagerServer {
   private childProcess: ChildProcess | null = null
@@ -19,6 +19,7 @@ export class ManagerServer {
   }
 
   async start(): Promise<void> {
+    const ui = new UILogger()
     // When bundled as ./bin/cli.mjs, manager is in ./bin/manager
     const currentDir = dirname(fileURLToPath(import.meta.url))
     const managerPath = join(currentDir, './manager')
@@ -28,7 +29,7 @@ export class ManagerServer {
       throw new Error('Manager build not found. Please build the manager first with: cd src/manager && pnpm run build')
     }
 
-    displayInfo('Starting Claude Configuration Manager...')
+    ui.displayInfo('Starting Claude Configuration Manager...')
 
     try {
       // For standalone build, we spawn the server.js file directly
@@ -55,7 +56,7 @@ export class ManagerServer {
 
       // Handle process events
       this.childProcess.on('error', (error) => {
-        displayError(`Failed to start manager: ${error.message}`)
+        ui.displayError(`Failed to start manager: ${error.message}`)
       })
 
       this.childProcess.on('exit', (code, signal) => {
@@ -63,16 +64,16 @@ export class ManagerServer {
         const wasIntentionalShutdown = code === 0 || signal === 'SIGTERM'
 
         if (wasIntentionalShutdown) {
-          displaySuccess('Configuration Manager stopped')
+          ui.displaySuccess('Configuration Manager stopped')
           // Exit the CLI process as well when manager shuts down intentionally
           setTimeout(() => {
-            displayInfo('Exiting CLI...')
+            ui.displayInfo('Exiting CLI...')
             process.exit(0)
           }, 100)
         }
         else if (code !== null) {
           // Only show error for unexpected exits
-          displayError(`Manager process exited unexpectedly with code ${code}`)
+          ui.displayError(`Manager process exited unexpectedly with code ${code}`)
         }
 
         this.childProcess = null
@@ -101,9 +102,9 @@ export class ManagerServer {
               return
             resolved = true
             clearTimeout(timeout)
-            displaySuccess(`✨ Claude Configuration Manager is running on port ${this.port}!`)
-            displayInfo(`Opening manager at http://localhost:${this.port}`)
-            displayInfo('Press Ctrl+C to stop the manager')
+            ui.displaySuccess(`✨ Claude Configuration Manager is running on port ${this.port}!`)
+            ui.displayInfo(`Opening manager at http://localhost:${this.port}`)
+            ui.displayInfo('Press Ctrl+C to stop the manager')
             resolve()
           })
 
@@ -136,14 +137,15 @@ export class ManagerServer {
         this.childProcess.kill()
         this.childProcess = null
       }
-      displayError(`Failed to start manager: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      ui.displayError(`Failed to start manager: ${error instanceof Error ? error.message : 'Unknown error'}`)
       throw error
     }
   }
 
   async stop(): Promise<void> {
+    const ui = new UILogger()
     if (this.childProcess) {
-      displayInfo('Stopping Configuration Manager...')
+      ui.displayInfo('Stopping Configuration Manager...')
 
       // First, try to broadcast shutdown message to WebSocket clients
       try {
@@ -156,7 +158,7 @@ export class ManagerServer {
           timeout: 2000,
         }, () => {
           // Response received, shutdown message sent
-          displayInfo('Shutdown signal sent to manager page')
+          ui.displayInfo('Shutdown signal sent to manager page')
         })
 
         req.on('error', () => {

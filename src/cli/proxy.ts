@@ -4,7 +4,7 @@ import type { ProgramOptions } from './common'
 import process from 'node:process'
 import { ProxyServer } from '../core/proxy'
 import { TransformerService } from '../services/transformer'
-import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 import { fileLogger } from '../utils/logging/file-logger'
 import { checkAndHandleExistingProxy, removeLockFile, setupProxyCleanup } from '../utils/network/proxy-lock'
 import { startClaude } from './claude'
@@ -36,7 +36,8 @@ export async function handleProxyMode(
       baseUrl: 'http://localhost:2333', // Use proxy server's URL
     }
 
-    displaySuccess('🔄 Using existing proxy server')
+    const ui = new UILogger()
+    ui.success('🔄 Using existing proxy server')
 
     // Start Claude Code with the existing proxy server configuration
     const exitCode = await startClaude(baseConfig, allArgs, cliOverrides)
@@ -64,23 +65,26 @@ export async function handleProxyMode(
     const hasTransformerEnabled = TransformerService.isTransformerEnabled(c.transformerEnabled)
 
     if (hasTransformerEnabled && !hasCompleteApiCredentials) {
-      displayInfo(`Configuration "${c.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) - including for transformer fallback`)
+      const ui = new UILogger()
+      ui.info(`Configuration "${c.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) - including for transformer fallback`)
     }
 
     return hasCompleteApiCredentials || hasTransformerEnabled
   })
 
   if (proxyableConfigs.length === 0) {
-    displayError('No configurations found for proxy mode')
-    displayInfo('Proxy mode requires configurations with either:')
-    displayInfo('  - baseUrl, apiKey, and model (for direct API calls)')
-    displayInfo('  - transformerEnabled: true (for transformer processing)')
+    const ui = new UILogger()
+    ui.error('No configurations found for proxy mode')
+    ui.info('Proxy mode requires configurations with either:')
+    ui.info('  - baseUrl, apiKey, and model (for direct API calls)')
+    ui.info('  - transformerEnabled: true (for transformer processing)')
     process.exit(1)
   }
 
   // Show which configs are included and why - only when balance mode is enabled
   if (options.balance) {
-    displayInfo(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
+    const ui = new UILogger()
+    ui.info(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
     proxyableConfigs.forEach((c) => {
       const hasCompleteApi = c.baseUrl && c.apiKey && c.model
       const hasTransformer = TransformerService.isTransformerEnabled(c.transformerEnabled)
@@ -96,7 +100,7 @@ export async function handleProxyMode(
         status = ' (transformer only - needs fallback endpoints)'
       }
 
-      displayInfo(`  - ${c.name}: ${c.baseUrl || 'no baseUrl'}${status}`)
+      ui.info(`  - ${c.name}: ${c.baseUrl || 'no baseUrl'}${status}`)
     })
   }
 
@@ -133,23 +137,25 @@ export async function handleProxyMode(
 
     // Show debug logging information if enabled
     if (options.debug) {
-      displayInfo('')
-      displayInfo(`📝 Debug logging enabled - logs will be written to: ${fileLogger.getLogFilePath()}`)
+      const ui = new UILogger()
+      ui.info('')
+      ui.info(`📝 Debug logging enabled - logs will be written to: ${fileLogger.getLogFilePath()}`)
     }
 
     // Show transformer information if transformers are enabled
     if (hasTransformerEnabled) {
+      const ui = new UILogger()
       const transformers = proxyServer.listTransformers()
       if (transformers.length > 0) {
-        displayInfo('')
+        ui.info('')
         if (options.balance) {
-          displayInfo('🔧 Available transformers:')
+          ui.info('🔧 Available transformers:')
           transformers.forEach((transformer) => {
             if (transformer.hasDomain) {
-              displayInfo(`  - ${transformer.name} (${transformer.domain})`)
+              ui.info(`  - ${transformer.name} (${transformer.domain})`)
             }
             else {
-              displayInfo(`  - ${transformer.name}`)
+              ui.info(`  - ${transformer.name}`)
             }
           })
         }
@@ -162,12 +168,12 @@ export async function handleProxyMode(
             if (baseConfig.transformer && baseConfig.transformer !== 'auto') {
               matchingTransformer = transformers.find(t => t.name === baseConfig.transformer)
               if (matchingTransformer) {
-                displayInfo('🔧 Current transformer (manually specified):')
+                ui.info('🔧 Current transformer (manually specified):')
                 if (matchingTransformer.hasDomain) {
-                  displayInfo(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
+                  ui.info(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
                 }
                 else {
-                  displayInfo(`  - ${matchingTransformer.name}`)
+                  ui.info(`  - ${matchingTransformer.name}`)
                 }
               }
             }
@@ -179,57 +185,58 @@ export async function handleProxyMode(
               )
 
               if (matchingTransformer) {
-                displayInfo('🔧 Current transformer (auto-detected):')
-                displayInfo(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
+                ui.info('🔧 Current transformer (auto-detected):')
+                ui.info(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
               }
             }
 
             if (!matchingTransformer) {
-              displayError(`❌ No transformer found for baseUrl: ${baseConfig.baseUrl}`)
+              ui.error(`❌ No transformer found for baseUrl: ${baseConfig.baseUrl}`)
               if (baseConfig.transformer && baseConfig.transformer !== 'auto') {
-                displayError(`❌ Manually specified transformer "${baseConfig.transformer}" not found`)
+                ui.error(`❌ Manually specified transformer "${baseConfig.transformer}" not found`)
               }
-              displayInfo('Available transformers:')
+              ui.info('Available transformers:')
               transformers.forEach((transformer) => {
                 if (transformer.hasDomain) {
-                  displayInfo(`  - ${transformer.name} (${transformer.domain})`)
+                  ui.info(`  - ${transformer.name} (${transformer.domain})`)
                 }
                 else {
-                  displayInfo(`  - ${transformer.name}`)
+                  ui.info(`  - ${transformer.name}`)
                 }
               })
               process.exit(1)
             }
           }
           else {
-            displayError('❌ No baseConfig available for transformer matching')
+            ui.error('❌ No baseConfig available for transformer matching')
             process.exit(1)
           }
         }
       }
     }
 
-    displayInfo('')
+    const ui = new UILogger()
+    ui.info('')
 
     // Determine proxy mode and show appropriate message
     const apiConfigs = proxyableConfigs.filter(c => c.baseUrl && c.apiKey && c.model)
     const transformerConfigs = proxyableConfigs.filter(c => TransformerService.isTransformerEnabled(c.transformerEnabled))
 
     if (apiConfigs.length > 0 && transformerConfigs.length > 0) {
-      displaySuccess('🔧 Hybrid proxy server is running! (Load balancer + Transformer)')
-      displayInfo('Starting Claude Code with hybrid proxy...')
+      ui.success('🔧 Hybrid proxy server is running! (Load balancer + Transformer)')
+      ui.info('Starting Claude Code with hybrid proxy...')
     }
     else if (apiConfigs.length > 1) {
-      displaySuccess('🚀 Load balancer is running!')
-      displayInfo('Starting Claude Code with load balancer...')
+      ui.success('🚀 Load balancer is running!')
+      ui.info('Starting Claude Code with load balancer...')
     }
     else if (transformerConfigs.length > 0) {
-      displaySuccess('🔧 Transformer proxy is running!')
-      displayInfo('Starting Claude Code with transformer proxy...')
+      ui.success('🔧 Transformer proxy is running!')
+      ui.info('Starting Claude Code with transformer proxy...')
     }
     else {
-      displaySuccess('🚀 Proxy server is running!')
-      displayInfo('Starting Claude Code with proxy server...')
+      ui.success('🚀 Proxy server is running!')
+      ui.info('Starting Claude Code with proxy server...')
     }
 
     // Build arguments to pass to claude command (same as normal mode)
@@ -247,7 +254,8 @@ export async function handleProxyMode(
     // Handle graceful shutdown
     const handleShutdown = (): void => {
       void (async () => {
-        displayInfo('\nShutting down proxy server...')
+        const ui = new UILogger()
+        ui.info('\nShutting down proxy server...')
         await proxyServer.stop()
         removeLockFile() // Clean up lock file
         process.exit(0)
@@ -266,7 +274,8 @@ export async function handleProxyMode(
     process.exit(exitCode)
   }
   catch (error) {
-    displayError(`Failed to start proxy server: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const ui = new UILogger()
+    ui.error(`Failed to start proxy server: ${error instanceof Error ? error.message : 'Unknown error'}`)
     process.exit(1)
   }
 }

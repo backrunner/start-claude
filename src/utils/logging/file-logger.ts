@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import dayjs from 'dayjs'
 
 export interface LogEntry {
   timestamp: string
@@ -18,7 +19,7 @@ export class FileLogger {
   constructor(logFileName?: string) {
     this.logDir = join(homedir(), '.start-claude', 'logs')
     // Generate unique log file name with timestamp
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)
+    const timestamp = dayjs().format('YYYY-MM-DD_HH-mm-ss')
     const fileName = logFileName || `start-claude-${timestamp}.log`
     this.logFile = join(this.logDir, fileName)
   }
@@ -50,7 +51,7 @@ export class FileLogger {
   private initializeLogFile(): void {
     const header = `
 === Start Claude Debug Log ===
-Session started: ${new Date().toLocaleString()}
+Session started: ${dayjs().format('YYYY-MM-DD HH:mm:ss')}
 Log file: ${this.logFile}
 =============================
 
@@ -88,7 +89,7 @@ Log file: ${this.logFile}
     }
 
     const entry: LogEntry = {
-      timestamp: new Date().toLocaleString(),
+      timestamp: dayjs().format('YYYY-MM-DD HH:mm:ss'),
       level,
       category,
       message,

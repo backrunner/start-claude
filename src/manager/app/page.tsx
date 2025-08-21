@@ -431,7 +431,7 @@ export default function HomePage(): ReactNode {
       const reorderedConfigs = arrayMove(filteredConfigs, oldIndex, newIndex)
       const updatedFilteredConfigs = reorderedConfigs.map((config, index) => ({
         ...config,
-        order: index,
+        order: index + 1,
       }))
 
       // Update all configs array with new orders, preserving disabled configs

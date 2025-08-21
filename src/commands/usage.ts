@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
 import process from 'node:process'
-import { displayError, displayInfo, displayWelcome } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 
 export async function handleUsageCommand(subcommand?: string, options: any = {}): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger()
+  ui.displayWelcome()
   const args = ['ccusage']
 
   if (subcommand) {
@@ -26,7 +27,7 @@ export async function handleUsageCommand(subcommand?: string, options: any = {})
     }
   }
 
-  displayInfo(`Running: npx ${args.join(' ')}`)
+  ui.displayInfo(`Running: npx ${args.join(' ')}`)
 
   return new Promise((resolve, reject) => {
     const child = spawn('npx', args, {
@@ -35,13 +36,13 @@ export async function handleUsageCommand(subcommand?: string, options: any = {})
     })
 
     child.on('error', (error) => {
-      displayError(`Failed to run ccusage: ${error.message}`)
+      ui.displayError(`Failed to run ccusage: ${error.message}`)
       reject(error)
     })
 
     child.on('close', (code) => {
       if (code !== 0) {
-        displayError(`ccusage exited with code ${code}`)
+        ui.displayError(`ccusage exited with code ${code}`)
         process.exit(code)
       }
       resolve()

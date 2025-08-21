@@ -4,8 +4,9 @@ import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import dayjs from 'dayjs'
 import inquirer from 'inquirer'
-import { displayError, displayInfo, displaySuccess, displayVerbose, displayWarning } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 import { displayConflictResolution, resolveConfigConflicts } from '../utils/config/conflict-resolver'
 
 export interface S3Config {
@@ -111,7 +112,8 @@ export class S3SyncManager {
   }
 
   private initializeS3Client(config: S3Config, options: { verbose?: boolean } = {}): void {
-    displayVerbose(`🔄 Initializing S3 client for bucket: ${config.bucket} in region: ${config.region}`, options.verbose)
+    const logger = new UILogger(options.verbose)
+    logger.displayVerbose(`🔄 Initializing S3 client for bucket: ${config.bucket} in region: ${config.region}`)
 
     const clientConfig: S3ClientConfig = {
       region: config.region,
@@ -123,23 +125,24 @@ export class S3SyncManager {
 
     // Add custom endpoint for S3-compatible services
     if (config.endpointUrl) {
-      displayVerbose(`🌐 Using custom endpoint: ${config.endpointUrl}`, options.verbose)
+      logger.displayVerbose(`🌐 Using custom endpoint: ${config.endpointUrl}`)
       clientConfig.endpoint = config.endpointUrl
       // Force path-style addressing for S3-compatible services
       clientConfig.forcePathStyle = true
     }
 
     this.s3Client = new S3Client(clientConfig)
-    displayVerbose(`✅ S3 client initialized successfully`, options.verbose)
+    logger.displayVerbose(`✅ S3 client initialized successfully`)
   }
 
   async setupS3Sync(config: S3Config, options: { verbose?: boolean } = {}): Promise<boolean> {
     try {
-      displayVerbose(`🔧 Setting up S3 sync configuration...`, options.verbose)
+      const logger = new UILogger(options.verbose)
+      logger.displayVerbose(`🔧 Setting up S3 sync configuration...`)
       this.initializeS3Client(config, options)
 
       // Test the connection by trying to check if the key exists
-      displayVerbose(`🔍 Checking remote storage for existing configuration...`, options.verbose)
+      logger.displayVerbose(`🔍 Checking remote storage for existing configuration...`)
       const remoteExists = await this.checkS3KeyExists(config, options)
 
       // Save the S3 configuration with normalized key
@@ -151,30 +154,30 @@ export class S3SyncManager {
         },
       })
 
-      displaySuccess('S3 sync configuration saved successfully!')
+      logger.displaySuccess('S3 sync configuration saved successfully!')
 
       // Check local configs existence
       const localConfigs = configManager.listConfigs()
       const hasLocalConfigs = localConfigs.length > 0
 
-      displayVerbose(`📁 Local configurations found: ${hasLocalConfigs ? 'Yes' : 'No'}`, options.verbose)
-      displayVerbose(`☁️  Remote configuration found: ${remoteExists ? 'Yes' : 'No'}`, options.verbose)
+      logger.displayVerbose(`📁 Local configurations found: ${hasLocalConfigs ? 'Yes' : 'No'}`)
+      logger.displayVerbose(`☁️  Remote configuration found: ${remoteExists ? 'Yes' : 'No'}`)
 
       if (remoteExists && !hasLocalConfigs) {
         // Remote exists, no local configs - auto download
-        displayInfo('📥 Remote configuration found, downloading automatically...')
+        logger.displayInfo('📥 Remote configuration found, downloading automatically...')
         await this.downloadConfigs(true)
         return true
       }
       else if (!remoteExists && hasLocalConfigs) {
         // No remote, has local configs - auto upload
-        displayInfo('📤 No remote configuration found, uploading local configs...')
+        logger.displayInfo('📤 No remote configuration found, uploading local configs...')
         await this.uploadConfigs()
         return false
       }
       else if (remoteExists && hasLocalConfigs) {
         // Both exist - prompt user to decide
-        displayWarning('⚠️  Both remote and local configurations exist.')
+        logger.displayWarning('⚠️  Both remote and local configurations exist.')
 
         const overwriteAnswer = await inquirer.prompt([
           {
@@ -192,12 +195,13 @@ export class S3SyncManager {
       }
 
       // Neither exists - just return false
-      displayVerbose('ℹ️  No configurations found locally or remotely', options.verbose)
+      logger.displayVerbose('ℹ️  No configurations found locally or remotely')
       return false
     }
     catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      displayError(`Failed to setup S3 sync: ${errorMessage}`)
+      const logger = new UILogger()
+      logger.displayError(`Failed to setup S3 sync: ${errorMessage}`)
       return false
     }
   }
@@ -207,8 +211,9 @@ export class S3SyncManager {
       throw new Error('S3 client not initialized')
     }
 
+    const logger = new UILogger(options.verbose)
     try {
-      displayVerbose(`🔍 Checking if key exists: s3://${config.bucket}/${this.normalizeS3Key(config.key)}`, options.verbose)
+      logger.displayVerbose(`🔍 Checking if key exists: s3://${config.bucket}/${this.normalizeS3Key(config.key)}`)
 
       const command = new HeadObjectCommand({
         Bucket: config.bucket,
@@ -216,16 +221,16 @@ export class S3SyncManager {
       })
 
       await this.s3Client.send(command)
-      displayVerbose(`✅ Remote file exists`, options.verbose)
+      logger.displayVerbose(`✅ Remote file exists`)
       return true
     }
     catch (error: unknown) {
       const awsError = error as AwsError
       if (awsError.name === 'NotFound' || awsError.$metadata?.httpStatusCode === 404) {
-        displayVerbose(`ℹ️  Remote file does not exist`, options.verbose)
+        logger.displayVerbose(`ℹ️  Remote file does not exist`)
         return false
       }
-      displayError(`❌ Error checking remote file: ${this.formatAwsError(error)}`)
+      logger.displayError(`❌ Error checking remote file: ${this.formatAwsError(error)}`)
       throw error
     }
   }
@@ -235,8 +240,9 @@ export class S3SyncManager {
       throw new Error('S3 client not initialized')
     }
 
+    const logger = new UILogger(options.verbose)
     try {
-      displayVerbose(`📊 Getting remote file metadata: s3://${config.bucket}/${this.normalizeS3Key(config.key)}`, options.verbose)
+      logger.displayVerbose(`📊 Getting remote file metadata: s3://${config.bucket}/${this.normalizeS3Key(config.key)}`)
 
       const command = new HeadObjectCommand({
         Bucket: config.bucket,
@@ -257,29 +263,30 @@ export class S3SyncManager {
         configVersion,
       }
 
-      displayVerbose(`📊 Remote file info - Size: ${info.size} bytes, Modified: ${this.formatTimestamp(info.lastModified)}${configVersion ? `, Version: ${configVersion}` : ''}`, options.verbose)
+      logger.displayVerbose(`📊 Remote file info - Size: ${info.size} bytes, Modified: ${this.formatTimestamp(info.lastModified)}${configVersion ? `, Version: ${configVersion}` : ''}`)
       return info
     }
     catch (error: unknown) {
       const awsError = error as AwsError
       if (awsError.name === 'NotFound' || awsError.$metadata?.httpStatusCode === 404) {
-        displayVerbose(`ℹ️  Remote file does not exist`, options.verbose)
+        logger.displayVerbose(`ℹ️  Remote file does not exist`)
         return {
           lastModified: new Date(0),
           size: 0,
           exists: false,
         }
       }
-      displayError(`❌ Error getting remote file info: ${this.formatAwsError(error)}`)
+      logger.displayError(`❌ Error getting remote file info: ${this.formatAwsError(error)}`)
       throw error
     }
   }
 
   private getLocalFileInfo(options: { verbose?: boolean } = {}): FileMetadata {
-    displayVerbose(`📁 Checking local configuration file: ${this.CONFIG_PATH}`, options.verbose)
+    const logger = new UILogger(options.verbose)
+    logger.displayVerbose(`📁 Checking local configuration file: ${this.CONFIG_PATH}`)
 
     if (!existsSync(this.CONFIG_PATH)) {
-      displayVerbose(`ℹ️  Local configuration file does not exist`, options.verbose)
+      logger.displayVerbose(`ℹ️  Local configuration file does not exist`)
       return {
         lastModified: new Date(0),
         localPath: this.CONFIG_PATH,
@@ -292,20 +299,12 @@ export class S3SyncManager {
       localPath: this.CONFIG_PATH,
     }
 
-    displayVerbose(`📁 Local file info - Modified: ${this.formatTimestamp(info.lastModified)}`, options.verbose)
+    logger.displayVerbose(`📁 Local file info - Modified: ${this.formatTimestamp(info.lastModified)}`)
     return info
   }
 
   private formatTimestamp(date: Date): string {
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZoneName: 'short',
-    })
+    return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
   }
 
   /**
@@ -317,11 +316,12 @@ export class S3SyncManager {
     localFileInfo: FileMetadata,
     options: { verbose?: boolean } = {},
   ): Promise<SyncComparisonResult> {
-    displayVerbose(`🔍 Analyzing sync requirements...`, options.verbose)
+    const logger = new UILogger(options.verbose)
+    logger.displayVerbose(`🔍 Analyzing sync requirements...`)
 
     // If remote doesn't exist, upload local
     if (!remoteInfo.exists) {
-      displayVerbose(`📤 Decision: Upload local configuration (remote doesn't exist)`, options.verbose)
+      logger.displayVerbose(`📤 Decision: Upload local configuration (remote doesn't exist)`)
       return {
         shouldSync: true,
         reason: 'Remote configuration does not exist',
@@ -333,7 +333,7 @@ export class S3SyncManager {
 
     // If local doesn't exist, download remote
     if (localFileInfo.lastModified.getTime() === 0) {
-      displayVerbose(`📥 Decision: Download remote configuration (local doesn't exist)`, options.verbose)
+      logger.displayVerbose(`📥 Decision: Download remote configuration (local doesn't exist)`)
       return {
         shouldSync: true,
         reason: 'Local configuration does not exist',
@@ -344,7 +344,7 @@ export class S3SyncManager {
     }
 
     // Fetch remote config to compare versions and content
-    displayVerbose(`📊 Fetching remote configuration for detailed comparison...`, options.verbose)
+    logger.displayVerbose(`📊 Fetching remote configuration for detailed comparison...`)
     let remoteConfig: ConfigFile | null = null
     try {
       const s3Config = await this.getS3Config()
@@ -358,10 +358,10 @@ export class S3SyncManager {
       const response = await this.s3Client!.send(command)
       const configData = await response.Body?.transformToString() || ''
       remoteConfig = JSON.parse(configData)
-      displayVerbose(`✅ Remote configuration fetched successfully`, options.verbose)
+      logger.displayVerbose(`✅ Remote configuration fetched successfully`)
     }
     catch {
-      displayVerbose(`⚠️  Failed to parse remote config, falling back to timestamp comparison`, options.verbose)
+      logger.displayVerbose(`⚠️  Failed to parse remote config, falling back to timestamp comparison`)
       // If we can't read remote config, fall back to timestamp comparison
       return this.fallbackTimestampComparison(localFileInfo, remoteInfo, options)
     }
@@ -371,7 +371,7 @@ export class S3SyncManager {
     const remoteVersion = remoteConfig?.version || 1
     const hasVersionConflict = localVersion !== remoteVersion
 
-    displayVerbose(`📋 Version comparison - Local: ${localVersion}, Remote: ${remoteVersion}`, options.verbose)
+    logger.displayVerbose(`📋 Version comparison - Local: ${localVersion}, Remote: ${remoteVersion}`)
 
     // Detect configuration conflicts
     const conflictResolution = remoteConfig
@@ -380,12 +380,12 @@ export class S3SyncManager {
     const hasConfigConflicts = conflictResolution.hasConflicts
 
     if (hasConfigConflicts) {
-      displayVerbose(`⚠️  Configuration conflicts detected: ${conflictResolution.conflicts.length} conflicts`, options.verbose)
+      logger.displayVerbose(`⚠️  Configuration conflicts detected: ${conflictResolution.conflicts.length} conflicts`)
     }
 
     // Version-based decision making
     if (localVersion > remoteVersion) {
-      displayVerbose(`📤 Decision: Upload local (newer version ${localVersion} > ${remoteVersion})`, options.verbose)
+      logger.displayVerbose(`📤 Decision: Upload local (newer version ${localVersion} > ${remoteVersion})`)
       return {
         shouldSync: true,
         reason: `Local version (${localVersion}) is newer than remote (${remoteVersion})`,
@@ -396,7 +396,7 @@ export class S3SyncManager {
     }
 
     if (remoteVersion > localVersion) {
-      displayVerbose(`📥 Decision: Download remote (newer version ${remoteVersion} > ${localVersion})`, options.verbose)
+      logger.displayVerbose(`📥 Decision: Download remote (newer version ${remoteVersion} > ${localVersion})`)
       return {
         shouldSync: true,
         reason: `Remote version (${remoteVersion}) is newer than local (${localVersion})`,
@@ -408,7 +408,7 @@ export class S3SyncManager {
 
     // Same version - check for conflicts
     if (hasConfigConflicts) {
-      displayVerbose(`🔄 Decision: Handle conflicts (same version but conflicts detected)`, options.verbose)
+      logger.displayVerbose(`🔄 Decision: Handle conflicts (same version but conflicts detected)`)
       return {
         shouldSync: true,
         reason: 'Configuration conflicts detected requiring smart merge',
@@ -420,10 +420,10 @@ export class S3SyncManager {
 
     // Same version, no conflicts - check timestamps as tiebreaker
     const timeDiff = localFileInfo.lastModified.getTime() - remoteInfo.lastModified.getTime()
-    const fiveMinutesMs = 5 * 60 * 1000
+    const fiveMinutesMs = 5 * 1000
 
     if (Math.abs(timeDiff) < fiveMinutesMs) {
-      displayVerbose(`✅ Decision: No sync needed (configurations are in sync within 5 minutes)`, options.verbose)
+      logger.displayVerbose(`✅ Decision: No sync needed (configurations are in sync within 5 secs)`)
       return {
         shouldSync: false,
         reason: 'Configurations are in sync',
@@ -434,7 +434,7 @@ export class S3SyncManager {
     }
 
     const decision = timeDiff > 0 ? 'upload (local newer)' : 'download (remote newer)'
-    displayVerbose(`🔄 Decision: ${decision} based on timestamp difference`, options.verbose)
+    logger.displayVerbose(`🔄 Decision: ${decision} based on timestamp difference`)
     return {
       shouldSync: true,
       reason: timeDiff > 0 ? 'Local file is newer' : 'Remote file is newer',
@@ -452,11 +452,12 @@ export class S3SyncManager {
     remoteInfo: S3ObjectInfo,
     options: { verbose?: boolean } = {},
   ): SyncComparisonResult {
-    displayVerbose(`⚠️  Using fallback timestamp comparison`, options.verbose)
+    const logger = new UILogger(options.verbose)
+    logger.displayVerbose(`⚠️  Using fallback timestamp comparison`)
     const timeDiff = localFileInfo.lastModified.getTime() - remoteInfo.lastModified.getTime()
 
     if (Math.abs(timeDiff) < 5 * 60 * 1000) {
-      displayVerbose(`✅ Files are in sync (timestamp comparison)`, options.verbose)
+      logger.displayVerbose(`✅ Files are in sync (timestamp comparison)`)
       return {
         shouldSync: false,
         reason: 'Files are in sync (timestamp comparison)',
@@ -467,7 +468,7 @@ export class S3SyncManager {
     }
 
     const decision = timeDiff > 0 ? 'Local file is newer' : 'Remote file is newer'
-    displayVerbose(`🔄 ${decision} (timestamp comparison)`, options.verbose)
+    logger.displayVerbose(`🔄 ${decision} (timestamp comparison)`)
     return {
       shouldSync: true,
       reason: timeDiff > 0 ? 'Local file is newer (timestamp)' : 'Remote file is newer (timestamp)',
@@ -477,15 +478,21 @@ export class S3SyncManager {
     }
   }
 
-  async uploadConfigs(force = false, options: { verbose?: boolean } = {}): Promise<boolean> {
+  async uploadConfigs(force = false, options: { verbose?: boolean, silent?: boolean } = {}): Promise<boolean> {
     const s3Config = await this.getS3Config()
     if (!s3Config) {
-      displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+      if (!options.silent) {
+        const logger = new UILogger()
+        logger.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+      }
       return false
     }
 
     try {
-      displayVerbose(`📤 Starting configuration upload to S3...`, options.verbose)
+      const logger = new UILogger(options.verbose)
+      if (!options.silent) {
+        logger.displayVerbose(`📤 Starting configuration upload to S3...`)
+      }
       this.initializeS3Client(s3Config, options)
 
       // Get file timestamps for comparison
@@ -494,33 +501,42 @@ export class S3SyncManager {
 
       // Check if we need to warn about overwriting newer remote file
       if (!force && remoteInfo.exists && remoteInfo.lastModified > localFile.lastModified) {
-        displayWarning('⚠️  Remote file is newer than local file!')
-        displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
-        displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
+        if (!options.silent) {
+          logger.displayWarning('⚠️  Remote file is newer than local file!')
+          logger.displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
+          logger.displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
 
-        const overwriteAnswer = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'overwrite',
-            message: 'Upload local file and overwrite newer remote configuration?',
-            default: false,
-          },
-        ])
+          const overwriteAnswer = await inquirer.prompt([
+            {
+              type: 'confirm',
+              name: 'overwrite',
+              message: 'Upload local file and overwrite newer remote configuration?',
+              default: false,
+            },
+          ])
 
-        if (!overwriteAnswer.overwrite) {
-          displayInfo('Upload cancelled.')
+          if (!overwriteAnswer.overwrite) {
+            logger.displayInfo('Upload cancelled.')
+            return false
+          }
+        } else {
+          // In silent mode, don't overwrite newer remote files unless forced
           return false
         }
       }
 
-      displayVerbose(`📝 Preparing configuration data for upload...`, options.verbose)
+      if (!options.silent) {
+        logger.displayVerbose(`📝 Preparing configuration data for upload...`)
+      }
       const configManager = await this.getConfigManager()
       const configFile = configManager.getConfigFile()
       const configData = JSON.stringify(configFile, null, 2)
       const now = new Date()
 
-      displayVerbose(`📤 Uploading to s3://${s3Config.bucket}/${this.normalizeS3Key(s3Config.key)}`, options.verbose)
-      displayVerbose(`📊 Upload metadata - Version: ${configFile.version || 1}, Size: ${configData.length} bytes`, options.verbose)
+      if (!options.silent) {
+        logger.displayVerbose(`📤 Uploading to s3://${s3Config.bucket}/${this.normalizeS3Key(s3Config.key)}`)
+        logger.displayVerbose(`📊 Upload metadata - Version: ${configFile.version || 1}, Size: ${configData.length} bytes`)
+      }
 
       const command = new PutObjectCommand({
         Bucket: s3Config.bucket,
@@ -535,11 +551,16 @@ export class S3SyncManager {
       })
 
       await this.s3Client!.send(command)
-      displaySuccess(`✅ Configuration uploaded to S3 successfully! (${this.formatTimestamp(now)})`)
+      if (!options.silent) {
+        logger.displaySuccess(`✅ Configuration uploaded to S3 successfully! (${this.formatTimestamp(now)})`)
+      }
       return true
     }
     catch (error: unknown) {
-      displayError(`❌ Failed to upload to S3: ${this.formatAwsError(error)}`)
+      if (!options.silent) {
+        const logger = new UILogger()
+        logger.displayError(`❌ Failed to upload to S3: ${this.formatAwsError(error)}`)
+      }
       return false
     }
   }
@@ -547,17 +568,19 @@ export class S3SyncManager {
   async downloadConfigs(force = false, options: { silent?: boolean, verbose?: boolean } = {}): Promise<boolean> {
     const s3Config = await this.getS3Config()
     if (!s3Config) {
-      displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+      const logger = new UILogger()
+      logger.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
       return false
     }
 
     try {
-      displayVerbose(`📥 Starting configuration download from S3...`, options.verbose)
+      const logger = new UILogger(options.verbose)
+      logger.displayVerbose(`📥 Starting configuration download from S3...`)
       this.initializeS3Client(s3Config, options)
 
       const remoteInfo = await this.getS3ObjectInfo(s3Config, options)
       if (!remoteInfo.exists) {
-        displayWarning('No configuration found on S3.')
+        logger.displayWarning('No configuration found on S3.')
         return false
       }
 
@@ -567,7 +590,7 @@ export class S3SyncManager {
       const localFile = this.getLocalFileInfo(options)
 
       // Fetch remote config
-      displayVerbose(`📥 Downloading from s3://${s3Config.bucket}/${this.normalizeS3Key(s3Config.key)}`, options.verbose)
+      logger.displayVerbose(`📥 Downloading from s3://${s3Config.bucket}/${this.normalizeS3Key(s3Config.key)}`)
 
       const command = new GetObjectCommand({
         Bucket: s3Config.bucket,
@@ -578,11 +601,11 @@ export class S3SyncManager {
       const configData = await response.Body?.transformToString() || ''
       const remoteConfigFile: ConfigFile = JSON.parse(configData)
 
-      displayVerbose(`📊 Downloaded configuration - Version: ${remoteConfigFile.version || 1}, Size: ${configData.length} bytes`, options.verbose)
+      logger.displayVerbose(`📊 Downloaded configuration - Version: ${remoteConfigFile.version || 1}, Size: ${configData.length} bytes`)
 
       // Smart conflict resolution
       if (localFile.lastModified.getTime() > 0 && !force) {
-        displayVerbose(`🔍 Checking for configuration conflicts...`, options.verbose)
+        logger.displayVerbose(`🔍 Checking for configuration conflicts...`)
 
         const conflictResolution = resolveConfigConflicts(localConfig, remoteConfigFile, {
           autoResolve: options.silent,
@@ -608,7 +631,7 @@ export class S3SyncManager {
           ])
 
           if (resolutionAnswer.resolution === 'cancel') {
-            displayInfo('Download cancelled.')
+            logger.displayInfo('Download cancelled.')
             return false
           }
 
@@ -616,55 +639,56 @@ export class S3SyncManager {
           switch (resolutionAnswer.resolution) {
             case 'merge':
               configToSave = conflictResolution.resolvedConfig
-              displayInfo('✅ Applied smart merge resolution')
+              logger.displayInfo('✅ Applied smart merge resolution')
               break
             case 'remote':
               configToSave = remoteConfigFile
-              displayInfo('✅ Using remote configuration')
+              logger.displayInfo('✅ Using remote configuration')
               break
             case 'local':
-              displayInfo('✅ Keeping local configuration')
+              logger.displayInfo('✅ Keeping local configuration')
               return true
             default:
               configToSave = conflictResolution.resolvedConfig
           }
 
           // Save the resolved configuration
-          displayVerbose(`💾 Saving resolved configuration...`, options.verbose)
+          logger.displayVerbose(`💾 Saving resolved configuration...`)
 
           const configManager = await this.getConfigManager()
           await configManager.saveConfigFile(configToSave, true) // skipSync = true
-          displaySuccess(`✅ Configuration synchronized with conflict resolution! (${this.formatTimestamp(remoteInfo.lastModified)})`)
+          logger.displaySuccess(`✅ Configuration synchronized with conflict resolution! (${this.formatTimestamp(remoteInfo.lastModified)})`)
           return true
         }
         else if (conflictResolution.hasConflicts && options.silent) {
           // Silent mode with conflicts - use smart merge
-          displayVerbose(`🔄 Applying silent conflict resolution (${conflictResolution.conflicts.length} conflicts)...`, options.verbose)
+          logger.displayVerbose(`🔄 Applying silent conflict resolution (${conflictResolution.conflicts.length} conflicts)...`)
 
           const configManager = await this.getConfigManager()
           await configManager.saveConfigFile(conflictResolution.resolvedConfig, true) // skipSync = true
           if (options.verbose) {
-            displayVerbose(`✅ Silent conflict resolution applied (${conflictResolution.conflicts.length} conflicts resolved)`)
+            logger.displayVerbose(`✅ Silent conflict resolution applied (${conflictResolution.conflicts.length} conflicts resolved)`)
           }
           return true
         }
         else {
-          displayVerbose(`✅ No conflicts detected`, options.verbose)
+          logger.displayVerbose(`✅ No conflicts detected`)
         }
       }
 
       // No conflicts or force mode - direct download
-      displayVerbose(`💾 Saving configuration file...`, options.verbose)
+      logger.displayVerbose(`💾 Saving configuration file...`)
 
       await configManager.saveConfigFile(remoteConfigFile, true) // skipSync = true
       if (!options.silent || options.verbose) {
-        displaySuccess(`✅ Configuration downloaded from S3 successfully! (${this.formatTimestamp(remoteInfo.lastModified)})`)
+        logger.displaySuccess(`✅ Configuration downloaded from S3 successfully! (${this.formatTimestamp(remoteInfo.lastModified)})`)
       }
       return true
     }
     catch (error: unknown) {
       console.error(error)
-      displayError(`❌ Failed to download from S3: ${this.formatAwsError(error)}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to download from S3: ${this.formatAwsError(error)}`)
       return false
     }
   }
@@ -672,55 +696,58 @@ export class S3SyncManager {
   async syncConfigs(options: { verbose?: boolean } = {}): Promise<boolean> {
     const s3Config = await this.getS3Config()
     if (!s3Config) {
-      displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+      const logger = new UILogger()
+      logger.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
       return false
     }
 
     try {
-      displayVerbose(`🔄 Starting configuration synchronization...`, options.verbose)
+      const logger = new UILogger(options.verbose)
+      logger.displayVerbose(`🔄 Starting configuration synchronization...`)
       this.initializeS3Client(s3Config, options)
 
       const localFile = this.getLocalFileInfo(options)
       const remoteInfo = await this.getS3ObjectInfo(s3Config, options)
 
-      displayVerbose(`🔍 Sync analysis:`, options.verbose)
-      displayVerbose(`  📁 Local file exists: ${localFile.lastModified.getTime() > 0}`, options.verbose)
-      displayVerbose(`  ☁️  Remote file exists: ${remoteInfo.exists}`, options.verbose)
+      logger.displayVerbose(`🔍 Sync analysis:`)
+      logger.displayVerbose(`  📁 Local file exists: ${localFile.lastModified.getTime() > 0}`)
+      logger.displayVerbose(`  ☁️  Remote file exists: ${remoteInfo.exists}`)
 
       if (!remoteInfo.exists) {
         // No remote file, upload local
-        displayInfo('📤 No remote configuration found, uploading local configs...')
+        logger.displayInfo('📤 No remote configuration found, uploading local configs...')
         return await this.uploadConfigs(true)
       }
 
       if (localFile.lastModified.getTime() === 0) {
         // No local file, download remote
-        displayInfo('📥 No local configuration found, downloading from S3...')
+        logger.displayInfo('📥 No local configuration found, downloading from S3...')
         return await this.downloadConfigs(true)
       }
 
       // Both files exist, compare timestamps
       const timeDiff = localFile.lastModified.getTime() - remoteInfo.lastModified.getTime()
-      displayVerbose(`⏰ Timestamp comparison:`, options.verbose)
-      displayVerbose(`  📁 Local:  ${this.formatTimestamp(localFile.lastModified)}`, options.verbose)
-      displayVerbose(`  ☁️  Remote: ${this.formatTimestamp(remoteInfo.lastModified)}`, options.verbose)
-      displayVerbose(`  🔄 Difference: ${Math.round(timeDiff / 1000)} seconds`, options.verbose)
+      logger.displayVerbose(`⏰ Timestamp comparison:`)
+      logger.displayVerbose(`  📁 Local:  ${this.formatTimestamp(localFile.lastModified)}`)
+      logger.displayVerbose(`  ☁️  Remote: ${this.formatTimestamp(remoteInfo.lastModified)}`)
+      logger.displayVerbose(`  🔄 Difference: ${Math.round(timeDiff / 1000)} seconds`)
 
       if (localFile.lastModified > remoteInfo.lastModified) {
-        displayInfo('📤 Local file is newer, uploading to S3...')
+        logger.displayInfo('📤 Local file is newer, uploading to S3...')
         return await this.uploadConfigs(true)
       }
       else if (remoteInfo.lastModified > localFile.lastModified) {
-        displayInfo('📥 Remote file is newer, downloading from S3...')
+        logger.displayInfo('📥 Remote file is newer, downloading from S3...')
         return await this.downloadConfigs(true)
       }
       else {
-        displayInfo('✅ Files are in sync.')
+        logger.displayInfo('✅ Files are in sync.')
         return true
       }
     }
     catch (error: unknown) {
-      displayError(`❌ Failed to sync configs: ${this.formatAwsError(error)}`)
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to sync configs: ${this.formatAwsError(error)}`)
       return false
     }
   }
@@ -730,107 +757,86 @@ export class S3SyncManager {
    * Returns true if sync was performed or not needed
    * Enhanced with version checking and smart conflict resolution
    */
-  async checkAutoSync(): Promise<boolean> {
+  async checkAutoSync(options: { verbose?: boolean, silent?: boolean } = {}): Promise<boolean> {
     if (!(await this.isS3Configured())) {
+      const logger = new UILogger(options.verbose)
+      if (!options.silent) {
+        logger.displayVerbose('S3 not configured, skipping auto-sync')
+      }
       return true // No S3 config, nothing to sync
     }
 
     try {
       const s3Config = await this.getS3Config()
       if (!s3Config) {
+        const logger = new UILogger(options.verbose)
+        if (!options.silent) {
+          logger.displayVerbose('No S3 config found, skipping auto-sync')
+        }
         return true // No S3 config, nothing to sync
       }
-      this.initializeS3Client(s3Config)
+      this.initializeS3Client(s3Config, options)
+
+      const logger = new UILogger(options.verbose)
+      if (!options.silent) {
+        logger.displayVerbose('🔍 Starting automatic S3 config sync check...')
+      }
 
       const configManager = await this.getConfigManager()
       const localConfig = configManager.getConfigFile()
-      const localFile = this.getLocalFileInfo()
-      const remoteInfo = await this.getS3ObjectInfo(s3Config)
+      const localFile = this.getLocalFileInfo(options)
+      const remoteInfo = await this.getS3ObjectInfo(s3Config, options)
 
       // Use enhanced sync analysis
-      const syncAnalysis = await this.analyzeSyncRequirements(localConfig, remoteInfo, localFile)
+      const syncAnalysis = await this.analyzeSyncRequirements(localConfig, remoteInfo, localFile, options)
 
       if (!syncAnalysis.shouldSync) {
+        if (!options.silent) {
+          logger.displayVerbose('✅ No sync needed - configurations are up to date')
+        }
         return true // No sync needed
+      }
+
+      if (!options.silent) {
+        logger.displayVerbose(`🔄 Sync required: ${syncAnalysis.reason}`)
       }
 
       // Perform sync based on analysis
       switch (syncAnalysis.syncDirection) {
         case 'upload':
-          return await this.uploadConfigs(true)
+          if (!options.silent) {
+            logger.displayVerbose('📤 Uploading local config to S3...')
+          }
+          return await this.uploadConfigs(true, options)
 
         case 'download':
           // Silent download with conflict resolution
-          return await this.downloadConfigs(true, { silent: true, verbose: false })
+          if (!options.silent) {
+            logger.displayVerbose('📥 Downloading remote config from S3...')
+          }
+          return await this.downloadConfigs(true, { silent: options.silent || true, verbose: options.verbose })
 
         case 'conflict':
           // Silent conflict resolution - auto-merge conflicts
-          return await this.downloadConfigs(true, { silent: true, verbose: false })
+          if (!options.silent) {
+            logger.displayVerbose('🔄 Resolving config conflicts automatically...')
+          }
+          return await this.downloadConfigs(true, { silent: options.silent || true, verbose: options.verbose })
 
         default:
+          if (!options.silent) {
+            logger.displayVerbose('✅ No action needed')
+          }
           return true
       }
     }
-    catch {
-      // Silent fail for auto-sync
+    catch (error) {
+      // Silent fail for auto-sync, but show verbose error if enabled
+      if (options.verbose && !options.silent) {
+        const logger = new UILogger(options.verbose)
+        logger.displayVerbose(`⚠️ Auto-sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
       return true
-    }
-  }
-
-  /**
-   * Check for remote updates with user prompt (for balance mode)
-   */
-  async checkRemoteUpdates(): Promise<boolean> {
-    if (!(await this.isS3Configured())) {
-      return false
-    }
-
-    try {
-      const s3Config = await this.getS3Config()
-      if (!s3Config) {
-        return false // No S3 config
-      }
-      this.initializeS3Client(s3Config)
-
-      const localFile = this.getLocalFileInfo()
-      const remoteInfo = await this.getS3ObjectInfo(s3Config)
-
-      if (!remoteInfo.exists) {
-        return false
-      }
-
-      if (localFile.lastModified.getTime() === 0) {
-        // No local file, download remote
-        displayInfo('Remote configuration found, downloading...')
-        return await this.downloadConfigs(true)
-      }
-
-      // Check if remote is newer
-      if (remoteInfo.lastModified > localFile.lastModified) {
-        const timeDiff = Math.round((remoteInfo.lastModified.getTime() - localFile.lastModified.getTime()) / 1000)
-        displayWarning(`🔄 Newer configuration available on S3 (${timeDiff} seconds newer)`)
-        displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
-        displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
-
-        const updateAnswer = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'update',
-            message: 'Download newer configuration from S3?',
-            default: true,
-          },
-        ])
-
-        if (updateAnswer.update) {
-          return await this.downloadConfigs(true)
-        }
-      }
-
-      return false
-    }
-    catch (error: unknown) {
-      displayError(`Failed to check remote updates: ${this.formatAwsError(error)}`)
-      return false
     }
   }
 

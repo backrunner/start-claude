@@ -1,9 +1,10 @@
 import inquirer from 'inquirer'
 import { S3SyncManager } from '../storage/s3-sync'
-import { displayError, displayInfo, displayVerbose, displayWelcome } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 
 export async function handleS3SetupCommand(options: { verbose?: boolean } = {}): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
 
   const s3SyncManager = S3SyncManager.getInstance()
 
@@ -120,11 +121,12 @@ export async function handleS3SetupCommand(options: { verbose?: boolean } = {}):
 }
 
 export async function handleS3SyncCommand(options: { verbose?: boolean } = {}): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
 
   const s3SyncManager = S3SyncManager.getInstance()
   if (!(await s3SyncManager.isS3Configured())) {
-    displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+    ui.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
     return
   }
 
@@ -132,11 +134,12 @@ export async function handleS3SyncCommand(options: { verbose?: boolean } = {}): 
 }
 
 export async function handleS3UploadCommand(options: { force?: boolean, verbose?: boolean } = {}): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
 
   const s3SyncManager = S3SyncManager.getInstance()
   if (!(await s3SyncManager.isS3Configured())) {
-    displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+    ui.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
     return
   }
 
@@ -145,12 +148,13 @@ export async function handleS3UploadCommand(options: { force?: boolean, verbose?
 }
 
 export async function handleS3DownloadCommand(options: { force?: boolean, verbose?: boolean } = {}): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
 
   const s3SyncManager = S3SyncManager.getInstance()
 
   if (!(await s3SyncManager.isS3Configured())) {
-    displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+    ui.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
     return
   }
 
@@ -159,19 +163,20 @@ export async function handleS3DownloadCommand(options: { force?: boolean, verbos
 }
 
 export async function handleS3StatusCommand(options: { verbose?: boolean } = {}): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
   const s3SyncManager = S3SyncManager.getInstance()
-  displayInfo(`S3 Sync Status: ${await s3SyncManager.getS3Status()}`)
+  ui.displayInfo(`S3 Sync Status: ${await s3SyncManager.getS3Status()}`)
 
   if (options.verbose) {
     // Additional verbose status information could be added here
     const settings = await s3SyncManager.getSystemSettings()
     if (settings.s3Sync) {
-      displayVerbose(`S3 Configuration Details:`, options.verbose)
-      displayVerbose(`  Bucket: ${settings.s3Sync.bucket}`, options.verbose)
-      displayVerbose(`  Region: ${settings.s3Sync.region}`, options.verbose)
+      ui.displayVerbose(`S3 Configuration Details:`)
+      ui.displayVerbose(`  Bucket: ${settings.s3Sync.bucket}`)
+      ui.displayVerbose(`  Region: ${settings.s3Sync.region}`)
       if (settings.s3Sync.endpointUrl) {
-        displayVerbose(`  Endpoint: ${settings.s3Sync.endpointUrl}`, options.verbose)
+        ui.displayVerbose(`  Endpoint: ${settings.s3Sync.endpointUrl}`)
       }
     }
   }

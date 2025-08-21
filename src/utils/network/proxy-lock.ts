@@ -3,7 +3,7 @@ import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import process from 'node:process'
-import { displayError, displayInfo, displayWarning } from '../cli/ui'
+import { UILogger } from '../cli/ui'
 
 const PROXY_PORT = 2333
 const LOCK_FILE = path.join(os.tmpdir(), 'start-claude-proxy.lock')
@@ -33,7 +33,8 @@ function createLockFile(): void {
     fs.writeFileSync(LOCK_FILE, process.pid.toString(), 'utf8')
   }
   catch (error) {
-    displayWarning(`Warning: Could not create proxy lock file: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const logger = new UILogger()
+    logger.displayWarning(`Warning: Could not create proxy lock file: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
@@ -86,20 +87,22 @@ export async function checkAndHandleExistingProxy(): Promise<boolean> {
       const pid = Number.parseInt(pidStr, 10)
 
       if (!Number.isNaN(pid) && isProcessRunning(pid)) {
-        displayInfo(`🔄 Proxy server is already running (PID: ${pid}) on port ${PROXY_PORT}`)
-        displayInfo('Connecting to existing proxy server...')
+        const logger = new UILogger()
+        logger.displayInfo(`🔄 Proxy server is already running (PID: ${pid}) on port ${PROXY_PORT}`)
+        logger.displayInfo('Connecting to existing proxy server...')
         return false // Don't start a new server, use existing one
       }
       else {
         // Stale lock file, remove it and try to start server
-        displayWarning('Found stale proxy lock file, cleaning up...')
+        const logger = new UILogger()
+        logger.displayWarning('Found stale proxy lock file, cleaning up...')
         removeLockFile()
 
         // Double-check port is still in use after cleanup
         const stillInUse = await isPortInUse(PROXY_PORT)
         if (stillInUse) {
-          displayError(`❌ Port ${PROXY_PORT} is in use by another process`)
-          displayError('Please stop the other process or choose a different port')
+          logger.displayError(`❌ Port ${PROXY_PORT} is in use by another process`)
+          logger.displayError('Please stop the other process or choose a different port')
           return false
         }
 
@@ -108,13 +111,15 @@ export async function checkAndHandleExistingProxy(): Promise<boolean> {
       }
     }
     catch (error) {
-      displayWarning(`Warning: Could not read proxy lock file: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const logger = new UILogger()
+      logger.displayWarning(`Warning: Could not read proxy lock file: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   // Port is in use but no lock file - probably another application
-  displayError(`❌ Port ${PROXY_PORT} is already in use by another application`)
-  displayError('Please stop the other application or choose a different port for the proxy server')
+  const logger = new UILogger()
+  logger.displayError(`❌ Port ${PROXY_PORT} is already in use by another application`)
+  logger.displayError('Please stop the other application or choose a different port for the proxy server')
   return false
 }
 

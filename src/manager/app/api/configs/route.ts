@@ -184,7 +184,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map((config, index) => ({
         ...config,
-        order: index,
+        order: index + 1,
       }))
 
     // Save reordered configs using ConfigManager

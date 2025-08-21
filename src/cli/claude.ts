@@ -4,7 +4,7 @@ import type { CliOverrides } from './common'
 import { spawn } from 'node:child_process'
 import process from 'node:process'
 import inquirer from 'inquirer'
-import { displayError, displayInfo, displaySuccess } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 import { findExecutable } from '../utils/path-utils'
 
 export async function startClaude(config: ClaudeConfig | undefined, args: string[] = [], cliOverrides?: CliOverrides): Promise<number> {
@@ -36,7 +36,8 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
       // Try to find claude again after installation
       const newClaudePath = findExecutableWithSkipDirs('claude', env)
       if (!newClaudePath) {
-        displayError('Failed to find Claude Code after installation. Please restart your terminal.')
+        const ui = new UILogger()
+        ui.error('Failed to find Claude Code after installation. Please restart your terminal.')
         return 1
       }
 
@@ -44,8 +45,9 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
       return startClaudeProcess(newClaudePath, args, env)
     }
     else {
-      displayError('Claude Code is required to run start-claude.')
-      displayInfo('You can install it manually with: pnpm add -g @anthropic-ai/claude-code')
+      const ui = new UILogger()
+      ui.error('Claude Code is required to run start-claude.')
+      ui.info('You can install it manually with: pnpm add -g @anthropic-ai/claude-code')
       return 1
     }
   }
@@ -69,13 +71,14 @@ async function promptForInstallation(): Promise<boolean> {
 }
 
 async function installClaudeCode(): Promise<boolean> {
+  const ui = new UILogger()
   return new Promise((resolve) => {
-    displayInfo('Installing Claude Code CLI...')
+    ui.info('Installing Claude Code CLI...')
 
     // Find npm executable in PATH
     const npmPath = findExecutableWithSkipDirs('npm', process.env)
     if (!npmPath) {
-      displayError('npm is not found in PATH. Please install Node.js and npm first.')
+      ui.error('npm is not found in PATH. Please install Node.js and npm first.')
       resolve(false)
       return
     }
@@ -87,17 +90,17 @@ async function installClaudeCode(): Promise<boolean> {
 
     npm.on('close', (code: number | null) => {
       if (code === 0) {
-        displaySuccess('Claude Code CLI installed successfully!')
+        ui.success('Claude Code CLI installed successfully!')
         resolve(true)
       }
       else {
-        displayError('Failed to install Claude Code CLI')
+        ui.error('Failed to install Claude Code CLI')
         resolve(false)
       }
     })
 
     npm.on('error', (error: Error) => {
-      displayError(`Installation failed: ${error.message}`)
+      ui.error(`Installation failed: ${error.message}`)
       resolve(false)
     })
   })
@@ -120,7 +123,8 @@ async function startClaudeProcess(
     })
 
     claude.on('error', (error: Error) => {
-      displayError(`Failed to start Claude: ${error.message}`)
+      const ui = new UILogger()
+      ui.error(`Failed to start Claude: ${error.message}`)
       resolve(1)
     })
   })

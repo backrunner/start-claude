@@ -2,10 +2,11 @@ import type { ClaudeConfig } from '../config/types'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
 import { createConfigInEditor } from '../utils/cli/editor'
-import { displayError, displaySuccess, displayWelcome } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 
 export async function handleAddCommand(options: { useEditor?: boolean }): Promise<void> {
-  displayWelcome()
+  const ui = new UILogger()
+  ui.displayWelcome()
 
   const configManager = ConfigManager.getInstance()
 
@@ -15,7 +16,7 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
       // Check if config name already exists
       const existing = await configManager.getConfig(newConfig.name)
       if (existing) {
-        displayError('Configuration with this name already exists')
+        ui.displayError('Configuration with this name already exists')
         return
       }
 
@@ -25,7 +26,7 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
       }
 
       await configManager.addConfig(newConfig)
-      displaySuccess(`Configuration "${newConfig.name}" added successfully!`)
+      ui.displaySuccess(`Configuration "${newConfig.name}" added successfully!`)
     }
     return
   }
@@ -147,5 +148,5 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
     await configManager.setDefaultConfig(config.name)
   }
 
-  displaySuccess(`Configuration "${config.name}" added successfully!`)
+  ui.displaySuccess(`Configuration "${config.name}" added successfully!`)
 }

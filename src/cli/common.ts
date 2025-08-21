@@ -5,7 +5,7 @@ import process from 'node:process'
 import inquirer from 'inquirer'
 import { TransformerService } from '../services/transformer'
 import { findClosestMatch, isSimilarEnough } from '../utils/cli/fuzzy-match'
-import { displayError, displayInfo, displaySuccess, displayWarning } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 
 export interface ProgramOptions {
   config?: string
@@ -48,6 +48,7 @@ export function parseBalanceStrategy(balanceOption: boolean | string | undefined
 
   // Handle string values
   const strategy = String(balanceOption).toLowerCase()
+  const ui = new UILogger()
 
   switch (strategy) {
     case 'fallback':
@@ -58,12 +59,12 @@ export function parseBalanceStrategy(balanceOption: boolean | string | undefined
     case 'speed-first':
       return { enabled: true, strategy: 'Speed First' }
     default:
-      displayWarning(`❌ Unknown balance strategy '${strategy}'.`)
-      displayInfo('💡 Available strategies:')
-      displayInfo('   • fallback    - Priority-based with failover (default)')
-      displayInfo('   • polling     - Round-robin across all endpoints')
-      displayInfo('   • speedfirst  - Route to fastest responding endpoint')
-      displayError('Using fallback strategy instead.')
+      ui.warning(`❌ Unknown balance strategy '${strategy}'.`)
+      ui.info('💡 Available strategies:')
+      ui.info('   • fallback    - Priority-based with failover (default)')
+      ui.info('   • polling     - Round-robin across all endpoints')
+      ui.info('   • speedfirst  - Route to fastest responding endpoint')
+      ui.error('Using fallback strategy instead.')
       return { enabled: true, strategy: 'Fallback' } // Fallback to a safe default
   }
 }
@@ -251,13 +252,14 @@ async function handleS3ConfigLookup(
   s3SyncManager: S3SyncManager,
   configName: string,
 ): Promise<ClaudeConfig | undefined> {
+  const ui = new UILogger()
   if (!(await s3SyncManager.isS3Configured())) {
     return undefined
   }
 
-  displayInfo(`Configuration "${configName}" not found locally. Checking S3 for updates...`)
+  ui.info(`Configuration "${configName}" not found locally. Checking S3 for updates...`)
   // Use silent auto-sync to avoid prompts during startup
-  const syncSuccess = await s3SyncManager.checkAutoSync()
+  const syncSuccess = await s3SyncManager.checkAutoSync({ silent: true })
   if (syncSuccess) {
     return configManager.getConfig(configName)
   }
@@ -271,12 +273,13 @@ async function handleS3EmptyConfigDownload(
   configManager: ConfigManager,
   s3SyncManager: S3SyncManager,
 ): Promise<ClaudeConfig | undefined> {
+  const ui = new UILogger()
   if (!(await s3SyncManager.isS3Configured())) {
     return undefined
   }
 
-  displayInfo('No local configurations found, but S3 sync is configured.')
-  displayInfo('Checking S3 for existing configurations...')
+  ui.info('No local configurations found, but S3 sync is configured.')
+  ui.info('Checking S3 for existing configurations...')
 
   const downloadSuccess = await s3SyncManager.downloadConfigs(true)
   if (!downloadSuccess) {
@@ -286,7 +289,7 @@ async function handleS3EmptyConfigDownload(
   // Try to get default config again after download
   const config = await configManager.getDefaultConfig()
   if (config) {
-    displayInfo(`Using downloaded configuration: ${config.name}`)
+    ui.info(`Using downloaded configuration: ${config.name}`)
     return config
   }
 
@@ -296,7 +299,7 @@ async function handleS3EmptyConfigDownload(
     return undefined
   }
 
-  displayInfo('Choose a configuration to use:')
+  ui.info('Choose a configuration to use:')
   const answers = await inquirer.prompt([
     {
       type: 'list',
@@ -323,8 +326,7 @@ async function handleS3UpdateCheck(
     return undefined
   }
 
-  // Use silent auto-sync instead of interactive checkRemoteUpdates()
-  const syncSuccess = await s3SyncManager.checkAutoSync()
+  const syncSuccess = await s3SyncManager.checkAutoSync({ silent: true })
   if (syncSuccess) {
     return configManager.getDefaultConfig()
   }
@@ -355,8 +357,9 @@ export async function resolveConfig(
         const closest = findClosestMatch(configName, configNames)
 
         if (closest && isSimilarEnough(closest.similarity, 0.6)) {
-          displayWarning(`Configuration "${configName}" not found`)
-          displayInfo(`💡 Did you mean "${closest.match}"?`)
+          const ui = new UILogger()
+          ui.warning(`Configuration "${configName}" not found`)
+          ui.info(`💡 Did you mean "${closest.match}"?`)
 
           const confirmAnswer = await inquirer.prompt([
             {
@@ -370,18 +373,19 @@ export async function resolveConfig(
           if (confirmAnswer.useClosest) {
             config = await configManager.getConfig(closest.match)
             if (config) {
-              displaySuccess(`✅ Using configuration "${closest.match}"`)
+              ui.success(`✅ Using configuration "${closest.match}"`)
               return config
             }
           }
         }
 
-        displayError(`Configuration "${configName}" not found`)
+        const ui = new UILogger()
+        ui.error(`Configuration "${configName}" not found`)
 
         // Show available configurations for reference
         if (configNames.length > 0) {
-          displayInfo('📋 Available configurations:')
-          configNames.forEach((name: string) => displayInfo(`  - ${name}`))
+          ui.info('📋 Available configurations:')
+          configNames.forEach(name => ui.info(`  - ${name}`))
         }
 
         process.exit(1)
@@ -413,7 +417,8 @@ export async function resolveConfig(
       }
 
       if (!config) {
-        displayInfo('Choose a configuration to use:')
+        const ui = new UILogger()
+        ui.info('Choose a configuration to use:')
 
         const answers = await inquirer.prompt([
           {
@@ -446,7 +451,8 @@ export async function resolveConfig(
  * Create a new configuration interactively
  */
 async function createNewConfig(configManager: ConfigManager): Promise<ClaudeConfig> {
-  displayWarning('No configurations found. Let\'s create your first one!')
+  const ui = new UILogger()
+  ui.warning('No configurations found. Let\'s create your first one!')
 
   // First ask for profile type
   const profileTypeAnswer = await inquirer.prompt([
@@ -551,7 +557,7 @@ async function createNewConfig(configManager: ConfigManager): Promise<ClaudeConf
     await configManager.setDefaultConfig(newConfig.name)
   }
 
-  displaySuccess(`Configuration "${newConfig.name}" created successfully!`)
+  ui.success(`Configuration "${newConfig.name}" created successfully!`)
 
   return newConfig
 }
@@ -571,7 +577,8 @@ export async function resolveBaseConfig(
   if (configName !== undefined) {
     baseConfig = await configManager.getConfig(configName)
     if (!baseConfig) {
-      displayError(`Configuration "${configName}" not found`)
+      const ui = new UILogger()
+      ui.error(`Configuration "${configName}" not found`)
       process.exit(1)
     }
     if (!balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
@@ -579,16 +586,19 @@ export async function resolveBaseConfig(
       const missingCompleteApiCredentials = !baseConfig.baseUrl || !baseConfig.apiKey || !baseConfig.model
 
       if (hasTransformer && missingCompleteApiCredentials) {
-        displayWarning(`Configuration "${baseConfig.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) for API calls`)
-        displayInfo('Using it for settings and transformer processing only')
+        const ui = new UILogger()
+        ui.warning(`Configuration "${baseConfig.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) for API calls`)
+        ui.info('Using it for settings and transformer processing only')
       }
       else if (missingCompleteApiCredentials) {
-        displayWarning(`Configuration "${baseConfig.name}" is not included in load balancing (missing baseUrl, apiKey, or model)`)
-        displayInfo('Using it for other settings only, load balancing will use available endpoints')
+        const ui = new UILogger()
+        ui.warning(`Configuration "${baseConfig.name}" is not included in load balancing (missing baseUrl, apiKey, or model)`)
+        ui.info('Using it for other settings only, load balancing will use available endpoints')
       }
       else {
-        displayWarning(`Configuration "${baseConfig.name}" is not included in load balancing`)
-        displayInfo('Using it for other settings only, load balancing will use available endpoints')
+        const ui = new UILogger()
+        ui.warning(`Configuration "${baseConfig.name}" is not included in load balancing`)
+        ui.info('Using it for other settings only, load balancing will use available endpoints')
       }
     }
   }

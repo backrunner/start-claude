@@ -62,7 +62,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                   {/* Title with Order on the left, followed by config name, base URL and model */}
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-300 font-semibold text-sm border border-zinc-200 dark:border-zinc-700">
-                      {config.order ?? 0}
+                      {(config.order ?? 0) || 1}
                     </div>
                     <h3 className="text-lg font-semibold text-foreground truncate">{config.name}</h3>
                     {(config.baseUrl || config.model) && (

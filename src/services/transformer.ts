@@ -1,7 +1,7 @@
 import type { ConfigService } from '../services/config'
 
 import type { Transformer, TransformerConstructor } from '../types/transformer'
-import { displayVerbose } from '../utils/cli/ui'
+import { UILogger } from '../utils/cli/ui'
 
 interface TransformerConfig {
   transformers: Array<{
@@ -14,10 +14,10 @@ interface TransformerConfig {
 
 export class TransformerService {
   private transformers: Map<string, Transformer | TransformerConstructor> = new Map()
-  private verbose: boolean = false
+  private logger: UILogger
 
   constructor(private readonly configService: ConfigService, verbose: boolean = false) {
-    this.verbose = verbose
+    this.logger = new UILogger(verbose)
   }
 
   registerTransformer(name: string, transformer: Transformer): void {
@@ -25,9 +25,8 @@ export class TransformerService {
     const domainInfo = transformer.domain ? ` (domain: ${transformer.domain})` : ''
     const defaultInfo = transformer.isDefault ? ' [DEFAULT]' : ''
 
-    displayVerbose(
+    this.logger.displayVerbose(
       `register transformer: ${name}${domainInfo}${defaultInfo}`,
-      this.verbose,
     )
   }
 
@@ -76,12 +75,13 @@ export class TransformerService {
       if (config.path) {
         // Use require.cache manipulation instead of Module._load override
         const originalRequire = module.constructor.prototype.require
+        const self = this
 
         // Temporarily override require for the specific module loading
         module.constructor.prototype.require = function (id: string) {
           if (id === 'claude-code-router') {
             return {
-              displayVerbose: (msg: string) => displayVerbose(msg, true),
+              displayVerbose: (msg: string) => self.logger.displayVerbose(msg),
             }
           }
           return originalRequire.call(this, id)
@@ -110,7 +110,7 @@ export class TransformerService {
       return false
     }
     catch (error: unknown) {
-      displayVerbose(`load transformer (${config.path}) error: ${error instanceof Error ? error.message : String(error)}`, this.verbose)
+      this.logger.displayVerbose(`load transformer (${config.path}) error: ${error instanceof Error ? error.message : String(error)}`)
       return false
     }
   }
@@ -121,7 +121,7 @@ export class TransformerService {
       await this.loadFromConfig()
     }
     catch (error) {
-      displayVerbose(`TransformerService init error: ${error instanceof Error ? error.message : String(error)}`, this.verbose)
+      this.logger.displayVerbose(`TransformerService init error: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -142,10 +142,10 @@ export class TransformerService {
       const geminiTransformer = new GeminiTransformer()
       this.registerTransformer('gemini', geminiTransformer)
 
-      displayVerbose('Default transformers registered: OpenAI (default), OpenRouter, Gemini', this.verbose)
+      this.logger.displayVerbose('Default transformers registered: OpenAI (default), OpenRouter, Gemini')
     }
     catch (error) {
-      displayVerbose(`transformer register error: ${error instanceof Error ? error.message : String(error)}`, this.verbose)
+      this.logger.displayVerbose(`transformer register error: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -164,11 +164,11 @@ export class TransformerService {
     if (transformer && transformer !== 'auto') {
       const specificTransformer = this.findTransformerByName(transformer)
       if (specificTransformer) {
-        displayVerbose(`Using manually selected transformer: ${transformer}`, this.verbose)
+        this.logger.displayVerbose(`Using manually selected transformer: ${transformer}`)
         return specificTransformer
       }
       else {
-        displayVerbose(`Manually selected transformer "${transformer}" not found`, this.verbose)
+        this.logger.displayVerbose(`Manually selected transformer "${transformer}" not found`)
         return null // Don't fall back to domain matching if user explicitly specified a transformer
       }
     }
@@ -181,7 +181,7 @@ export class TransformerService {
     try {
       const url = new URL(baseUrl)
       const hostname = url.hostname
-      displayVerbose(`Looking for transformer for hostname: ${hostname}`, this.verbose)
+      this.logger.displayVerbose(`Looking for transformer for hostname: ${hostname}`)
 
       const entries = Array.from(this.transformers.entries())
 
@@ -190,19 +190,19 @@ export class TransformerService {
         if (typeof transformer === 'object' && transformer.domain) {
           // Check exact match first
           if (transformer.domain === hostname) {
-            displayVerbose(`Found transformer by exact domain match: ${name} for ${hostname}`, this.verbose)
+            this.logger.displayVerbose(`Found transformer by exact domain match: ${name} for ${hostname}`)
             return transformer
           }
 
           // Check if hostname contains the transformer domain (for subdomains)
           if (hostname.includes(transformer.domain)) {
-            displayVerbose(`Found transformer by domain substring match: ${name} (${transformer.domain}) for ${hostname}`, this.verbose)
+            this.logger.displayVerbose(`Found transformer by domain substring match: ${name} (${transformer.domain}) for ${hostname}`)
             return transformer
           }
 
           // Check if transformer domain contains hostname (for cases like api.openrouter.ai vs openrouter.ai)
           if (transformer.domain.includes(hostname.replace(/^api\./, ''))) {
-            displayVerbose(`Found transformer by root domain match: ${name} (${transformer.domain}) for ${hostname}`, this.verbose)
+            this.logger.displayVerbose(`Found transformer by root domain match: ${name} (${transformer.domain}) for ${hostname}`)
             return transformer
           }
         }
@@ -211,7 +211,7 @@ export class TransformerService {
       // If no domain match found, look for default transformer
       for (const [name, transformer] of entries) {
         if (typeof transformer === 'object' && transformer.isDefault === true) {
-          displayVerbose(`Using default transformer: ${name} for ${hostname}`, this.verbose)
+          this.logger.displayVerbose(`Using default transformer: ${name} for ${hostname}`)
           return transformer
         }
       }
@@ -219,7 +219,7 @@ export class TransformerService {
       return null
     }
     catch {
-      displayVerbose(`Failed to parse baseUrl ${baseUrl} for transformer matching`, this.verbose)
+      this.logger.displayVerbose(`Failed to parse baseUrl ${baseUrl} for transformer matching`)
       return null
     }
   }
