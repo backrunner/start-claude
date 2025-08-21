@@ -31,7 +31,7 @@ pnpm add -g start-claude
 start-claude --api-key sk-your-key --model claude-3-sonnet
 
 # Use the short command alias (may not work on Windows)
-sc --api-key sk-your-key --model claude-3-sonnet
+scc --api-key sk-your-key --model claude-3-sonnet
 
 # Windows users: Enable override for better compatibility
 start-claude override
@@ -129,7 +129,7 @@ Configure via web interface (`start-claude manager`) or system settings:
 
 # Short alias
 
-sc --api-key sk-key --model claude-3-haiku
+scc --api-key sk-key --model claude-3-haiku
 
 ````
 
@@ -167,7 +167,7 @@ MIT License
 
 ## ⚠️ Important Notice for Windows Users
 
-**The `sc` command may not work on Windows** due to system command conflicts. Windows reserves `sc` for Service Control operations. If you encounter issues, please use one of these alternatives:
+**The `scc` command may not work on Windows** due to system command conflicts. Windows reserves `sc` for Service Control operations. If you encounter issues, please use one of these alternatives:
 
 ```bash
 # Option 1: Use the full command name
@@ -177,14 +177,14 @@ start-claude --api-key sk-your-key
 start-claude override
 
 # Option 3: Create a custom alias
-doskey sc=start-claude $*
+doskey scc=start-claude $*
 ```
 
 We recommend using the **override feature** for the best Windows experience.
 
 ---
 
-💡 **Pro Tip**: Windows users should use `start-claude override` for the best experience, as the `sc` alias may conflict with system commands.
+💡 **Pro Tip**: Windows users should use `start-claude override` for the best experience, as the `scc` alias may conflict with system commands.
 
 ## Credits
 

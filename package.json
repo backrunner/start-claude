@@ -19,7 +19,7 @@
   "module": "./bin/cli.mjs",
   "bin": {
     "start-claude": "./bin/cli.mjs",
-    "sc": "./bin/cli.mjs"
+    "scc": "./bin/cli.mjs"
   },
   "files": [
     "bin"

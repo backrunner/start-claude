@@ -9,7 +9,7 @@
 start-claude --api-key sk-your-key --model claude-3-sonnet
 
 # Use the short command alias (may not work on Windows - see Windows warning in README)
-sc --api-key sk-your-key --model claude-3-sonnet
+scc --api-key sk-your-key --model claude-3-sonnet
 
 # Windows users: Enable override for better compatibility
 start-claude override --enable
