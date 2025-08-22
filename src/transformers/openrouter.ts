@@ -130,8 +130,8 @@ export class OpenrouterTransformer implements Transformer {
           ): void => {
             const { controller, encoder } = context
 
-            if (line.startsWith('data: ') && line.trim() !== 'data: [DONE]') {
-              const jsonStr = line.slice(6)
+            if (line.startsWith('data:') && line.trim() !== 'data: [DONE]') {
+              const jsonStr = line.slice(5)
               try {
                 const data = JSON.parse(jsonStr)
                 if (data.usage) {

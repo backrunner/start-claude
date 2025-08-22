@@ -286,9 +286,9 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
             if (isClosed)
               break
 
-            if (!line.startsWith('data: '))
+            if (!line.startsWith('data:'))
               continue
-            const data = line.slice(6)
+            const data = line.slice(5)
 
             if (data === '[DONE]')
               continue

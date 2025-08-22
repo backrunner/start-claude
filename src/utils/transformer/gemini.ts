@@ -391,8 +391,8 @@ export async function formatResponseFromGemini(
       line: string,
       controller: ReadableStreamDefaultController,
     ): void => {
-      if (line.startsWith('data: ')) {
-        const chunkStr = line.slice(6).trim()
+      if (line.startsWith('data:')) {
+        const chunkStr = line.slice(5).trim()
         if (chunkStr) {
           logger?.debug({ chunkStr }, `${providerName} chunk:`)
           try {
