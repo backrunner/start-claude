@@ -1,0 +1,63 @@
+{
+  "name": "@start-claude/plugin",
+  "displayName": "Start Claude",
+  "version": "0.4.0",
+  "description": "VSCode extension for Start Claude Manager",
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "activationEvents": [
+    "onCommand:startClaude.showManager"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "startClaude.showManager",
+        "title": "Show Manager",
+        "category": "Start Claude"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "startClaudeManager",
+          "name": "Start Claude Manager",
+          "when": "true"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "startClaude",
+          "title": "Start Claude",
+          "icon": "$(gear)"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "startClaudeManager",
+        "contents": "Start Claude Manager\n[Open Manager](command:startClaude.showManager)"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "@types/ws": "^8.18.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.10",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.9.2"
+  }
+}

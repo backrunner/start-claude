@@ -1,0 +1,16 @@
+{
+  "folders": [
+    {
+      "name": "start-claude",
+      "path": "."
+    }
+  ],
+  "extensions": {
+    "recommendations": [
+      "@start-claude/plugin"
+    ]
+  },
+  "settings": {
+    "typescript.preferences.importModuleSpecifier": "relative"
+  }
+}

@@ -10,6 +10,12 @@ export const revalidate = 0
 function initiateShutdown(): void {
   console.log('Shutdown initiated...')
 
+  // Check if running in VSCode plugin - if so, don't shutdown
+  if (process.env.VSCODE_PLUGIN === 'true') {
+    console.log('Running in VSCode plugin - ignoring shutdown request')
+    return
+  }
+
   // First broadcast shutdown message to WebSocket clients
   try {
     broadcastShutdown()

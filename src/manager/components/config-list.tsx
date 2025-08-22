@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { VSCodeStartButton } from '@/components/vscode-start-button'
 
 interface ConfigItemProps {
   config: ClaudeConfig
@@ -110,6 +111,12 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                     </Badge>
                   )}
                 </div>
+                
+                {/* VSCode Start Button - only visible in VSCode plugin */}
+                <VSCodeStartButton 
+                  configName={config.name}
+                  className="w-fit"
+                />
               </div>
             </div>
 
