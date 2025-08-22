@@ -1,18 +1,16 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
     "target": "ES2020",
     "lib": ["ES2020"],
-    "outDir": "out",
-    "rootDir": "src",
-    "strict": true,
+    "module": "CommonJS",
     "moduleResolution": "node",
+    "strict": true,
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "skipLibCheck": true
   },
-  "exclude": ["node_modules", ".vscode-test"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "out", ".vscode-test"]
 }

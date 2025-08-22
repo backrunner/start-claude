@@ -25,16 +25,21 @@
     "bin"
   ],
   "workspaces": [
-    "src/manager"
+    "src/manager",
+    "src/plugin"
   ],
   "scripts": {
     "build": "node --experimental-strip-types scripts/clean.ts && nx run-many --target=build --all && pnpm run postbuild",
     "build:cli": "nx build start-claude-cli",
     "build:manager": "nx build manager",
+    "build:plugin": "nx build start-claude-plugin",
+    "package:plugin": "nx package start-claude-plugin",
     "postbuild": "node --experimental-strip-types scripts/postbuild.ts",
     "dev": "nx serve manager",
     "dev:manager": "nx serve manager",
+    "dev:plugin": "nx watch start-claude-plugin",
     "watch": "nx build start-claude-cli --watch",
+    "watch:plugin": "nx watch start-claude-plugin",
     "lint": "nx run-many --target=lint --all",
     "lint:fix": "nx run-many --target=lint --all --fix",
     "lint:inspect": "pnpm dlx @eslint/config-inspector",

@@ -64,7 +64,6 @@ class ManagerPanel {
   public static readonly viewType = 'startClaudeManager'
 
   private readonly _panel: vscode.WebviewPanel
-  private readonly _extensionUri: vscode.Uri
   private _disposables: vscode.Disposable[] = []
   private readonly _managerServer: ManagerServer
 
@@ -95,9 +94,8 @@ class ManagerPanel {
     ManagerPanel.currentPanel = new ManagerPanel(panel, extensionUri, managerServer)
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, managerServer: ManagerServer) {
+  private constructor(panel: vscode.WebviewPanel, _extensionUri: vscode.Uri, managerServer: ManagerServer) {
     this._panel = panel
-    this._extensionUri = extensionUri
     this._managerServer = managerServer
 
     void this._update()
@@ -105,7 +103,7 @@ class ManagerPanel {
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables)
 
     this._panel.webview.onDidReceiveMessage(
-      (message) => {
+      (message: { type: string, configName: string, command: string }) => {
         // Handle messages from webview
         console.log('Message from webview:', message)
 

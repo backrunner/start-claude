@@ -1,0 +1,45 @@
+{
+  "name": "start-claude-plugin",
+  "version": "0.4.0",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "src/plugin/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "src/plugin",
+        "command": "npm run compile"
+      }
+    },
+    "watch": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "src/plugin",
+        "command": "npm run watch"
+      }
+    },
+    "package": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": "src/plugin",
+        "command": "npm run package"
+      }
+    },
+    "lint": {
+      "executor": "@nx/linter:eslint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["src/plugin/**/*.ts"]
+      }
+    },
+    "typecheck": {
+      "executor": "@nx/js:tsc",
+      "options": {
+        "tsConfig": "src/plugin/tsconfig.json"
+      }
+    }
+  },
+  "tags": ["type:application", "scope:plugin"]
+}

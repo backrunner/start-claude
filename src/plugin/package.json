@@ -1,5 +1,5 @@
 {
-  "name": "@start-claude/plugin",
+  "name": "start-claude-plugin",
   "displayName": "Start Claude",
   "version": "0.4.0",
   "description": "VSCode extension for Start Claude Manager",
@@ -47,9 +47,14 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "vscode:prepublish": "npm run esbuild-base -- --minify",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "esbuild": "npm run esbuild-base -- --sourcemap",
+    "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
+    "compile": "npm run esbuild",
+    "watch": "npm run esbuild-watch",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish"
   },
   "dependencies": {
     "@types/ws": "^8.18.1",
@@ -58,6 +63,8 @@
   "devDependencies": {
     "@types/node": "^20.19.10",
     "@types/vscode": "^1.74.0",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.2",
     "typescript": "^5.9.2"
   }
 }

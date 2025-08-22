@@ -24,7 +24,6 @@ export class ManagerServer {
   private port: number = 3000
   private isStarting: boolean = false
   private isRunning: boolean = false
-  private claudeCodePath: string | undefined
   private startClaudePath: string | undefined
 
   constructor() {
@@ -135,10 +134,7 @@ export class ManagerServer {
         // Find the global installation path
         const installPath = await this.findGlobalInstallPath(pkg.checkPath)
         if (installPath) {
-          if (pkg.name === '@anthropic-ai/claude-code') {
-            this.claudeCodePath = installPath
-          }
-          else if (pkg.name === 'start-claude') {
+          if (pkg.name === 'start-claude') {
             this.startClaudePath = installPath
           }
           status[pkg.name] = true
@@ -258,10 +254,7 @@ export class ManagerServer {
           }
 
           // Update paths
-          if (pkg.name === '@anthropic-ai/claude-code') {
-            this.claudeCodePath = installPath
-          }
-          else if (pkg.name === 'start-claude') {
+          if (pkg.name === 'start-claude') {
             this.startClaudePath = installPath
           }
         }

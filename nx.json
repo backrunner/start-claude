@@ -36,7 +36,7 @@
     }
   ],
   "release": {
-    "projects": ["start-claude-cli", "manager"],
+    "projects": ["start-claude-cli", "manager", "start-claude-plugin"],
     "projectsRelationship": "fixed",
     "changelog": {
       "workspaceChangelog": {

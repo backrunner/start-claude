@@ -43,6 +43,33 @@ async function copyManagerStandalone() {
   }
 }
 
+async function copyPluginBuild() {
+  const srcPath = join(process.cwd(), 'src/plugin/out')
+  const destPath = join(process.cwd(), 'bin/plugin')
+
+  try {
+    if (!existsSync(srcPath)) {
+      console.warn(`Warning: Plugin build path does not exist: ${srcPath}`)
+      return
+    }
+
+    await mkdir(join(process.cwd(), 'bin'), { recursive: true })
+
+    // Copy plugin build files
+    console.log(`Copying ${srcPath} to ${destPath}...`)
+    await cp(srcPath, destPath, {
+      recursive: true,
+      force: true,
+    })
+
+    console.log('✅ Plugin build files copied successfully!')
+  }
+  catch (error) {
+    console.error('❌ Failed to copy plugin build files:', error)
+    process.exit(1)
+  }
+}
+
 async function makeCliExecutable() {
   // Only run chmod on macOS and Linux
   if (process.platform === 'darwin' || process.platform === 'linux') {
@@ -67,6 +94,7 @@ async function makeCliExecutable() {
 async function main() {
   console.log('🔧 Running post-build script...')
   await copyManagerStandalone()
+  await copyPluginBuild()
   await makeCliExecutable()
   console.log('✅ Post-build script completed!')
 }
