@@ -25,7 +25,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         success: true, 
         action: 'start-claude-terminal',
         configName,
-        command: `start-claude ${configName}`
+        command: `claude --config "${configName}"`
       })
     }
 

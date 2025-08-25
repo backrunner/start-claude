@@ -6,7 +6,7 @@ import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { AlertCircle, Command, Plus, Search, Settings, Sparkles } from 'lucide-react'
+import { AlertCircle, Command, Plus, RefreshCw, Search, Settings, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ConfigFormModal } from '@/components/config-form-modal'
 import { ConfigList } from '@/components/config-list'
@@ -31,6 +31,18 @@ export default function HomePage(): ReactNode {
   const [deleteConfig, setDeleteConfig] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [shutdownCoordinator, setShutdownCoordinator] = useState<ShutdownCoordinator | null>(null)
+  
+  // Check if running in VSCode plugin context
+  const [isVSCode, setIsVSCode] = useState(false)
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const checkVSCode = window.location.hostname === 'localhost' && 
+        (window.location.port !== '' || window.parent !== window)
+      setIsVSCode(checkVSCode)
+    }
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -65,10 +77,11 @@ export default function HomePage(): ReactNode {
     void fetchConfigs()
 
     // Initialize shutdown coordinator
-    const shutdownCoordinator = new ShutdownCoordinator()
+    const coordinator = new ShutdownCoordinator()
+    setShutdownCoordinator(coordinator)
 
     // Custom shutdown callback (optional - will use default if not set)
-    shutdownCoordinator.setShutdownCallback(async () => {
+    coordinator.setShutdownCallback(async () => {
       try {
         const response = await fetch('/api/shutdown', {
           method: 'POST',
@@ -96,7 +109,7 @@ export default function HomePage(): ReactNode {
     const handleKeyDown = async (event: KeyboardEvent): Promise<void> => {
       if (event.key === 'Escape') {
         console.log('ESC key pressed, initiating shutdown...')
-        await shutdownCoordinator.callShutdownIfLastTab()
+        await coordinator.callShutdownIfLastTab()
 
         // Give a moment for the shutdown to process
         setTimeout(() => {
@@ -225,12 +238,12 @@ export default function HomePage(): ReactNode {
 
     // Add beforeunload listener to catch all page close scenarios
     const handleBeforeUnload = (_event: BeforeUnloadEvent): void => {
-      shutdownCoordinator.handleBeforeUnload()
+      coordinator.handleBeforeUnload()
     }
 
     // Add unload listener as backup for when beforeunload might not work
     const handleUnload = (): void => {
-      shutdownCoordinator.handleUnload()
+      coordinator.handleUnload()
     }
 
     // Add ESC key listener with wrapper to handle void return requirement
@@ -244,7 +257,7 @@ export default function HomePage(): ReactNode {
 
     return () => {
       // Cleanup shutdown coordinator
-      shutdownCoordinator.cleanup()
+      coordinator.cleanup()
 
       // Cleanup WebSocket
       if (ws) {
@@ -486,46 +499,66 @@ export default function HomePage(): ReactNode {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto p-6 max-w-7xl">
+      <div className="container mx-auto p-3 max-w-none sm:max-w-7xl sm:p-6">
         {/* Header Section */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                <Sparkles className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-foreground">
+        <div className="mb-4 sm:mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
+              {!isVSCode && (
+                <div className="flex h-8 w-8 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-primary/10">
+                  <Sparkles className="h-4 w-4 sm:h-6 sm:w-6 text-primary" />
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-3xl font-bold text-foreground">
                   Start Claude Manager
                 </h1>
+                {isVSCode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (shutdownCoordinator) {
+                        shutdownCoordinator.markAsReload()
+                      }
+                      window.location.reload()
+                    }}
+                    className="hover:bg-muted/50 p-2 h-8 w-8"
+                    title="Reload page"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                  </Button>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
               <Button
                 variant="outline"
                 onClick={() => setIsSystemSettingsOpen(true)}
-                className="hover:bg-muted/50"
+                className="hover:bg-muted/50 text-xs sm:text-sm flex-1 sm:flex-none"
+                size="sm"
               >
-                <Settings className="w-4 h-4 mr-2" />
-                System Settings
+                <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Settings
               </Button>
               <Button
                 onClick={() => {
                   setEditingConfig(null)
                   setIsFormOpen(true)
                 }}
-                className="bg-primary hover:bg-primary/90"
+                className="bg-primary hover:bg-primary/90 text-xs sm:text-sm flex-1 sm:flex-none"
+                size="sm"
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Configuration
+                <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                Add Config
               </Button>
             </div>
           </div>
 
           {/* Error Alert */}
           {error && (
-            <Alert variant="destructive" className="mb-6">
+            <Alert variant="destructive" className="mb-4 sm:mb-6">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
@@ -533,22 +566,24 @@ export default function HomePage(): ReactNode {
         </div>
 
         {/* Main Content */}
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Search Bar */}
-          <div className="flex justify-between items-center">
-            <div className="relative w-72">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-3 h-3 sm:w-4 sm:h-4" />
               <Input
                 placeholder="Search configurations..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-8 sm:pl-10 text-sm"
               />
             </div>
-            <Badge variant="outline" className="text-xs px-2 py-1">
-              <Command className="h-3 w-3 mr-1" />
-              Press ESC to close manager
-            </Badge>
+            {!isVSCode && (
+              <Badge variant="outline" className="text-xs px-2 py-1 hidden sm:flex">
+                <Command className="h-3 w-3 mr-1" />
+                Press ESC to close manager
+              </Badge>
+            )}
           </div>
 
           {/* Configuration List */}

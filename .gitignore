@@ -163,7 +163,7 @@ bin
 # Package manager lock files
 .pnpm-debug.log*
 
-
+.DS_Store
 
 .nx/cache
 .nx/workspace-data

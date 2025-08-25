@@ -15,8 +15,10 @@ export function VSCodeStartButton({ configName, className }: VSCodeStartButtonPr
   const { toast } = useToast()
   const [isStarting, setIsStarting] = useState(false)
 
-  // Check if running in VSCode
-  const isVSCode = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+  // Check if running in VSCode plugin context
+  const isVSCode = typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' && 
+     (window.location.port !== '' || window.parent !== window))
 
   const handleStartClaude = async (): Promise<void> => {
     if (isStarting) return

@@ -7,16 +7,19 @@ export function activate(context: vscode.ExtensionContext): void {
   // Initialize the manager server singleton
   managerServer = new ManagerServer()
 
-  // Register the show manager command
+  // Register the webview provider for the sidebar
+  const provider = new ManagerWebviewProvider(context.extensionUri, managerServer)
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(ManagerWebviewProvider.viewType, provider)
+  )
+
+  // Register the show manager command (for compatibility)
   const showManagerCommand = vscode.commands.registerCommand('startClaude.showManager', () => {
-    ManagerPanel.createOrShow(context.extensionUri, managerServer!)
+    vscode.commands.executeCommand('workbench.view.explorer')
+    vscode.commands.executeCommand('startClaudeManager.focus')
   })
 
   context.subscriptions.push(showManagerCommand)
-
-  // Register tree data provider for the sidebar
-  const treeDataProvider = new ManagerTreeProvider()
-  vscode.window.registerTreeDataProvider('startClaudeManager', treeDataProvider)
 }
 
 export function deactivate(): void {
@@ -26,108 +29,67 @@ export function deactivate(): void {
   }
 }
 
-class ManagerTreeProvider implements vscode.TreeDataProvider<ManagerItem> {
-  getTreeItem(element: ManagerItem): vscode.TreeItem {
-    return element
-  }
-
-  getChildren(element?: ManagerItem): Thenable<ManagerItem[]> {
-    if (!element) {
-      return Promise.resolve([
-        new ManagerItem('Open Manager', vscode.TreeItemCollapsibleState.None, 'startClaude.showManager'),
-      ])
-    }
-    return Promise.resolve([])
-  }
-}
-
-class ManagerItem extends vscode.TreeItem {
-  constructor(
-    public readonly label: string,
-    public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-    commandId?: string,
-  ) {
-    super(label, collapsibleState)
-    this.tooltip = this.label
-    if (commandId) {
-      this.command = {
-        command: commandId,
-        title: label,
-      }
-    }
-  }
-}
-
-class ManagerPanel {
-  public static currentPanel: ManagerPanel | undefined
-
+class ManagerWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'startClaudeManager'
 
-  private readonly _panel: vscode.WebviewPanel
-  private _disposables: vscode.Disposable[] = []
-  private readonly _managerServer: ManagerServer
+  private _view?: vscode.WebviewView
 
-  public static createOrShow(extensionUri: vscode.Uri, managerServer: ManagerServer): void {
-    const column = vscode.window.activeTextEditor
-      ? vscode.window.activeTextEditor.viewColumn
-      : undefined
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _managerServer: ManagerServer
+  ) {}
 
-    if (ManagerPanel.currentPanel) {
-      ManagerPanel.currentPanel._panel.reveal(column)
-      return
+  public resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken,
+  ): void {
+    this._view = webviewView
+
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(this._extensionUri, 'media'),
+        vscode.Uri.joinPath(this._extensionUri, '..'),
+      ],
     }
-
-    const panel = vscode.window.createWebviewPanel(
-      ManagerPanel.viewType,
-      'Start Claude Manager',
-      column || vscode.ViewColumn.One,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [
-          vscode.Uri.joinPath(extensionUri, 'media'),
-          vscode.Uri.joinPath(extensionUri, '..'),
-        ],
-      },
-    )
-
-    ManagerPanel.currentPanel = new ManagerPanel(panel, extensionUri, managerServer)
-  }
-
-  private constructor(panel: vscode.WebviewPanel, _extensionUri: vscode.Uri, managerServer: ManagerServer) {
-    this._panel = panel
-    this._managerServer = managerServer
 
     void this._update()
 
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables)
-
-    this._panel.webview.onDidReceiveMessage(
-      (message: { type: string, configName: string, command: string }) => {
-        // Handle messages from webview
+    webviewView.webview.onDidReceiveMessage(
+      (message: { type: string, configName?: string, command?: string }) => {
         console.log('Message from webview:', message)
 
         if (message.type === 'start-claude-terminal') {
-          // Start Claude in terminal
-          this.startClaudeInTerminal(message.configName, message.command)
+          this.startClaudeInTerminal(message.configName!, message.command!)
+        } else if (message.type === 'install-packages') {
+          this.handleInstallPackages()
+        } else if (message.type === 'restart-server') {
+          this.handleRestartServer()
+        } else if (message.type === 'retry-check') {
+          void this._update()
         }
       },
-      null,
-      this._disposables,
     )
   }
 
   private startClaudeInTerminal(configName: string, command: string): void {
     try {
-      // Create a new terminal
+      const timestamp = new Date().toLocaleTimeString()
       const terminal = vscode.window.createTerminal({
-        name: `Claude: ${configName}`,
+        name: `Claude: ${configName} (${timestamp})`,
         iconPath: new vscode.ThemeIcon('sparkle'),
+        cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
       })
 
-      // Show the terminal and execute the command
       terminal.show()
-      terminal.sendText(command)
+
+      // Use the actual command from the server which should be: claude --config configName
+      const actualCommand = `claude --config "${configName}"`
+      
+      setTimeout(() => {
+        terminal.sendText(actualCommand)
+      }, 100)
 
       vscode.window.showInformationMessage(
         `Starting Claude Code with configuration "${configName}"`,
@@ -144,25 +106,61 @@ class ManagerPanel {
     }
   }
 
-  public dispose(): void {
-    ManagerPanel.currentPanel = undefined
+  private handleInstallPackages(): void {
+    try {
+      // Force a fresh check and install of packages
+      this._managerServer.dispose()
+      this._managerServer = new ManagerServer()
+      
+      // This will trigger the package installation flow
+      void this._update()
+      
+      vscode.window.showInformationMessage('Checking and installing required packages...')
+    } catch (error) {
+      console.error('Error handling package installation:', error)
+      vscode.window.showErrorMessage(`Failed to start package installation: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
 
-    this._panel.dispose()
-
-    while (this._disposables.length) {
-      const x = this._disposables.pop()
-      if (x) {
-        x.dispose()
-      }
+  private handleRestartServer(): void {
+    try {
+      // Dispose the current server and create a new one
+      this._managerServer.dispose()
+      this._managerServer = new ManagerServer()
+      
+      // Retry the server startup
+      void this._update()
+      
+      vscode.window.showInformationMessage('Restarting manager server...')
+    } catch (error) {
+      console.error('Error restarting server:', error)
+      vscode.window.showErrorMessage(`Failed to restart server: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   private async _update(): Promise<void> {
-    // Start the manager server if not already running
-    await this._managerServer.start()
-    const serverPort = this._managerServer.getPort()
+    if (!this._view) {
+      return
+    }
 
-    this._panel.webview.html = this._getHtmlForWebview(serverPort)
+    try {
+      await this._managerServer.start()
+      const serverPort = this._managerServer.getPort()
+      this._view.webview.html = this._getHtmlForWebview(serverPort)
+    } catch (error) {
+      console.error('Failed to start manager server:', error)
+      
+      let errorType: 'server-failed' | 'package-missing' = 'server-failed'
+      let errorDetails = error instanceof Error ? error.message : 'Unknown error'
+      
+      if (errorDetails.includes('Package installation cancelled') || 
+          errorDetails.includes('not globally installed') ||
+          errorDetails.includes('Installation verification failed')) {
+        errorType = 'package-missing'
+      }
+      
+      this._view.webview.html = this._getErrorHtmlForWebview(errorType, errorDetails)
+    }
   }
 
   private _getHtmlForWebview(serverPort: number): string {
@@ -207,7 +205,6 @@ class ManagerPanel {
             overflow: hidden;
             background: hsl(var(--background));
             color: hsl(var(--foreground));
-            /* cspell:disable-next-line */
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             transition: background-color 0.3s ease, color 0.3s ease;
         }
@@ -216,16 +213,6 @@ class ManagerPanel {
             width: 100%;
             height: 100vh;
             border: none;
-        }
-        
-        /* Custom styles for narrow VSCode sidebar */
-        @media (max-width: 400px) {
-            iframe {
-                transform: scale(0.8);
-                transform-origin: top left;
-                width: 125%;
-                height: 125vh;
-            }
         }
         
         .loading-container {
@@ -240,9 +227,9 @@ class ManagerPanel {
             background: hsl(var(--card));
             border: 1px solid hsl(var(--border));
             border-radius: calc(var(--radius) + 2px);
-            padding: 2rem;
+            padding: 1.5rem;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            max-width: 400px;
+            max-width: 300px;
             width: 90%;
             text-align: center;
         }
@@ -251,29 +238,29 @@ class ManagerPanel {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 1rem;
+            gap: 0.75rem;
         }
         
         .loading-icon {
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 3rem;
-            height: 3rem;
+            width: 2.5rem;
+            height: 2.5rem;
             border-radius: calc(var(--radius) + 6px);
             background: hsl(var(--primary) / 0.1);
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem;
         }
         
         .sparkles-icon {
-            width: 1.5rem;
-            height: 1.5rem;
+            width: 1.25rem;
+            height: 1.25rem;
             color: hsl(var(--primary));
         }
         
         .spinner {
-            width: 2rem;
-            height: 2rem;
+            width: 1.5rem;
+            height: 1.5rem;
             border: 2px solid hsl(var(--muted));
             border-top: 2px solid hsl(var(--primary));
             border-radius: 50%;
@@ -286,14 +273,14 @@ class ManagerPanel {
         }
         
         .loading-title {
-            font-size: 1.125rem;
+            font-size: 1rem;
             font-weight: 600;
             color: hsl(var(--foreground));
             margin: 0;
         }
         
         .loading-description {
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             color: hsl(var(--muted-foreground));
             margin: 0;
         }
@@ -325,8 +312,8 @@ class ManagerPanel {
                 </div>
                 <div class="spinner"></div>
                 <div>
-                    <h2 class="loading-title">Start Claude Manager</h2>
-                    <p class="loading-description">Loading configuration manager<span class="loading-dots"></span></p>
+                    <h2 class="loading-title">Start Claude</h2>
+                    <p class="loading-description">Loading manager<span class="loading-dots"></span></p>
                 </div>
             </div>
         </div>
@@ -337,7 +324,272 @@ class ManagerPanel {
         style="display: none;"
         onload="document.getElementById('loading').style.display='none'; this.style.display='block';">
     </iframe>
+    
+    <script>
+        // Message relay between iframe and VSCode extension
+        const vscode = acquireVsCodeApi();
+        
+        window.addEventListener('message', function(event) {
+            // Relay messages from the iframe to the VSCode extension
+            if (event.source === document.getElementById('manager-frame').contentWindow) {
+                console.log('Relaying message from iframe to extension:', event.data);
+                vscode.postMessage(event.data);
+            }
+        });
+        
+        // Also handle direct window messages for compatibility
+        window.installPackages = function() {
+            vscode.postMessage({ type: 'install-packages' });
+        }
+        
+        window.restartServer = function() {
+            vscode.postMessage({ type: 'restart-server' });
+        }
+        
+        window.retryCheck = function() {
+            vscode.postMessage({ type: 'retry-check' });
+        }
+    </script>
+</body>
+</html>`
+  }
+
+  private _getErrorHtmlForWebview(errorType: 'server-failed' | 'package-missing', errorDetails: string): string {
+    const isPackageMissing = errorType === 'package-missing'
+    const title = isPackageMissing ? 'Package Missing' : 'Server Failed'
+    const description = isPackageMissing 
+      ? 'Required packages are not installed'
+      : 'Unable to start the manager server'
+    
+    const actionButtons = isPackageMissing
+      ? `<div class="button-group">
+           <button class="retry-button primary" onclick="window.installPackages()">Install Packages</button>
+           <button class="retry-button secondary" onclick="window.retryCheck()">Retry Check</button>
+         </div>`
+      : `<div class="button-group">
+           <button class="retry-button primary" onclick="window.restartServer()">Restart Server</button>
+           <button class="retry-button secondary" onclick="window.retryCheck()">Retry Connection</button>
+         </div>`
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Start Claude Manager - Error</title>
+    <style>
+        :root {
+          --background: 0 0% 100%;
+          --foreground: 240 10% 3.9%;
+          --card: 0 0% 100%;
+          --card-foreground: 240 10% 3.9%;
+          --primary: 240 5.9% 10%;
+          --primary-foreground: 0 0% 98%;
+          --secondary: 240 4.8% 95.9%;
+          --secondary-foreground: 240 5.9% 10%;
+          --muted: 240 4.8% 95.9%;
+          --muted-foreground: 240 3.8% 46.1%;
+          --border: 240 5.9% 90%;
+          --destructive: 0 84.2% 60.2%;
+          --destructive-foreground: 0 0% 98%;
+          --radius: 0.5rem;
+        }
+
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --background: 240 10% 3.9%;
+            --foreground: 0 0% 98%;
+            --card: 240 10% 3.9%;
+            --card-foreground: 0 0% 98%;
+            --primary: 0 0% 98%;
+            --primary-foreground: 240 5.9% 10%;
+            --secondary: 240 3.7% 15.9%;
+            --secondary-foreground: 0 0% 98%;
+            --muted: 240 3.7% 15.9%;
+            --muted-foreground: 240 5% 64.9%;
+            --border: 240 3.7% 15.9%;
+            --destructive: 0 62.8% 30.6%;
+            --destructive-foreground: 0 0% 98%;
+          }
+        }
+
+        body, html {
+            margin: 0;
+            padding: 1rem;
+            min-height: calc(100vh - 2rem);
+            background: hsl(var(--background));
+            color: hsl(var(--foreground));
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .error-container {
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: calc(var(--radius) + 2px);
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .error-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 3rem;
+            height: 3rem;
+            border-radius: calc(var(--radius) + 6px);
+            background: hsl(var(--destructive) / 0.1);
+            margin: 0 auto 1rem;
+        }
+        
+        .error-svg {
+            width: 1.5rem;
+            height: 1.5rem;
+            color: hsl(var(--destructive));
+        }
+        
+        .error-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            margin: 0 0 0.5rem;
+        }
+        
+        .error-description {
+            font-size: 0.9rem;
+            color: hsl(var(--muted-foreground));
+            margin: 0 0 1.5rem;
+            line-height: 1.5;
+        }
+        
+        .error-details {
+            background: hsl(var(--muted));
+            border-radius: var(--radius);
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 0.8rem;
+            color: hsl(var(--muted-foreground));
+            text-align: left;
+            word-break: break-word;
+            border: 1px solid hsl(var(--border));
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .retry-button {
+            border: none;
+            border-radius: var(--radius);
+            padding: 0.75rem 1.5rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 120px;
+        }
+        
+        .retry-button.primary {
+            background: hsl(var(--primary));
+            color: hsl(var(--primary-foreground));
+        }
+        
+        .retry-button.primary:hover {
+            background: hsl(var(--primary) / 0.9);
+        }
+        
+        .retry-button.secondary {
+            background: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+            border: 1px solid hsl(var(--border));
+        }
+        
+        .retry-button.secondary:hover {
+            background: hsl(var(--secondary) / 0.8);
+        }
+        
+        .retry-button:active {
+            transform: translateY(1px);
+        }
+        
+        .retry-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .help-text {
+            font-size: 0.75rem;
+            color: hsl(var(--muted-foreground));
+            margin-top: 1rem;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-icon">
+            <svg class="error-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+        </div>
+        <h2 class="error-title">${title}</h2>
+        <p class="error-description">${description}</p>
+        <div class="error-details">${errorDetails}</div>
+        ${actionButtons}
+        <p class="help-text">
+            ${isPackageMissing 
+              ? 'The plugin requires <code>@anthropic-ai/claude-code</code> and <code>start-claude</code> to be installed globally.' 
+              : 'Try restarting the server or check the output panel for more details.'}
+        </p>
+    </div>
+
+    <script>
+        function disableButtons() {
+            const buttons = document.querySelectorAll('.retry-button');
+            buttons.forEach(btn => btn.disabled = true);
+        }
+        
+        function enableButtons() {
+            const buttons = document.querySelectorAll('.retry-button');
+            buttons.forEach(btn => btn.disabled = false);
+        }
+
+        window.installPackages = function() {
+            disableButtons();
+            if (window.acquireVsCodeApi) {
+                const vscode = window.acquireVsCodeApi();
+                vscode.postMessage({ type: 'install-packages' });
+            }
+        }
+        
+        window.restartServer = function() {
+            disableButtons();
+            if (window.acquireVsCodeApi) {
+                const vscode = window.acquireVsCodeApi();
+                vscode.postMessage({ type: 'restart-server' });
+            }
+        }
+        
+        window.retryCheck = function() {
+            disableButtons();
+            if (window.acquireVsCodeApi) {
+                const vscode = window.acquireVsCodeApi();
+                vscode.postMessage({ type: 'retry-check' });
+            }
+        }
+    </script>
 </body>
 </html>`
   }
 }
+

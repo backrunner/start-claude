@@ -5,11 +5,19 @@
   "projectType": "application",
   "sourceRoot": "src/plugin/src",
   "targets": {
-    "build": {
+    "clean": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "src/plugin",
-        "command": "npm run compile"
+        "command": "npm run clean"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["clean"],
+      "options": {
+        "cwd": "src/plugin",
+        "command": "npm run build"
       }
     },
     "watch": {
@@ -17,14 +25,6 @@
       "options": {
         "cwd": "src/plugin",
         "command": "npm run watch"
-      }
-    },
-    "package": {
-      "executor": "nx:run-commands",
-      "dependsOn": ["build"],
-      "options": {
-        "cwd": "src/plugin",
-        "command": "npm run package"
       }
     },
     "lint": {
