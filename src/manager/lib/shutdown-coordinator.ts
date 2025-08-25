@@ -30,25 +30,25 @@ export class ShutdownCoordinator {
     // Detect common reload patterns
     if (typeof window !== 'undefined') {
       // Listen for reload-related events
-      window.addEventListener('beforeunload', (event) => {
+      window.addEventListener('beforeunload', () => {
         // Check if this is likely a reload vs. actual close
-        this.detectReload(event)
+        this.detectReload()
       }, { passive: true })
 
       // Override window.location.reload to mark as reload
       const originalReload = window.location.reload.bind(window.location)
-      window.location.reload = (forcedReload?: boolean) => {
+      window.location.reload = () => {
         this.isReloading = true
         console.log('Reload detected - marking as reload to prevent shutdown')
-        return originalReload(forcedReload)
+        return originalReload()
       }
 
       // Detect F5, Ctrl+R, Cmd+R keystrokes
       window.addEventListener('keydown', (event) => {
         if (
-          event.key === 'F5' ||
-          (event.ctrlKey && event.key === 'r') ||
-          (event.metaKey && event.key === 'r')
+          event.key === 'F5'
+          || (event.ctrlKey && event.key === 'r')
+          || (event.metaKey && event.key === 'r')
         ) {
           this.isReloading = true
           console.log('Reload keyboard shortcut detected')
@@ -60,7 +60,7 @@ export class ShutdownCoordinator {
   /**
    * Detect if the unload is likely due to reload
    */
-  private detectReload(event: BeforeUnloadEvent): void {
+  private detectReload(): void {
     // Check if performance navigation API indicates a reload
     if (typeof window !== 'undefined' && window.performance && window.performance.navigation) {
       const navigationType = window.performance.navigation.type
@@ -75,7 +75,7 @@ export class ShutdownCoordinator {
       // If the page is being reloaded via history API or location changes to same page
       const currentUrl = window.location.href
       const referrer = document.referrer
-      
+
       if (currentUrl === referrer) {
         this.isReloading = true
         console.log('Same URL reload detected')
@@ -239,7 +239,8 @@ export class ShutdownCoordinator {
       setTimeout(() => {
         void this.callShutdownIfLastTab()
       }, 50)
-    } else {
+    }
+    else {
       console.log('Skipping shutdown on beforeunload - page is reloading')
     }
   }
@@ -251,7 +252,8 @@ export class ShutdownCoordinator {
     if (!this.isReloading) {
       this.announceClosing()
       this.sendBeaconShutdownIfLastTab()
-    } else {
+    }
+    else {
       console.log('Skipping shutdown on unload - page is reloading')
     }
   }
