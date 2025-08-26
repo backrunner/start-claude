@@ -87,18 +87,11 @@ export async function handleProxyMode(
     const ui = new UILogger()
     ui.info(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
     proxyableConfigs.forEach((c) => {
-      const hasCompleteApi = c.baseUrl && c.apiKey && c.model
       const hasTransformer = TransformerService.isTransformerEnabled(c.transformerEnabled)
 
       let status = ''
-      if (hasCompleteApi && hasTransformer) {
-        status = ' (complete API + transformer)'
-      }
-      else if (hasCompleteApi) {
-        status = ' (complete API only)'
-      }
-      else if (hasTransformer) {
-        status = ' (transformer only - needs fallback endpoints)'
+      if (hasTransformer) {
+        status = ' (transformer)'
       }
 
       ui.info(`  - ${c.name}: ${c.baseUrl || 'no baseUrl'}${status}`)

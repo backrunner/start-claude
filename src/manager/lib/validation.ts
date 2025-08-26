@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
 
 // Claude configuration validation schema
 export const claudeConfigSchema = z.object({
@@ -69,12 +70,13 @@ export const s3SyncSchema = z.object({
   secretAccessKey: z.string().min(1, 'Secret Access Key is required'),
   key: z.string().min(1, 'S3 key (filename) is required').default('configs.json'),
   endpointUrl: z.string().url('Invalid endpoint URL').optional().or(z.literal('')),
+  remoteConfigCheckIntervalMinutes: z.number().int().min(5).max(1440).default(60).optional(), // 5min to 24hours
 })
 
 // Balance mode configuration schema
 export const balanceModeSchema = z.object({
   enableByDefault: z.boolean().default(false),
-  strategy: z.enum(['Fallback', 'Polling', 'Speed First']).default('Fallback'),
+  strategy: z.nativeEnum(LoadBalancerStrategy).default(LoadBalancerStrategy.Fallback),
   healthCheck: z.object({
     enabled: z.boolean().default(true),
     intervalMs: z.number().int().min(10000).max(300000).default(30000), // 10s to 5min
@@ -85,6 +87,8 @@ export const balanceModeSchema = z.object({
   speedFirst: z.object({
     responseTimeWindowMs: z.number().int().min(60000).max(3600000).default(300000), // 1min to 1hour
     minSamples: z.number().int().min(1).max(20).default(2), // 1 to 20 samples, reduced default
+    speedTestIntervalSeconds: z.number().int().min(30).max(3600).default(300).optional(), // 30s to 1hour
+    speedTestStrategy: z.nativeEnum(SpeedTestStrategy).default(SpeedTestStrategy.ResponseTime).optional(), // Speed test strategy
   }).optional(),
 })
 

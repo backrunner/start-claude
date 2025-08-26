@@ -7,11 +7,13 @@ import inquirer from 'inquirer'
 import { name, version } from '../../package.json'
 
 import { ConfigManager } from '../config/manager'
+import { SpeedTestStrategy } from '../config/types'
 import { TransformerService } from '../services/transformer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/detection'
 import { UILogger } from '../utils/cli/ui'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
+import { SpeedTestManager } from '../utils/network/speed-test'
 import { StatusLineManager } from '../utils/statusline/manager'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStrategy, resolveConfig } from './common'
@@ -63,6 +65,7 @@ program
   .option('--config <name>', 'Use specific configuration')
   .option('--list', 'List all configurations')
   .option('--balance [strategy]', 'Start a proxy server with load balancing on port 2333. Strategies: fallback (priority-based), polling (round-robin), speedfirst (fastest response)')
+  .option('--health-check', 'Perform health check on the endpoint without starting proxy server')
   .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
   .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
   .option('--disallowedTools <tools>', 'Comma-separated list of disallowed tools', value => value.split(','))
@@ -92,6 +95,56 @@ program
       ui.displayWelcome()
       const configs = configManager.listConfigs()
       ui.displayConfigList(configs)
+      return
+    }
+
+    // Handle health check mode - exit after health check
+    if (options.healthCheck === true) {
+      ui.displayWelcome()
+
+      // Resolve config for health check
+      const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
+
+      if (!config) {
+        ui.error('❌ No configuration found for health check')
+        process.exit(1)
+      }
+
+      // Check if the config has necessary endpoint information
+      if (!config.baseUrl || !config.apiKey) {
+        ui.error(`❌ Configuration "${config.name}" missing required endpoint information (baseUrl or apiKey)`)
+        process.exit(1)
+      }
+
+      ui.info(`🩺 Performing health check on endpoint: ${config.name}`)
+      ui.info(`🌐 Base URL: ${config.baseUrl}`)
+
+      try {
+        // Create speed test manager for health check
+        const speedTestManager = SpeedTestManager.fromConfig(SpeedTestStrategy.ResponseTime, {
+          timeout: 10000, // 10 second timeout for health checks
+          verbose: options.verbose || false,
+          debug: options.debug || false,
+        })
+
+        // Perform health check
+        const result = await speedTestManager.testEndpointSpeed(config)
+
+        if (result.success) {
+          ui.success(`✅ Endpoint is healthy!`)
+          ui.info(`📊 Response time: ${result.responseTime.toFixed(1)}ms`)
+        }
+        else {
+          ui.error(`❌ Endpoint health check failed`)
+          ui.error(`💬 Error: ${result.error}`)
+          process.exit(1)
+        }
+      }
+      catch (error) {
+        ui.error(`❌ Health check failed with error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        process.exit(1)
+      }
+
       return
     }
 

@@ -1,0 +1,443 @@
+import type { ClaudeConfig } from '../../config/types'
+import { Buffer } from 'node:buffer'
+import * as http from 'node:http'
+import * as https from 'node:https'
+import * as net from 'node:net'
+import { performance } from 'node:perf_hooks'
+import { SpeedTestStrategy } from '../../config/types'
+import { UILogger } from '../cli/ui'
+import { fileLogger } from '../logging/file-logger'
+
+export interface SpeedTestResult {
+  responseTime: number // Response time in milliseconds
+  success: boolean
+  error?: string
+  strategy: SpeedTestStrategy
+}
+
+export interface SpeedTestConfig {
+  strategy: SpeedTestStrategy
+  timeout: number // Timeout in milliseconds
+  verbose: boolean
+  debug: boolean
+  httpAgent?: http.Agent
+  httpsAgent?: https.Agent
+}
+
+const GENERAL_TEST_HEADERS = {
+  'x-app': 'cli',
+  'Content-Type': 'application/json',
+  'User-Agent': 'claude-cli/1.0.83 (external, cli)',
+  'anthropic-dangerous-direct-browser-access': 'true',
+  'anthropic-version': '2023-06-01',
+  'anthropic-beta': 'fine-grained-tool-streaming-2025-05-14',
+  'x-stainless-helper-method': 'stream',
+  'accept-language': '*',
+  'accept-encoding': 'gzip, deflate',
+  'connection': 'keep-alive',
+  'accept': 'application/json',
+  'x-stainless-retry-count': '0',
+  'x-stainless-timeout': '60',
+  'x-stainless-lang': 'js',
+  'x-stainless-package-version': '0.55.1',
+  'x-stainless-os': 'Windows',
+  'x-stainless-arch': 'x64',
+  'x-stainless-runtime': 'node',
+  'x-stainless-runtime-version': 'v22.18.0',
+  'sec-fetch-mode': 'cors',
+}
+
+export class SpeedTestManager {
+  private ui: UILogger
+
+  constructor(private config: SpeedTestConfig) {
+    this.ui = new UILogger(this.config.verbose)
+  }
+
+  /**
+   * Perform speed test on endpoint using configured strategy
+   */
+  async testEndpointSpeed(endpoint: ClaudeConfig): Promise<SpeedTestResult> {
+    const startTime = performance.now()
+
+    if (this.config.debug || this.config.verbose) {
+      this.ui.verbose(`🔍 Starting ${this.config.strategy} test for endpoint: ${endpoint.name}`)
+      this.ui.verbose(`🌐 Target URL: ${endpoint.baseUrl}`)
+      this.ui.verbose(`⏱️ Timeout: ${this.config.timeout}ms`)
+    }
+
+    try {
+      let responseTime: number
+
+      switch (this.config.strategy) {
+        case SpeedTestStrategy.ResponseTime:
+          responseTime = await this.testResponseTime(endpoint)
+          break
+        case SpeedTestStrategy.HeadRequest:
+          responseTime = await this.testHeadRequest(endpoint)
+          break
+        case SpeedTestStrategy.Ping:
+          responseTime = await this.testPing(endpoint)
+          break
+        default:
+          throw new Error(`Unknown speed test strategy: ${String(this.config.strategy)}`)
+      }
+
+      if (this.config.debug) {
+        fileLogger.debug('SPEED_TEST_SUCCESS', `Speed test completed for endpoint`, {
+          endpointName: endpoint.name,
+          strategy: this.config.strategy,
+          responseTime,
+          totalTime: performance.now() - startTime,
+        })
+      }
+
+      return {
+        responseTime,
+        success: true,
+        strategy: this.config.strategy,
+      }
+    }
+    catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+      if (this.config.debug) {
+        fileLogger.debug('SPEED_TEST_FAILED', `Speed test failed for endpoint`, {
+          endpointName: endpoint.name,
+          strategy: this.config.strategy,
+          error: errorMessage,
+          totalTime: performance.now() - startTime,
+        })
+      }
+
+      return {
+        responseTime: Number.POSITIVE_INFINITY, // Mark as slowest possible
+        success: false,
+        error: errorMessage,
+        strategy: this.config.strategy,
+      }
+    }
+  }
+
+  /**
+   * Test response time by sending minimal API request
+   */
+  private async testResponseTime(endpoint: ClaudeConfig): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const testUrl = new URL('/v1/messages', endpoint.baseUrl)
+      const startTime = performance.now()
+
+      // Ultra-minimal payload for response time testing
+      const testBody = JSON.stringify({
+        model: endpoint.model || 'claude-3-5-haiku-20241022',
+        messages: [{ role: 'user', content: '1' }],
+        system: [
+          {
+            type: 'text',
+            text: 'Test',
+            cache_control: {
+              type: 'ephemeral',
+            },
+          },
+        ],
+        stream: true,
+        temperature: 0,
+        max_tokens: 1,
+      })
+
+      const isHttps = testUrl.protocol === 'https:'
+      const httpModule = isHttps ? https : http
+
+      if (this.config.debug || this.config.verbose) {
+        this.ui.verbose(`📤 Sending POST request to: ${testUrl.toString()}`)
+        this.ui.verbose(`🔑 Using API key: ${endpoint.apiKey?.substring(0, 8)}***`)
+        this.ui.verbose(`🤖 Model: ${endpoint.model || 'claude-3-5-haiku-20241022'}`)
+        this.ui.verbose(`📦 Payload size: ${Buffer.byteLength(testBody)} bytes`)
+      }
+
+      const requestOptions = {
+        method: 'POST',
+        headers: {
+          'x-api-key': endpoint.apiKey,
+          'Content-Length': Buffer.byteLength(testBody),
+          ...GENERAL_TEST_HEADERS,
+        },
+        timeout: this.config.timeout,
+        agent: isHttps ? this.config.httpsAgent : this.config.httpAgent,
+      }
+
+      const req = httpModule.request(testUrl, requestOptions, (res) => {
+        const responseTime = performance.now() - startTime
+
+        if (this.config.debug || this.config.verbose) {
+          this.ui.verbose(`📥 Received response: HTTP ${res.statusCode}`)
+          this.ui.verbose(`⏱️ Response time: ${responseTime.toFixed(1)}ms`)
+          if (res.headers['content-type']) {
+            this.ui.verbose(`📄 Content-Type: ${res.headers['content-type']}`)
+          }
+        }
+
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          if (this.config.debug || this.config.verbose) {
+            this.ui.verbose(`✅ Response time test successful`)
+          }
+          resolve(responseTime)
+        }
+        else {
+          if (this.config.debug || this.config.verbose) {
+            this.ui.verbose(`❌ Response time test failed with status: ${res.statusCode}`)
+          }
+          reject(new Error(`HTTP ${res.statusCode}: Response time test failed`))
+        }
+
+        // Consume response to free up the socket
+        res.resume()
+      })
+
+      req.on('error', (error) => {
+        if (this.config.debug || this.config.verbose) {
+          this.ui.verbose(`🚫 Request error: ${error.message}`)
+        }
+        reject(new Error(`Response time test error: ${error.message}`))
+      })
+
+      req.on('timeout', () => {
+        if (this.config.debug || this.config.verbose) {
+          this.ui.verbose(`⏰ Request timeout after ${this.config.timeout}ms`)
+        }
+        req.destroy()
+        reject(new Error('Response time test timeout'))
+      })
+
+      req.write(testBody)
+      req.end()
+    })
+  }
+
+  /**
+   * Test network latency using HEAD request
+   */
+  private async testHeadRequest(endpoint: ClaudeConfig): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const testUrl = new URL('/v1/messages', endpoint.baseUrl)
+      const startTime = performance.now()
+
+      const isHttps = testUrl.protocol === 'https:'
+      const httpModule = isHttps ? https : http
+
+      if (this.config.debug || this.config.verbose) {
+        this.ui.verbose(`📤 Sending HEAD request to: ${testUrl.toString()}`)
+        this.ui.verbose(`🔑 Using API key: ${endpoint.apiKey?.substring(0, 8)}***`)
+      }
+
+      const requestOptions = {
+        method: 'HEAD',
+        headers: {
+          'x-api-key': endpoint.apiKey,
+          ...GENERAL_TEST_HEADERS,
+        },
+        timeout: this.config.timeout,
+        agent: isHttps ? this.config.httpsAgent : this.config.httpAgent,
+      }
+
+      const req = httpModule.request(testUrl, requestOptions, (res) => {
+        const responseTime = performance.now() - startTime
+
+        if (this.config.debug || this.config.verbose) {
+          this.ui.verbose(`📥 Received HEAD response: HTTP ${res.statusCode}`)
+          this.ui.verbose(`⏱️ Response time: ${responseTime.toFixed(1)}ms`)
+        }
+
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          if (this.config.debug || this.config.verbose) {
+            this.ui.verbose(`✅ HEAD request test successful`)
+          }
+          resolve(responseTime)
+        }
+        else {
+          if (this.config.debug || this.config.verbose) {
+            this.ui.verbose(`❌ HEAD request test failed with status: ${res.statusCode}`)
+          }
+          reject(new Error(`HTTP ${res.statusCode}: HEAD request test failed`))
+        }
+
+        // Consume response to free up the socket
+        res.resume()
+      })
+
+      req.on('error', (error) => {
+        if (this.config.debug || this.config.verbose) {
+          this.ui.verbose(`🚫 HEAD request error: ${error.message}`)
+        }
+        reject(new Error(`HEAD request test error: ${error.message}`))
+      })
+
+      req.on('timeout', () => {
+        if (this.config.debug || this.config.verbose) {
+          this.ui.verbose(`⏰ HEAD request timeout after ${this.config.timeout}ms`)
+        }
+        req.destroy()
+        reject(new Error('HEAD request test timeout'))
+      })
+
+      req.end()
+    })
+  }
+
+  /**
+   * Test connection time using ping-like approach (TCP connection time)
+   */
+  private async testPing(endpoint: ClaudeConfig): Promise<number> {
+    return new Promise((resolve, reject) => {
+      if (!endpoint.baseUrl) {
+        reject(new Error('Endpoint baseUrl is required for ping test'))
+        return
+      }
+      const testUrl = new URL(endpoint.baseUrl)
+      const startTime = performance.now()
+
+      const isHttps = testUrl.protocol === 'https:'
+      const defaultPort = isHttps ? 443 : 80
+      const port = testUrl.port ? Number.parseInt(testUrl.port, 10) : defaultPort
+
+      if (this.config.debug || this.config.verbose) {
+        this.ui.verbose(`🔌 Attempting TCP connection to: ${testUrl.hostname}:${port}`)
+        this.ui.verbose(`🔒 Protocol: ${isHttps ? 'HTTPS' : 'HTTP'}`)
+      }
+
+      const socket = new net.Socket()
+
+      socket.setTimeout(this.config.timeout)
+
+      socket.connect(port, testUrl.hostname, () => {
+        const responseTime = performance.now() - startTime
+        if (this.config.debug || this.config.verbose) {
+          this.ui.verbose(`✅ TCP connection successful`)
+          this.ui.verbose(`⏱️ Connection time: ${responseTime.toFixed(1)}ms`)
+        }
+        socket.destroy()
+        resolve(responseTime)
+      })
+
+      socket.on('error', (error) => {
+        if (this.config.debug || this.config.verbose) {
+          this.ui.verbose(`🚫 TCP connection error: ${error.message}`)
+        }
+        socket.destroy()
+        reject(new Error(`Ping test error: ${error.message}`))
+      })
+
+      socket.on('timeout', () => {
+        if (this.config.debug || this.config.verbose) {
+          this.ui.verbose(`⏰ TCP connection timeout after ${this.config.timeout}ms`)
+        }
+        socket.destroy()
+        reject(new Error('Ping test timeout'))
+      })
+    })
+  }
+
+  /**
+   * Test multiple endpoints concurrently and return results
+   */
+  async testMultipleEndpoints(endpoints: ClaudeConfig[]): Promise<Map<string, SpeedTestResult>> {
+    const results = new Map<string, SpeedTestResult>()
+
+    if (endpoints.length === 0) {
+      return results
+    }
+
+    if (this.config.verbose) {
+      this.ui.verbose(`🔍 Testing ${endpoints.length} endpoints using ${this.config.strategy} strategy`)
+    }
+
+    const testPromises = endpoints.map(async (endpoint) => {
+      const result = await this.testEndpointSpeed(endpoint)
+      const endpointKey = endpoint.name || endpoint.baseUrl || 'unknown'
+      results.set(endpointKey, result)
+      return { endpoint: endpointKey, result }
+    })
+
+    const settledResults = await Promise.allSettled(testPromises)
+
+    // Log any unexpected errors
+    settledResults.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const endpointName = endpoints[index].name || endpoints[index].baseUrl || 'unknown'
+        if (this.config.debug) {
+          fileLogger.debug('SPEED_TEST_PROMISE_REJECTED', 'Speed test promise was rejected', {
+            endpointName,
+            error: result.reason,
+          })
+        }
+        // Set a failure result for rejected promises
+        results.set(endpointName, {
+          responseTime: Number.POSITIVE_INFINITY,
+          success: false,
+          error: 'Promise rejected',
+          strategy: this.config.strategy,
+        })
+      }
+    })
+
+    if (this.config.verbose) {
+      this.logSpeedTestResults(results)
+    }
+
+    return results
+  }
+
+  /**
+   * Log speed test results in a formatted way
+   */
+  private logSpeedTestResults(results: Map<string, SpeedTestResult>): void {
+    const sortedResults = Array.from(results.entries())
+      .filter(([, result]) => result.success)
+      .sort(([, a], [, b]) => a.responseTime - b.responseTime)
+
+    if (sortedResults.length > 0) {
+      this.ui.verbose(`📊 Speed test results (${this.config.strategy}):`)
+      sortedResults.forEach(([name, result], index) => {
+        const emoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '  '
+        this.ui.verbose(`   ${emoji} ${name}: ${result.responseTime.toFixed(1)}ms`)
+      })
+    }
+
+    const failedResults = Array.from(results.entries()).filter(([, result]) => !result.success)
+    if (failedResults.length > 0) {
+      this.ui.verbose(`❌ Failed tests:`)
+      failedResults.forEach(([name, result]) => {
+        this.ui.verbose(`   • ${name}: ${result.error}`)
+      })
+    }
+  }
+
+  /**
+   * Get the fastest endpoint from test results
+   */
+  static getFastestEndpoint(results: Map<string, SpeedTestResult>): string | null {
+    const successfulResults = Array.from(results.entries())
+      .filter(([, result]) => result.success)
+      .sort(([, a], [, b]) => a.responseTime - b.responseTime)
+
+    return successfulResults.length > 0 ? successfulResults[0][0] : null
+  }
+
+  /**
+   * Create speed test manager from configuration
+   */
+  static fromConfig(
+    strategy: SpeedTestStrategy = SpeedTestStrategy.ResponseTime,
+    options: Partial<SpeedTestConfig> = {},
+  ): SpeedTestManager {
+    const config: SpeedTestConfig = {
+      strategy,
+      timeout: 8000,
+      verbose: false,
+      debug: false,
+      ...options,
+    }
+
+    return new SpeedTestManager(config)
+  }
+}

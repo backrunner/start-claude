@@ -52,9 +52,24 @@ export interface ClaudeConfig {
 }
 
 /**
+ * Speed test strategy types
+ */
+export enum SpeedTestStrategy {
+  ResponseTime = 'response-time', // Default: Send minimal request and measure response time
+  HeadRequest = 'head-request', // Send HEAD request to measure network latency
+  Ping = 'ping', // Use ping-like approach to measure connection time
+}
+
+/**
  * Load balancer strategy types
  */
-export type LoadBalancerStrategy = 'Fallback' | 'Polling' | 'Speed First'
+export enum LoadBalancerStrategy {
+  Fallback = 'Fallback',
+  Polling = 'Polling',
+  SpeedFirst = 'Speed First',
+}
+
+export type LoadBalancerStrategyType = LoadBalancerStrategy
 
 /**
  * Status line configuration interface
@@ -86,6 +101,8 @@ export interface SystemSettings {
     speedFirst?: {
       responseTimeWindowMs: number // Time window for calculating average response times
       minSamples: number // Minimum number of samples before reordering
+      speedTestIntervalSeconds?: number // How often to perform speed tests in seconds (default: 300s = 5 minutes)
+      speedTestStrategy?: SpeedTestStrategy // Strategy for speed testing (default: response-time)
     }
   }
   s3Sync?: {
