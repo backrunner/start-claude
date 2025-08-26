@@ -124,7 +124,12 @@ export class SpeedTestManager {
    */
   private async testResponseTime(endpoint: ClaudeConfig): Promise<number> {
     return new Promise((resolve, reject) => {
-      const testUrl = new URL('/v1/messages', endpoint.baseUrl)
+      if (!endpoint.baseUrl) {
+        reject(new Error('Endpoint baseUrl is required for response time test'))
+        return
+      }
+      const baseUrl = endpoint.baseUrl.endsWith('/') ? endpoint.baseUrl.slice(0, -1) : endpoint.baseUrl
+      const testUrl = new URL(`${baseUrl}/v1/messages`)
       const startTime = performance.now()
 
       // Ultra-minimal payload for response time testing
@@ -219,7 +224,12 @@ export class SpeedTestManager {
    */
   private async testHeadRequest(endpoint: ClaudeConfig): Promise<number> {
     return new Promise((resolve, reject) => {
-      const testUrl = new URL('/v1/messages', endpoint.baseUrl)
+      if (!endpoint.baseUrl) {
+        reject(new Error('Endpoint baseUrl is required for HEAD request test'))
+        return
+      }
+      const baseUrl = endpoint.baseUrl.endsWith('/') ? endpoint.baseUrl.slice(0, -1) : endpoint.baseUrl
+      const testUrl = new URL(`${baseUrl}/v1/messages`)
       const startTime = performance.now()
 
       const isHttps = testUrl.protocol === 'https:'
