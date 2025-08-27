@@ -290,6 +290,32 @@ export class ProxyServer {
     }
   }
 
+  /**
+   * Properly construct target URL by appending request path to base URL
+   */
+  private constructTargetUrl(requestPath: string, baseUrl: string): URL {
+    const base = new URL(baseUrl)
+    const path = requestPath.replace(/^\/+/, '') // Remove leading slashes
+
+    // Ensure base URL has trailing slash for proper path joining
+    const baseHref = base.href.endsWith('/') ? base.href : `${base.href}/`
+
+    const targetUrl = new URL(path, baseHref)
+
+    // Debug log URL construction
+    if (this.debug) {
+      fileLogger.debug('URL_CONSTRUCTION', 'Constructed target URL for proxy request', {
+        originalBaseUrl: baseUrl,
+        requestPath,
+        constructedUrl: targetUrl.toString(),
+        basePath: base.pathname,
+        finalPath: targetUrl.pathname,
+      })
+    }
+
+    return targetUrl
+  }
+
   private getAgent(isHttps: boolean): http.Agent | https.Agent | undefined {
     if (this.proxyUrl) {
       return isHttps ? this.httpsAgent : this.httpAgent
@@ -1264,7 +1290,7 @@ export class ProxyServer {
           }
 
           // Construct target URL for non-transformer endpoints
-          const targetUrl = new URL(req.url || '/', endpoint.config.baseUrl)
+          const targetUrl = this.constructTargetUrl(req.url || '/', endpoint.config.baseUrl || '')
 
           // Prepare headers for the upstream request using shared method
           const headers = this.prepareRequestHeaders(req.headers, targetUrl, endpoint.config.apiKey)
@@ -1430,7 +1456,7 @@ export class ProxyServer {
     endpoint: EndpointStatus,
     clientExpectsStream?: boolean,
   ): Promise<void> {
-    const targetUrl = new URL(url, endpoint.config.baseUrl)
+    const targetUrl = this.constructTargetUrl(url, endpoint.config.baseUrl || '')
 
     // Prepare headers for the upstream request using shared method
     const headers = this.prepareRequestHeaders(originalHeaders, targetUrl, endpoint.config.apiKey!)
