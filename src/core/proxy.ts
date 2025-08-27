@@ -1,4 +1,4 @@
-import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
+import type { ClaudeConfig } from '../config/types'
 import type { LLMProvider } from '../types/llm'
 import type { ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
 import { Buffer } from 'node:buffer'
@@ -8,13 +8,13 @@ import { PassThrough } from 'node:stream'
 import dayjs from 'dayjs'
 import { HttpProxyAgent } from 'http-proxy-agent'
 import { HttpsProxyAgent } from 'https-proxy-agent'
+import { LoadBalancerStrategy, SpeedTestStrategy } from '../config/types'
 import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
 import { UILogger } from '../utils/cli/ui'
 import { fileLogger } from '../utils/logging/file-logger'
+import { SpeedTestManager } from '../utils/network/speed-test'
 import { convertOpenAIResponseToAnthropic, convertOpenAIStreamToAnthropic, isOpenAIFormat } from '../utils/transformer/openai-to-anthropic'
-
-const log = console.log
 
 interface ResponseTiming {
   startTime: number
@@ -42,6 +42,7 @@ export class ProxyServer {
   private currentIndex = 0
   private server?: http.Server
   private healthCheckInterval?: NodeJS.Timeout
+  private speedTestInterval?: NodeJS.Timeout
   private healthCheckIntervalMs: number = 30000 // Default 30 seconds
   private healthCheckEnabled: boolean = true
   private failedEndpointBanDurationSeconds: number = 300 // Default 5 minutes
@@ -56,15 +57,22 @@ export class ProxyServer {
   private proxyUrl?: string
   private httpAgent?: http.Agent
   private httpsAgent?: https.Agent
+
   // Load balancer strategy configuration
-  private loadBalancerStrategy: LoadBalancerStrategy = 'Fallback'
+  private loadBalancerStrategy: LoadBalancerStrategy = LoadBalancerStrategy.Fallback
   private speedFirstConfig: {
     responseTimeWindowMs: number
     minSamples: number
+    speedTestIntervalSeconds: number
+    speedTestStrategy: SpeedTestStrategy
   } = {
     responseTimeWindowMs: 300000, // 5 minutes
     minSamples: 2,
+    speedTestIntervalSeconds: 300, // 5 minutes in seconds
+    speedTestStrategy: SpeedTestStrategy.ResponseTime,
   }
+
+  private speedTestManager?: SpeedTestManager
 
   constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode, systemSettings?: any, proxyUrl?: string) {
     this.proxyMode = proxyMode || {}
@@ -100,14 +108,28 @@ export class ProxyServer {
       this.healthCheckIntervalMs = systemSettings.balanceMode.healthCheck?.intervalMs || 30000
       this.healthCheckEnabled = systemSettings.balanceMode.healthCheck?.enabled !== false
       this.failedEndpointBanDurationSeconds = systemSettings.balanceMode.failedEndpoint?.banDurationSeconds || 300
-      this.loadBalancerStrategy = systemSettings.balanceMode.strategy || 'Fallback'
+      this.loadBalancerStrategy = systemSettings.balanceMode.strategy || LoadBalancerStrategy.Fallback
 
       // Configure Speed First mode if specified
-      if (this.loadBalancerStrategy === 'Speed First' && systemSettings.balanceMode.speedFirst) {
+      if (this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst && systemSettings.balanceMode.speedFirst) {
         this.speedFirstConfig = {
           responseTimeWindowMs: systemSettings.balanceMode.speedFirst.responseTimeWindowMs || 300000,
           minSamples: systemSettings.balanceMode.speedFirst.minSamples || 3,
+          speedTestIntervalSeconds: systemSettings.balanceMode.speedFirst.speedTestIntervalSeconds || 300,
+          speedTestStrategy: systemSettings.balanceMode.speedFirst.speedTestStrategy || SpeedTestStrategy.ResponseTime,
         }
+
+        // Initialize speed test manager
+        this.speedTestManager = SpeedTestManager.fromConfig(
+          this.speedFirstConfig.speedTestStrategy,
+          {
+            timeout: 8000,
+            verbose: this.verbose,
+            debug: this.debug,
+            httpAgent: this.httpAgent,
+            httpsAgent: this.httpsAgent,
+          },
+        )
       }
     }
 
@@ -268,6 +290,32 @@ export class ProxyServer {
     }
   }
 
+  /**
+   * Properly construct target URL by appending request path to base URL
+   */
+  private constructTargetUrl(requestPath: string, baseUrl: string): URL {
+    const base = new URL(baseUrl)
+    const path = requestPath.replace(/^\/+/, '') // Remove leading slashes
+
+    // Ensure base URL has trailing slash for proper path joining
+    const baseHref = base.href.endsWith('/') ? base.href : `${base.href}/`
+
+    const targetUrl = new URL(path, baseHref)
+
+    // Debug log URL construction
+    if (this.debug) {
+      fileLogger.debug('URL_CONSTRUCTION', 'Constructed target URL for proxy request', {
+        originalBaseUrl: baseUrl,
+        requestPath,
+        constructedUrl: targetUrl.toString(),
+        basePath: base.pathname,
+        finalPath: targetUrl.pathname,
+      })
+    }
+
+    return targetUrl
+  }
+
   private getAgent(isHttps: boolean): http.Agent | https.Agent | undefined {
     if (this.proxyUrl) {
       return isHttps ? this.httpsAgent : this.httpAgent
@@ -312,6 +360,11 @@ export class ProxyServer {
         // Start health checks only if load balancing is enabled and health checks are enabled
         if (this.enableLoadBalance && this.healthCheckEnabled) {
           this.startHealthChecks()
+        }
+
+        // Start speed tests for Speed First strategy
+        if (this.enableLoadBalance && this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst) {
+          this.startSpeedTests()
         }
         resolve()
       })
@@ -468,16 +521,18 @@ export class ProxyServer {
     }
 
     // Apply load balancer strategy
-    switch (this.loadBalancerStrategy) {
-      case 'Fallback':
-        return this.selectEndpointFallback(availableEndpoints)
-      case 'Polling':
-        return this.selectEndpointPolling(availableEndpoints)
-      case 'Speed First':
-        return this.selectEndpointSpeedFirst(availableEndpoints)
-      default:
-        this.ui.warning(`Unknown load balancer strategy: ${String(this.loadBalancerStrategy)}, falling back to Fallback mode`)
-        return this.selectEndpointFallback(availableEndpoints)
+    if (this.loadBalancerStrategy === LoadBalancerStrategy.Fallback) {
+      return this.selectEndpointFallback(availableEndpoints)
+    }
+    else if (this.loadBalancerStrategy === LoadBalancerStrategy.Polling) {
+      return this.selectEndpointPolling(availableEndpoints)
+    }
+    else if (this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst) {
+      return this.selectEndpointSpeedFirst(availableEndpoints)
+    }
+    else {
+      this.ui.warning(`Unknown load balancer strategy: ${String(this.loadBalancerStrategy)}, falling back to Fallback mode`)
+      return this.selectEndpointFallback(availableEndpoints)
     }
   }
 
@@ -535,6 +590,21 @@ export class ProxyServer {
     const sortedBySpeed = endpointsWithSamples.sort((a, b) => a.averageResponseTime - b.averageResponseTime)
 
     this.ui.verbose(`Speed First: Selected fastest endpoint ${sortedBySpeed[0].config.name} (avg: ${sortedBySpeed[0].averageResponseTime}ms, samples: ${sortedBySpeed[0].responseTimes.length})`)
+
+    // Log endpoint selection for Speed First strategy
+    if (this.debug) {
+      fileLogger.info('SPEED_FIRST_SELECTION', `Fastest endpoint selected for request`, {
+        selectedEndpoint: sortedBySpeed[0].config.name,
+        averageResponseTime: sortedBySpeed[0].averageResponseTime,
+        sampleCount: sortedBySpeed[0].responseTimes.length,
+        totalRequests: sortedBySpeed[0].totalRequests,
+        alternativeEndpoints: sortedBySpeed.slice(1, 3).map(e => ({
+          name: e.config.name,
+          averageResponseTime: e.averageResponseTime,
+          sampleCount: e.responseTimes.length,
+        })),
+      })
+    }
 
     return sortedBySpeed[0]
   }
@@ -630,6 +700,61 @@ export class ProxyServer {
   }
 
   /**
+   * Handle HTTP error status codes and retry logic
+   */
+  private async handleHttpErrorResponse(
+    proxyRes: http.IncomingMessage,
+    res: http.ServerResponse,
+    endpoint: EndpointStatus,
+    req: http.IncomingMessage,
+    body: Buffer,
+    requestData: any,
+    context: { isTransformer?: boolean, transformerName?: string } = {},
+  ): Promise<boolean> {
+    if (!proxyRes.statusCode || proxyRes.statusCode < 400) {
+      return false // Not an error, continue normal processing
+    }
+
+    const statusCode = proxyRes.statusCode
+    const errorMessage = `HTTP ${statusCode}`
+
+    // Mark endpoint as unhealthy for all error status codes
+    this.markEndpointUnhealthy(endpoint, errorMessage)
+
+    // For certain error codes, try to retry with a different endpoint
+    const shouldRetry = (statusCode >= 404 && statusCode <= 499) || statusCode >= 500
+
+    if (shouldRetry && this.enableLoadBalance && !res.headersSent) {
+      const nextEndpoint = this.getNextHealthyEndpoint()
+      if (nextEndpoint && nextEndpoint !== endpoint) {
+        const endpointType = context.isTransformer ? `transformer ${endpoint.config.name}` : endpoint.config.name
+        this.ui.verbose(`HTTP ${statusCode} from ${endpointType}, retrying with ${nextEndpoint.config.name}`)
+
+        if (this.debug) {
+          fileLogger.info('HTTP_ERROR_RETRY', `Retrying ${context.isTransformer ? 'transformer' : 'regular'} request due to HTTP error from endpoint`, {
+            statusCode,
+            failedEndpoint: endpoint.config.name,
+            retryEndpoint: nextEndpoint.config.name,
+            ...(context.transformerName ? { transformerName: context.transformerName } : {}),
+            loadBalancerStrategy: this.loadBalancerStrategy,
+          })
+        }
+
+        // Retry the request with the new endpoint
+        if (context.isTransformer) {
+          void this.proxyRequest(req, res, nextEndpoint)
+        }
+        else {
+          void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, nextEndpoint, Boolean(requestData.stream))
+        }
+        return true // Handled with retry
+      }
+    }
+
+    return false // Error occurred but no retry possible
+  }
+
+  /**
    * Process response stream and apply formatting
    */
   private async processResponseStream(
@@ -672,12 +797,10 @@ export class ProxyServer {
     }
 
     // Mark endpoint health based on status code
-    if (proxyRes.statusCode && proxyRes.statusCode < 500) {
+    if (proxyRes.statusCode && proxyRes.statusCode < 400) {
       this.markEndpointHealthy(endpoint)
     }
-    else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
-      this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
-    }
+    // Note: HTTP errors (>=400) are now handled earlier in the request handlers
   }
 
   private isStreamingResponse(headers: http.IncomingHttpHeaders): boolean {
@@ -947,7 +1070,7 @@ export class ProxyServer {
     endpoint: EndpointStatus,
   ): Promise<void> {
     // Start timing for Speed First strategy
-    const requestTiming = this.loadBalancerStrategy === 'Speed First' ? this.startRequestTiming() : null
+    const requestTiming = this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst ? this.startRequestTiming() : null
 
     // Collect request body
     const chunks: Buffer[] = []
@@ -1083,27 +1206,38 @@ export class ProxyServer {
               }
 
               const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
-                // Log proxy response if debug is enabled
-                if (this.debug) {
-                  fileLogger.info('TRANSFORM_RESPONSE', 'Received response from external API via transformer', {
-                    statusCode: proxyRes.statusCode || 0,
-                    statusMessage: proxyRes.statusMessage || 'Unknown',
-                    transformerName,
-                    targetProvider: provider.name,
-                    targetUrl: targetUrl.toString(),
-                    headers: proxyRes.headers,
-                  })
-                }
+                void (async () => {
+                  // Log proxy response if debug is enabled
+                  if (this.debug) {
+                    fileLogger.info('TRANSFORM_RESPONSE', 'Received response from external API via transformer', {
+                      statusCode: proxyRes.statusCode || 0,
+                      statusMessage: proxyRes.statusMessage || 'Unknown',
+                      transformerName,
+                      targetProvider: provider.name,
+                      targetUrl: targetUrl.toString(),
+                      headers: proxyRes.headers,
+                    })
+                  }
 
-                // Use shared response processing method
-                void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
-                  isTransformer: true,
-                  transformer,
-                  transformerName,
-                  provider,
-                  targetUrl,
-                  clientExpectsStream: Boolean(requestData.stream),
-                })
+                  // Check for HTTP error status codes and handle retries
+                  const wasHandled = await this.handleHttpErrorResponse(proxyRes, res, endpoint, req, body, requestData, {
+                    isTransformer: true,
+                    transformerName,
+                  })
+                  if (wasHandled) {
+                    return // Error was handled with retry
+                  }
+
+                  // Use shared response processing method
+                  void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
+                    isTransformer: true,
+                    transformer,
+                    transformerName,
+                    provider,
+                    targetUrl,
+                    clientExpectsStream: Boolean(requestData.stream),
+                  })
+                })()
               })
 
               proxyReq.on('error', (error) => {
@@ -1220,7 +1354,7 @@ export class ProxyServer {
           }
 
           // Construct target URL for non-transformer endpoints
-          const targetUrl = new URL(req.url || '/', endpoint.config.baseUrl)
+          const targetUrl = this.constructTargetUrl(req.url || '/', endpoint.config.baseUrl || '')
 
           // Prepare headers for the upstream request using shared method
           const headers = this.prepareRequestHeaders(req.headers, targetUrl, endpoint.config.apiKey)
@@ -1236,23 +1370,33 @@ export class ProxyServer {
           }
 
           const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
-            // Log proxy response if debug is enabled
-            if (this.debug) {
-              fileLogger.info('REGULAR_RESPONSE', 'Received response from external API (direct proxy)', {
-                statusCode: proxyRes.statusCode || 0,
-                statusMessage: proxyRes.statusMessage || 'Unknown',
-                endpointName: endpoint.config.name,
-                targetUrl: targetUrl.toString(),
-                headers: proxyRes.headers,
-              })
-            }
+            void (async () => {
+              // Log proxy response if debug is enabled
+              if (this.debug) {
+                fileLogger.info('REGULAR_RESPONSE', 'Received response from external API (direct proxy)', {
+                  statusCode: proxyRes.statusCode || 0,
+                  statusMessage: proxyRes.statusMessage || 'Unknown',
+                  endpointName: endpoint.config.name,
+                  targetUrl: targetUrl.toString(),
+                  headers: proxyRes.headers,
+                })
+              }
 
-            // Use shared response processing method
-            void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
-              isTransformer: false,
-              targetUrl,
-              clientExpectsStream: Boolean(requestData.stream),
-            })
+              // Check for HTTP error status codes and handle retries
+              const wasHandled = await this.handleHttpErrorResponse(proxyRes, res, endpoint, req, body, requestData, {
+                isTransformer: false,
+              })
+              if (wasHandled) {
+                return // Error was handled with retry
+              }
+
+              // Use shared response processing method
+              void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
+                isTransformer: false,
+                targetUrl,
+                clientExpectsStream: Boolean(requestData.stream),
+              })
+            })()
           })
 
           proxyReq.on('error', (error) => {
@@ -1386,7 +1530,7 @@ export class ProxyServer {
     endpoint: EndpointStatus,
     clientExpectsStream?: boolean,
   ): Promise<void> {
-    const targetUrl = new URL(url, endpoint.config.baseUrl)
+    const targetUrl = this.constructTargetUrl(url, endpoint.config.baseUrl || '')
 
     // Prepare headers for the upstream request using shared method
     const headers = this.prepareRequestHeaders(originalHeaders, targetUrl, endpoint.config.apiKey!)
@@ -1510,6 +1654,12 @@ export class ProxyServer {
       endpoint.bannedUntil = Date.now() + (this.failedEndpointBanDurationSeconds * 1000)
       this.ui.verbose(`Endpoint ${endpoint.config.name} banned until ${dayjs(endpoint.bannedUntil).format('YYYY-MM-DD HH:mm:ss')}`)
     }
+
+    // For Speed First strategy, trigger immediate speed test when endpoint fails
+    if (this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst) {
+      this.ui.verbose(`Endpoint ${endpoint.config.name} failed, triggering immediate speed test to find fastest alternative`)
+      this.triggerImmediateSpeedTest()
+    }
   }
 
   private startHealthChecks(): void {
@@ -1551,84 +1701,49 @@ export class ProxyServer {
   }
 
   private async performHealthCheckRequest(endpoint: EndpointStatus, options: { timeout: number, isInitial?: boolean } = { timeout: 10000 }): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Start timing for Speed First strategy
-      const healthTiming = this.loadBalancerStrategy === 'Speed First' ? this.startRequestTiming() : null
-
-      const healthUrl = new URL('/v1/messages', endpoint.config.baseUrl)
-
-      const healthCheckBody = JSON.stringify({
-        model: endpoint.config.model || 'claude-3-haiku-20241022',
-        max_tokens: 10,
-        messages: [{
-          role: 'user',
-          content: 'ping',
-        }],
-      })
-
-      const isHttps = healthUrl.protocol === 'https:'
-      const httpModule = isHttps ? https : http
-
-      const requestOptions = {
-        method: 'POST',
-        headers: {
-          'x-api-key': endpoint.config.apiKey,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(healthCheckBody),
-        },
+    // Create a dedicated speed test manager for health checks
+    const healthCheckSpeedTest = SpeedTestManager.fromConfig(
+      SpeedTestStrategy.ResponseTime,
+      {
         timeout: options.timeout,
-        agent: this.getAgent(isHttps),
+        verbose: false,
+        debug: this.debug,
+        httpAgent: this.httpAgent,
+        httpsAgent: this.httpsAgent,
+      },
+    )
+
+    try {
+      const result = await healthCheckSpeedTest.testEndpointSpeed(endpoint.config)
+
+      if (result.success) {
+        // Record health check response time for Speed First strategy
+        if (this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst) {
+          this.recordResponseTime(endpoint, result.responseTime)
+        }
+
+        // Only mark as healthy if this is not an initial check
+        if (!options.isInitial) {
+          this.markEndpointHealthy(endpoint)
+        }
       }
-
-      const req = httpModule.request(healthUrl, requestOptions, (res) => {
-        // Record first response timing for health checks
-        if (healthTiming) {
-          this.recordFirstToken(healthTiming)
-        }
-
-        if (res.statusCode && res.statusCode < 500) {
-          // Record health check response time for Speed First strategy
-          if (healthTiming && healthTiming.duration !== undefined) {
-            this.recordResponseTime(endpoint, healthTiming.duration)
-          }
-
-          // Only mark as healthy if this is not an initial check or if it is an initial check
-          if (!options.isInitial) {
-            this.markEndpointHealthy(endpoint)
-          }
-          resolve()
-        }
-        else {
-          if (!options.isInitial) {
-            endpoint.lastCheck = Date.now()
-          }
-          reject(new Error(`Health check failed with status ${res.statusCode}`))
-        }
-
-        // Consume response to free up the socket
-        res.resume()
-      })
-
-      req.on('error', (error) => {
+      else {
         if (!options.isInitial) {
           endpoint.lastCheck = Date.now()
+          // Mark as unhealthy for failed health checks
+          this.markEndpointUnhealthy(endpoint, `Health check failed: ${result.error}`)
         }
-        reject(error)
-      })
-
-      req.on('timeout', () => {
-        if (!options.isInitial) {
-          endpoint.lastCheck = Date.now()
-        }
-        req.destroy()
-        const timeoutMessage = options.isInitial ? `Health check timeout (${options.timeout / 1000}s)` : 'Health check timeout'
-        reject(new Error(timeoutMessage))
-      })
-
-      // Send the health check request body
-      req.write(healthCheckBody)
-      req.end()
-    })
+        throw new Error(`Health check failed: ${result.error}`)
+      }
+    }
+    catch (error) {
+      if (!options.isInitial) {
+        endpoint.lastCheck = Date.now()
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        this.markEndpointUnhealthy(endpoint, `Health check error: ${errorMessage}`)
+      }
+      throw error
+    }
   }
 
   private async healthCheck(endpoint: EndpointStatus, isInitial = false): Promise<void> {
@@ -1636,9 +1751,111 @@ export class ProxyServer {
     return this.performHealthCheckRequest(endpoint, { timeout, isInitial })
   }
 
+  /**
+   * Start periodic speed tests for Speed First strategy
+   */
+  private startSpeedTests(): void {
+    if (this.loadBalancerStrategy !== LoadBalancerStrategy.SpeedFirst) {
+      return
+    }
+
+    this.ui.verbose(`Speed tests started with ${this.speedFirstConfig.speedTestIntervalSeconds}s interval`)
+
+    this.speedTestInterval = setInterval(() => {
+      void this.performSpeedTests()
+    }, this.speedFirstConfig.speedTestIntervalSeconds * 1000) // Convert seconds to milliseconds
+  }
+
+  /**
+   * Perform speed tests on all healthy endpoints using the speed test manager
+   */
+  private async performSpeedTests(): Promise<void> {
+    if (this.loadBalancerStrategy !== LoadBalancerStrategy.SpeedFirst || !this.speedTestManager) {
+      return
+    }
+
+    const healthyEndpoints = this.endpoints.filter(e => e.isHealthy)
+
+    if (healthyEndpoints.length === 0) {
+      this.ui.verbose('Speed test: No healthy endpoints available')
+      return
+    }
+
+    this.ui.verbose(`Speed test: Testing ${healthyEndpoints.length} healthy endpoints using ${this.speedFirstConfig.speedTestStrategy} strategy`)
+
+    try {
+      // Extract configs for speed testing
+      const endpointConfigs = healthyEndpoints.map(e => e.config)
+      const results = await this.speedTestManager.testMultipleEndpoints(endpointConfigs)
+
+      // Update endpoint response times based on results
+      for (const endpoint of healthyEndpoints) {
+        const endpointName = endpoint.config.name || endpoint.config.baseUrl || 'unknown'
+        const result = results.get(endpointName)
+
+        if (result) {
+          if (result.success) {
+            // Record successful speed test result
+            this.recordResponseTime(endpoint, result.responseTime)
+          }
+          else {
+            // Mark endpoint as unhealthy if speed test failed
+            this.markEndpointUnhealthy(endpoint, `Speed test failed: ${result.error}`)
+          }
+        }
+      }
+
+      // Log speed test results if verbose is enabled
+      if (this.verbose) {
+        const sorted = healthyEndpoints
+          .filter(e => e.responseTimes.length >= this.speedFirstConfig.minSamples)
+          .sort((a, b) => a.averageResponseTime - b.averageResponseTime)
+
+        if (sorted.length > 0) {
+          this.ui.verbose(`📊 Speed test results (${this.speedFirstConfig.speedTestStrategy}):`)
+          for (const endpoint of sorted) {
+            this.ui.verbose(`   • ${endpoint.config.name}: ${endpoint.averageResponseTime.toFixed(1)}ms avg (${endpoint.responseTimes.length} samples)`)
+          }
+        }
+      }
+    }
+    catch (error) {
+      this.ui.verbose(`Speed test error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * Trigger an immediate speed test when current endpoint fails
+   * This resets the interval to quickly find the fastest alternative
+   */
+  private triggerImmediateSpeedTest(): void {
+    if (this.loadBalancerStrategy !== LoadBalancerStrategy.SpeedFirst) {
+      return
+    }
+
+    // Clear existing interval to reset timing
+    if (this.speedTestInterval) {
+      clearInterval(this.speedTestInterval)
+    }
+
+    // Perform immediate speed test
+    void this.performSpeedTests()
+
+    // Restart the interval from now
+    this.speedTestInterval = setInterval(() => {
+      void this.performSpeedTests()
+    }, this.speedFirstConfig.speedTestIntervalSeconds * 1000) // Convert seconds to milliseconds
+
+    this.ui.verbose(`Speed test interval reset - next test in ${this.speedFirstConfig.speedTestIntervalSeconds}s`)
+  }
+
   async stop(): Promise<void> {
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval)
+    }
+
+    if (this.speedTestInterval) {
+      clearInterval(this.speedTestInterval)
     }
 
     if (this.server) {
@@ -1686,6 +1903,7 @@ export class ProxyServer {
     }
 
     let hasShownQuietMessage = false
+    const healthyEndpoints: EndpointStatus[] = []
 
     // Perform health checks on all endpoints
     for (let i = 0; i < this.endpoints.length; i++) {
@@ -1698,11 +1916,12 @@ export class ProxyServer {
           hasShownQuietMessage = true
         }
         await this.healthCheck(endpoint, true)
+        healthyEndpoints.push(endpoint)
 
         // For Speed First strategy, test all endpoints to collect timing data
         // For other strategies, can return early after first successful endpoint
-        if (i === 0 && this.loadBalancerStrategy !== 'Speed First') {
-          return
+        if (i === 0 && this.loadBalancerStrategy !== LoadBalancerStrategy.SpeedFirst) {
+          // Don't return early - we want to test all endpoints for speed output
         }
       }
       catch (error) {
@@ -1728,8 +1947,103 @@ export class ProxyServer {
       }
     }
 
+    // Only run speed tests for Speed First strategy
+    if (healthyEndpoints.length > 0 && this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst) {
+      this.ui.displayGrey('⚡ Running speed tests on all endpoints...')
+
+      // Create a speed test manager for initial speed testing
+      const speedTestManager = SpeedTestManager.fromConfig(
+        SpeedTestStrategy.ResponseTime, // Always use response time for initial tests
+        {
+          timeout: 8000,
+          verbose: false, // We'll handle the output ourselves
+          debug: this.debug,
+          httpAgent: this.httpAgent,
+          httpsAgent: this.httpsAgent,
+        },
+      )
+
+      try {
+        const endpointConfigs = healthyEndpoints.map(e => e.config)
+        const speedResults = await speedTestManager.testMultipleEndpoints(endpointConfigs)
+
+        // Update endpoint response times and display results
+        const speedData: Array<{ name: string, speed: number, success: boolean }> = []
+
+        for (const endpoint of healthyEndpoints) {
+          const endpointName = endpoint.config.name || endpoint.config.baseUrl || 'unknown'
+          const result = speedResults.get(endpointName)
+
+          if (result && result.success) {
+            this.recordResponseTime(endpoint, result.responseTime)
+            speedData.push({ name: endpointName, speed: result.responseTime, success: true })
+          }
+          else {
+            speedData.push({ name: endpointName, speed: 0, success: false })
+          }
+        }
+
+        // Sort by speed (fastest first) and display
+        const sortedSpeeds = speedData
+          .filter(s => s.success)
+          .sort((a, b) => a.speed - b.speed)
+
+        if (sortedSpeeds.length > 0) {
+          this.ui.info('')
+          this.ui.success('📊 API Speed Test Results:')
+          sortedSpeeds.forEach((item, index) => {
+            const emoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '  '
+            this.ui.info(`   ${emoji} ${item.name}: ${item.speed.toFixed(1)}ms`)
+          })
+          this.ui.info('')
+
+          // Log speed test results to file
+          if (this.debug) {
+            fileLogger.info('SPEED_TEST_RESULTS', 'Initial speed test completed for Speed First strategy', {
+              strategy: this.loadBalancerStrategy,
+              totalTested: sortedSpeeds.length,
+              fastestEndpoint: sortedSpeeds[0].name,
+              fastestSpeed: sortedSpeeds[0].speed,
+              results: sortedSpeeds.map(item => ({
+                name: item.name,
+                responseTime: item.speed,
+              })),
+            })
+          }
+        }
+
+        // Display failed speed tests if any
+        const failedSpeeds = speedData.filter(s => !s.success)
+        if (failedSpeeds.length > 0) {
+          this.ui.warning('❌ Speed test failures:')
+          failedSpeeds.forEach((item) => {
+            this.ui.warning(`   • ${item.name}: Speed test failed`)
+          })
+        }
+      }
+      catch (error) {
+        this.ui.verbose(`Speed test error during initial checks: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+    else if (healthyEndpoints.length > 0) {
+      // For non-Speed First strategies, just show which endpoint we're using
+      const primaryEndpoint = healthyEndpoints[0] // First healthy endpoint will be used
+      const endpointName = primaryEndpoint.config.name || primaryEndpoint.config.baseUrl
+      this.ui.success(`✅ Using endpoint: ${endpointName}`)
+
+      // Log endpoint switching information
+      if (this.debug) {
+        fileLogger.info('ENDPOINT_SWITCH', `Primary endpoint selected for ${this.loadBalancerStrategy} strategy`, {
+          strategy: this.loadBalancerStrategy,
+          selectedEndpoint: endpointName,
+          totalHealthyEndpoints: healthyEndpoints.length,
+          totalEndpoints: this.endpoints.length,
+        })
+      }
+    }
+
     // After initial health checks, display Speed First readiness if applicable
-    if (this.loadBalancerStrategy === 'Speed First') {
+    if (this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst) {
       const readyEndpoints = this.endpoints.filter(e => e.isHealthy && e.responseTimes.length > 0)
       if (readyEndpoints.length > 0) {
         // Sort by average response time to show initial ranking
@@ -1752,10 +2066,10 @@ export class ProxyServer {
     // Check if we have any healthy endpoints left
     const healthyCount = this.endpoints.filter(e => e.isHealthy).length
     if (healthyCount === 0) {
-      log()
+      this.ui.info('')
       this.ui.error('❌ All endpoints failed initial health checks!')
       this.ui.warning('⚠️ Load balancer will continue but may not work properly')
-      log()
+      this.ui.info('')
     }
   }
 

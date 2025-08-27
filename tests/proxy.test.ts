@@ -1090,7 +1090,7 @@ describe('proxyServer', () => {
       const result = await formatUniversalResponse(openaiResponse, 200, headers, mockRes)
 
       expect(result).not.toBeNull()
-      const parsedResult = JSON.parse(result!)
+      const parsedResult = JSON.parse(result)
       expect(parsedResult.type).toBe('message')
       expect(parsedResult.content).toBeDefined()
       expect(Array.isArray(parsedResult.content)).toBe(true)
@@ -1109,7 +1109,7 @@ describe('proxyServer', () => {
       const result = await formatUniversalResponse(invalidResponse, 200, headers, mockRes)
 
       expect(result).not.toBeNull()
-      const parsedResult = JSON.parse(result!)
+      const parsedResult = JSON.parse(result)
       expect(parsedResult.error).toBeDefined()
       expect(parsedResult.error.type).toBe('format_error')
       expect(parsedResult.error.originalResponse).toBe('This is not valid JSON')
@@ -1132,7 +1132,7 @@ describe('proxyServer', () => {
       const result = await formatUniversalResponse(regularResponse, 200, headers, mockRes)
 
       expect(result).not.toBeNull()
-      const parsedResult = JSON.parse(result!)
+      const parsedResult = JSON.parse(result)
       expect(parsedResult.type).toBe('message')
       expect(parsedResult.content[0].text).toBe('Hello from Anthropic!')
     })
@@ -1149,7 +1149,7 @@ describe('proxyServer', () => {
       const result = await formatUniversalResponse(errorResponse, 401, headers, mockRes)
 
       expect(result).not.toBeNull()
-      const parsedResult = JSON.parse(result!)
+      const parsedResult = JSON.parse(result)
       expect(parsedResult.error).toBe('Unauthorized')
       expect(mockRes.statusCode).toBe(401) // Should set the error status code
     })

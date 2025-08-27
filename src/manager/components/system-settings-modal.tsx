@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { LoadBalancerStrategy, SystemSettings } from '@/config/types'
+import type { SystemSettings } from '@/config/types'
 import { Activity, AlertCircle, Cloud, Database, Globe, Key, Lock, Settings2, Timer, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
 
 interface SystemSettingsModalProps {
   open: boolean
@@ -25,7 +26,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
     overrideClaudeCommand: initialSettings?.overrideClaudeCommand || false,
     balanceMode: {
       enableByDefault: initialSettings?.balanceMode?.enableByDefault || false,
-      strategy: initialSettings?.balanceMode?.strategy || 'Fallback',
+      strategy: initialSettings?.balanceMode?.strategy || LoadBalancerStrategy.Fallback,
       healthCheck: {
         enabled: initialSettings?.balanceMode?.healthCheck?.enabled !== false,
         intervalMs: initialSettings?.balanceMode?.healthCheck?.intervalMs || 30000,
@@ -36,6 +37,8 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
       speedFirst: initialSettings?.balanceMode?.speedFirst || {
         responseTimeWindowMs: 300000,
         minSamples: 2,
+        speedTestIntervalSeconds: 300,
+        speedTestStrategy: SpeedTestStrategy.ResponseTime,
       },
     },
     s3Sync: initialSettings?.s3Sync
@@ -209,22 +212,22 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                     </p>
                   </div>
                   <Select
-                    value={settings.balanceMode?.strategy || 'Fallback'}
+                    value={settings.balanceMode?.strategy || LoadBalancerStrategy.Fallback}
                     onValueChange={(value: LoadBalancerStrategy) => handleBalanceModeChange('strategy', value)}
                   >
                     <SelectTrigger className="w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Fallback">Fallback</SelectItem>
-                      <SelectItem value="Polling">Polling</SelectItem>
-                      <SelectItem value="Speed First">Speed First</SelectItem>
+                      <SelectItem value={LoadBalancerStrategy.Fallback}>Fallback</SelectItem>
+                      <SelectItem value={LoadBalancerStrategy.Polling}>Polling</SelectItem>
+                      <SelectItem value={LoadBalancerStrategy.SpeedFirst}>Speed First</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 {/* Speed First Configuration */}
-                {settings.balanceMode?.strategy === 'Speed First' && (
+                {settings.balanceMode?.strategy === LoadBalancerStrategy.SpeedFirst && (
                   <div className="space-y-3 p-3 rounded-lg border bg-muted/50">
                     <div className="flex items-center gap-2 mb-2">
                       <Timer className="h-4 w-4 text-orange-600 dark:text-orange-400" />
@@ -262,6 +265,45 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                         />
                         <p className="text-xs text-muted-foreground mt-1">
                           Minimum samples before using speed-based routing
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="speedTestInterval" className="text-sm font-medium">Speed Test Interval</Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            id="speedTestInterval"
+                            type="number"
+                            min="30"
+                            max="3600"
+                            className="w-20"
+                            value={settings.balanceMode?.speedFirst?.speedTestIntervalSeconds || 300}
+                            onChange={e => handleSpeedFirstChange('speedTestIntervalSeconds', Number(e.target.value))}
+                          />
+                          <span className="text-sm text-muted-foreground">seconds</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          How often to test endpoint speeds (30-3600 seconds)
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="speedTestStrategy" className="text-sm font-medium">Speed Test Strategy</Label>
+                        <Select
+                          value={settings.balanceMode?.speedFirst?.speedTestStrategy || SpeedTestStrategy.ResponseTime}
+                          onValueChange={(value: SpeedTestStrategy) => handleSpeedFirstChange('speedTestStrategy', value)}
+                        >
+                          <SelectTrigger className="w-full mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={SpeedTestStrategy.ResponseTime}>Response Time</SelectItem>
+                            <SelectItem value={SpeedTestStrategy.HeadRequest}>Head Request</SelectItem>
+                            <SelectItem value={SpeedTestStrategy.Ping}>Ping</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Method used to measure endpoint speed
                         </p>
                       </div>
                     </div>

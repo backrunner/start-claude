@@ -238,11 +238,13 @@ function smartMergeConfigs(
             // Only add if local config is not deleted (i.e., it's a genuine new config)
             resolved.configs.push(localItem)
             resolutionDetails.push(`Added local-only config: ${conflict.configName}`)
-          } else if (localItem?.isDeleted) {
+          }
+          else if (localItem?.isDeleted) {
             // Local has a deletion tombstone - respect the deletion
             resolutionDetails.push(`Respected local deletion of config: ${conflict.configName}`)
           }
-        } else if (conflict.localValue === 'missing' && conflict.remoteValue === 'exists') {
+        }
+        else if (conflict.localValue === 'missing' && conflict.remoteValue === 'exists') {
           // Remote config exists but missing locally - keep remote (already in resolved)
           // Unless we have a local deletion record indicating this was intentionally deleted
           const localTombstone = localConfigMap.get(configName)
@@ -298,7 +300,7 @@ function smartMergeConfigs(
 
   // Clean up old deletion tombstones (older than 30 days)
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-  resolved.configs = resolved.configs.filter(config => {
+  resolved.configs = resolved.configs.filter((config) => {
     if (!config.isDeleted || !config.deletedAt) {
       return true // Keep non-deleted configs
     }
@@ -469,7 +471,7 @@ function resolveFieldConflict(
  */
 export function displayConflictResolution(resolution: ConflictResolution, options: ConflictResolutionOptions = {}): void {
   const logger = new UILogger(options.verbose)
-  
+
   if (!resolution.hasConflicts) {
     logger.displayVerbose('No configuration conflicts detected')
     return
