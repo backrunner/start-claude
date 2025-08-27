@@ -127,22 +127,20 @@ Configure via web interface (`start-claude manager`) or system settings:
 - **Disable Health Checks**: Use simple round-robin with endpoint banning
   start-claude -e DEBUG=1 -e NODE_ENV=prod --verbose
 
-# Short alias
+## Short alias
 
-scc --api-key sk-key --model claude-3-haiku
-
-````
+scc --api-key sk-key --model claude-3-haik
 
 ## Editor Mode
 
-Edit configurations in your preferred editor:
+Editing configuration in your prefer editor.
 
 ```bash
 # Supported editors: VS Code, Cursor, Windsurf, Notepad, etc.
 start-claude add -e             # Create config in editor
 start-claude edit myconfig -e   # Edit config in editor
 start-claude edit-config        # Edit config file directly with live reload
-````
+```
 
 ## Claude Code Documentation
 

@@ -111,22 +111,19 @@ start-claude manager
 - **禁用健康检查**：使用带端点禁用的简单轮询
   start-claude -e DEBUG=1 -e NODE_ENV=prod --verbose
 
-# 短别名
+## 短别名
 
 scc --api-key sk-key --model claude-3-haiku
-
-````
 
 ## 编辑器模式
 
 在你喜欢的编辑器中编辑配置：
 
 ```bash
-# 支持的编辑器：VS Code、Cursor、Windsurf、记事本等
 start-claude add -e             # 在编辑器中创建配置
 start-claude edit myconfig -e   # 在编辑器中编辑配置
 start-claude edit-config        # 直接编辑配置文件，支持实时重载
-````
+```
 
 ## Claude Code 文档
 
@@ -154,3 +151,7 @@ MIT 许可证
 - **[llms](https://github.com/musistudio/llms)** - Claude Code Router Core Service
 - **[ccusage](https://github.com/LouisShark/ccusage)** - 全面的 Claude Code 使用分析和成本跟踪工具
 - **[ccstatusline](https://github.com/LouisShark/ccstatusline)** - Shell 和编辑器的实时 Claude Code 状态行集成
+
+```
+
+```
