@@ -700,6 +700,61 @@ export class ProxyServer {
   }
 
   /**
+   * Handle HTTP error status codes and retry logic
+   */
+  private async handleHttpErrorResponse(
+    proxyRes: http.IncomingMessage,
+    res: http.ServerResponse,
+    endpoint: EndpointStatus,
+    req: http.IncomingMessage,
+    body: Buffer,
+    requestData: any,
+    context: { isTransformer?: boolean, transformerName?: string } = {},
+  ): Promise<boolean> {
+    if (!proxyRes.statusCode || proxyRes.statusCode < 400) {
+      return false // Not an error, continue normal processing
+    }
+
+    const statusCode = proxyRes.statusCode
+    const errorMessage = `HTTP ${statusCode}`
+
+    // Mark endpoint as unhealthy for all error status codes
+    this.markEndpointUnhealthy(endpoint, errorMessage)
+
+    // For certain error codes, try to retry with a different endpoint
+    const shouldRetry = (statusCode >= 404 && statusCode <= 499) || statusCode >= 500
+
+    if (shouldRetry && this.enableLoadBalance && !res.headersSent) {
+      const nextEndpoint = this.getNextHealthyEndpoint()
+      if (nextEndpoint && nextEndpoint !== endpoint) {
+        const endpointType = context.isTransformer ? `transformer ${endpoint.config.name}` : endpoint.config.name
+        this.ui.verbose(`HTTP ${statusCode} from ${endpointType}, retrying with ${nextEndpoint.config.name}`)
+
+        if (this.debug) {
+          fileLogger.info('HTTP_ERROR_RETRY', `Retrying ${context.isTransformer ? 'transformer' : 'regular'} request due to HTTP error from endpoint`, {
+            statusCode,
+            failedEndpoint: endpoint.config.name,
+            retryEndpoint: nextEndpoint.config.name,
+            ...(context.transformerName ? { transformerName: context.transformerName } : {}),
+            loadBalancerStrategy: this.loadBalancerStrategy,
+          })
+        }
+
+        // Retry the request with the new endpoint
+        if (context.isTransformer) {
+          void this.proxyRequest(req, res, nextEndpoint)
+        }
+        else {
+          void this.retryRequest(req.method || 'GET', req.url || '/', { ...req.headers }, body, res, nextEndpoint, Boolean(requestData.stream))
+        }
+        return true // Handled with retry
+      }
+    }
+
+    return false // Error occurred but no retry possible
+  }
+
+  /**
    * Process response stream and apply formatting
    */
   private async processResponseStream(
@@ -742,12 +797,10 @@ export class ProxyServer {
     }
 
     // Mark endpoint health based on status code
-    if (proxyRes.statusCode && proxyRes.statusCode < 500) {
+    if (proxyRes.statusCode && proxyRes.statusCode < 400) {
       this.markEndpointHealthy(endpoint)
     }
-    else if (proxyRes.statusCode && proxyRes.statusCode >= 500) {
-      this.markEndpointUnhealthy(endpoint, `HTTP ${proxyRes.statusCode}`)
-    }
+    // Note: HTTP errors (>=400) are now handled earlier in the request handlers
   }
 
   private isStreamingResponse(headers: http.IncomingHttpHeaders): boolean {
@@ -1153,27 +1206,38 @@ export class ProxyServer {
               }
 
               const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
-                // Log proxy response if debug is enabled
-                if (this.debug) {
-                  fileLogger.info('TRANSFORM_RESPONSE', 'Received response from external API via transformer', {
-                    statusCode: proxyRes.statusCode || 0,
-                    statusMessage: proxyRes.statusMessage || 'Unknown',
-                    transformerName,
-                    targetProvider: provider.name,
-                    targetUrl: targetUrl.toString(),
-                    headers: proxyRes.headers,
-                  })
-                }
+                void (async () => {
+                  // Log proxy response if debug is enabled
+                  if (this.debug) {
+                    fileLogger.info('TRANSFORM_RESPONSE', 'Received response from external API via transformer', {
+                      statusCode: proxyRes.statusCode || 0,
+                      statusMessage: proxyRes.statusMessage || 'Unknown',
+                      transformerName,
+                      targetProvider: provider.name,
+                      targetUrl: targetUrl.toString(),
+                      headers: proxyRes.headers,
+                    })
+                  }
 
-                // Use shared response processing method
-                void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
-                  isTransformer: true,
-                  transformer,
-                  transformerName,
-                  provider,
-                  targetUrl,
-                  clientExpectsStream: Boolean(requestData.stream),
-                })
+                  // Check for HTTP error status codes and handle retries
+                  const wasHandled = await this.handleHttpErrorResponse(proxyRes, res, endpoint, req, body, requestData, {
+                    isTransformer: true,
+                    transformerName,
+                  })
+                  if (wasHandled) {
+                    return // Error was handled with retry
+                  }
+
+                  // Use shared response processing method
+                  void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
+                    isTransformer: true,
+                    transformer,
+                    transformerName,
+                    provider,
+                    targetUrl,
+                    clientExpectsStream: Boolean(requestData.stream),
+                  })
+                })()
               })
 
               proxyReq.on('error', (error) => {
@@ -1306,23 +1370,33 @@ export class ProxyServer {
           }
 
           const proxyReq = httpModule.request(targetUrl, options, (proxyRes) => {
-            // Log proxy response if debug is enabled
-            if (this.debug) {
-              fileLogger.info('REGULAR_RESPONSE', 'Received response from external API (direct proxy)', {
-                statusCode: proxyRes.statusCode || 0,
-                statusMessage: proxyRes.statusMessage || 'Unknown',
-                endpointName: endpoint.config.name,
-                targetUrl: targetUrl.toString(),
-                headers: proxyRes.headers,
-              })
-            }
+            void (async () => {
+              // Log proxy response if debug is enabled
+              if (this.debug) {
+                fileLogger.info('REGULAR_RESPONSE', 'Received response from external API (direct proxy)', {
+                  statusCode: proxyRes.statusCode || 0,
+                  statusMessage: proxyRes.statusMessage || 'Unknown',
+                  endpointName: endpoint.config.name,
+                  targetUrl: targetUrl.toString(),
+                  headers: proxyRes.headers,
+                })
+              }
 
-            // Use shared response processing method
-            void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
-              isTransformer: false,
-              targetUrl,
-              clientExpectsStream: Boolean(requestData.stream),
-            })
+              // Check for HTTP error status codes and handle retries
+              const wasHandled = await this.handleHttpErrorResponse(proxyRes, res, endpoint, req, body, requestData, {
+                isTransformer: false,
+              })
+              if (wasHandled) {
+                return // Error was handled with retry
+              }
+
+              // Use shared response processing method
+              void this.processResponseStream(proxyRes, res, endpoint, requestTiming, {
+                isTransformer: false,
+                targetUrl,
+                clientExpectsStream: Boolean(requestData.stream),
+              })
+            })()
           })
 
           proxyReq.on('error', (error) => {
