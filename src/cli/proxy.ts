@@ -217,7 +217,7 @@ export async function handleProxyMode(
     const transformerConfigs = proxyableConfigs.filter(c => TransformerService.isTransformerEnabled(c.transformerEnabled))
 
     if (apiConfigs.length > 0 && transformerConfigs.length > 0) {
-      ui.success('🔧 Hybrid proxy server is running! (Load balancer + Transformer)')
+      ui.success('🔧 Proxy server is running!')
       ui.info('Starting Claude Code with hybrid proxy...')
     }
     else if (apiConfigs.length > 1) {

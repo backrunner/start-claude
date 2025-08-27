@@ -565,6 +565,21 @@ export class ProxyServer {
 
     this.ui.verbose(`Speed First: Selected fastest endpoint ${sortedBySpeed[0].config.name} (avg: ${sortedBySpeed[0].averageResponseTime}ms, samples: ${sortedBySpeed[0].responseTimes.length})`)
 
+    // Log endpoint selection for Speed First strategy
+    if (this.debug) {
+      fileLogger.info('SPEED_FIRST_SELECTION', `Fastest endpoint selected for request`, {
+        selectedEndpoint: sortedBySpeed[0].config.name,
+        averageResponseTime: sortedBySpeed[0].averageResponseTime,
+        sampleCount: sortedBySpeed[0].responseTimes.length,
+        totalRequests: sortedBySpeed[0].totalRequests,
+        alternativeEndpoints: sortedBySpeed.slice(1, 3).map(e => ({
+          name: e.config.name,
+          averageResponseTime: e.averageResponseTime,
+          sampleCount: e.responseTimes.length,
+        })),
+      })
+    }
+
     return sortedBySpeed[0]
   }
 
@@ -1832,8 +1847,8 @@ export class ProxyServer {
       }
     }
 
-    // Now run speed tests on all healthy endpoints to show speeds
-    if (healthyEndpoints.length > 0) {
+    // Only run speed tests for Speed First strategy
+    if (healthyEndpoints.length > 0 && this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst) {
       this.ui.displayGrey('⚡ Running speed tests on all endpoints...')
 
       // Create a speed test manager for initial speed testing
@@ -1881,6 +1896,20 @@ export class ProxyServer {
             this.ui.info(`   ${emoji} ${item.name}: ${item.speed.toFixed(1)}ms`)
           })
           this.ui.info('')
+
+          // Log speed test results to file
+          if (this.debug) {
+            fileLogger.info('SPEED_TEST_RESULTS', 'Initial speed test completed for Speed First strategy', {
+              strategy: this.loadBalancerStrategy,
+              totalTested: sortedSpeeds.length,
+              fastestEndpoint: sortedSpeeds[0].name,
+              fastestSpeed: sortedSpeeds[0].speed,
+              results: sortedSpeeds.map(item => ({
+                name: item.name,
+                responseTime: item.speed,
+              })),
+            })
+          }
         }
 
         // Display failed speed tests if any
@@ -1894,6 +1923,22 @@ export class ProxyServer {
       }
       catch (error) {
         this.ui.verbose(`Speed test error during initial checks: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+    else if (healthyEndpoints.length > 0) {
+      // For non-Speed First strategies, just show which endpoint we're using
+      const primaryEndpoint = healthyEndpoints[0] // First healthy endpoint will be used
+      const endpointName = primaryEndpoint.config.name || primaryEndpoint.config.baseUrl
+      this.ui.success(`✅ Using endpoint: ${endpointName}`)
+
+      // Log endpoint switching information
+      if (this.debug) {
+        fileLogger.info('ENDPOINT_SWITCH', `Primary endpoint selected for ${this.loadBalancerStrategy} strategy`, {
+          strategy: this.loadBalancerStrategy,
+          selectedEndpoint: endpointName,
+          totalHealthyEndpoints: healthyEndpoints.length,
+          totalEndpoints: this.endpoints.length,
+        })
       }
     }
 
