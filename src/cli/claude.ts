@@ -131,6 +131,15 @@ async function startClaudeProcess(
 }
 
 function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
+  // First, apply environment variables from the env map (lower priority)
+  if (config.env) {
+    Object.entries(config.env).forEach(([key, value]) => {
+      if (typeof value === 'string' && value.length > 0) {
+        env[key] = value
+      }
+    })
+  }
+
   // Basic configuration
   const basicEnvMap: Array<[keyof ClaudeConfig, string]> = [
     ['baseUrl', 'ANTHROPIC_BASE_URL'],
@@ -181,7 +190,7 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
     ['disableTelemetry', 'DISABLE_TELEMETRY'],
   ]
 
-  // Set basic string environment variables
+  // Set basic string environment variables (higher priority - will override env map)
   basicEnvMap.forEach(([configKey, envKey]) => {
     const value = config[configKey]
     if (typeof value === 'string' && value.length > 0) {
@@ -193,7 +202,7 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
     }
   })
 
-  // Set numeric environment variables
+  // Set numeric environment variables (higher priority - will override env map)
   numericEnvMap.forEach(([configKey, envKey]) => {
     const value = config[configKey] as number | undefined
     if (typeof value === 'number') {
@@ -201,7 +210,7 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
     }
   })
 
-  // Set boolean environment variables
+  // Set boolean environment variables (higher priority - will override env map)
   booleanEnvMap.forEach(([configKey, envKey]) => {
     const value = config[configKey] as boolean | undefined
     if (typeof value === 'boolean') {

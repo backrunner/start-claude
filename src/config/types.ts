@@ -13,6 +13,9 @@ export interface ClaudeConfig {
   deletedAt?: string // ISO timestamp when config was deleted, for soft deletion tracking
   isDeleted?: boolean // Simple flag to mark config as deleted (tombstone)
 
+  // Environment variables map - conflicts resolved by individual properties taking precedence
+  env?: Record<string, string>
+
   // Environment variables for Claude Code
   authToken?: string
   customHeaders?: string

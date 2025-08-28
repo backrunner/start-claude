@@ -424,6 +424,13 @@ function resolveFieldConflict(
       return remoteValue
     }
 
+    case 'env': {
+      // For env maps, merge both with local taking precedence for conflicts
+      const mergedEnv = { ...(remoteValue || {}), ...(localValue || {}) }
+      resolutionDetails.push(`Merged env variables with local values taking precedence`)
+      return mergedEnv
+    }
+
     case 'isDeleted':
       // For deletion flags, prefer the more recent deletion
       if (localValue && remoteValue) {
