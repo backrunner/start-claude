@@ -4,9 +4,9 @@ import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
 import { Settings } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { ConfigForm } from '@/components/config-form'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ConfigForm } from './config-form'
 
 interface ConfigFormModalProps {
   open: boolean

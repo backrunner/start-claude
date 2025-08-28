@@ -3,9 +3,9 @@
 import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
 import { Settings } from 'lucide-react'
-import { ConfigItem } from './config-item'
 import { Card, CardContent } from '@/components/ui/card'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { ConfigItem } from './config-item'
 
 interface ConfigListProps {
   configs: ClaudeConfig[]

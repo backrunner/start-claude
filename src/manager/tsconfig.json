@@ -8,7 +8,8 @@
     "moduleResolution": "bundler",
     "paths": {
       "@/*": ["./*"],
-      "@/config/types": ["../config/types"]
+      "@/config/types": ["../config/types"],
+      "@/config/manager": ["../config/manager"]
     },
     "resolveJsonModule": true,
     "allowJs": true,

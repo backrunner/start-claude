@@ -1,11 +1,21 @@
 'use client'
 
+import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { useEffect, useRef } from 'react'
 
-export function useWebSocket() {
+interface WebSocketHookOptions {
+  onConfigUpdate?: (configs: ClaudeConfig[], settings: SystemSettings) => void
+}
+
+interface UseWebSocketReturn {
+  cleanup: () => void
+}
+
+export function useWebSocket(options: WebSocketHookOptions = {}): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null)
   const healthCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const useHealthCheckRef = useRef(false)
+  const { onConfigUpdate } = options
 
   // Health check fallback when WebSocket is not available
   const healthCheck = async (): Promise<boolean> => {
@@ -80,6 +90,10 @@ export function useWebSocket() {
           if (message.type === 'shutdown') {
             console.log('Shutdown message received via WebSocket, closing page...')
             window.close()
+          }
+          else if (message.type === 'configUpdate' && onConfigUpdate) {
+            console.log('Config update message received via WebSocket')
+            onConfigUpdate(message.data.configs, message.data.settings)
           }
         }
         catch (error) {

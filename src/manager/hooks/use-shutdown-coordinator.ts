@@ -3,7 +3,11 @@
 import { useEffect, useState } from 'react'
 import { ShutdownCoordinator } from '@/lib/shutdown-coordinator'
 
-export function useShutdownCoordinator() {
+interface UseShutdownCoordinatorReturn {
+  shutdownCoordinator: ShutdownCoordinator | null
+}
+
+export function useShutdownCoordinator(): UseShutdownCoordinatorReturn {
   const [shutdownCoordinator, setShutdownCoordinator] = useState<ShutdownCoordinator | null>(null)
 
   useEffect(() => {
@@ -79,5 +83,5 @@ export function useShutdownCoordinator() {
     }
   }, [])
 
-  return shutdownCoordinator
+  return { shutdownCoordinator }
 }

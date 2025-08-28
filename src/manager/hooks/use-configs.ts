@@ -4,33 +4,28 @@ import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { useState } from 'react'
 import { useToast } from '@/lib/use-toast'
 
-export function useConfigs() {
+interface UseConfigsReturn {
+  configs: ClaudeConfig[]
+  settings: SystemSettings
+  error: string | null
+  setError: (error: string | null) => void
+  saveConfig: (config: ClaudeConfig, isEditing: boolean) => Promise<void>
+  updateConfigs: (updatedConfigs: ClaudeConfig[], customMessage?: string) => Promise<void>
+  deleteConfig: (configName: string) => Promise<void>
+  saveSettings: (newSettings: SystemSettings) => Promise<void>
+  updateConfigsAndSettings: (newConfigs: ClaudeConfig[], newSettings: SystemSettings) => void
+}
+
+export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: SystemSettings): UseConfigsReturn {
   const { toast } = useToast()
-  const [configs, setConfigs] = useState<ClaudeConfig[]>([])
-  const [settings, setSettings] = useState<SystemSettings>({} as SystemSettings)
-  const [loading, setLoading] = useState(true)
+  const [configs, setConfigs] = useState<ClaudeConfig[]>(initialConfigs || [])
+  const [settings, setSettings] = useState<SystemSettings>(initialSettings || {} as SystemSettings)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchConfigs = async (): Promise<void> => {
-    try {
-      setError(null)
-      const response = await fetch('/api/configs')
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch configurations')
-      }
-
-      const data = await response.json()
-      setConfigs(data.configs || [])
-      setSettings(data.settings || {})
-    }
-    catch (error) {
-      console.error('Error fetching configs:', error)
-      setError(error instanceof Error ? error.message : 'Failed to load configurations')
-    }
-    finally {
-      setLoading(false)
-    }
+  // Function to update configs and settings (for WebSocket updates)
+  const updateConfigsAndSettings = (newConfigs: ClaudeConfig[], newSettings: SystemSettings): void => {
+    setConfigs(newConfigs)
+    setSettings(newSettings)
   }
 
   const saveConfig = async (config: ClaudeConfig, isEditing: boolean): Promise<void> => {
@@ -46,7 +41,7 @@ export function useConfigs() {
         throw new Error(errorData.error || 'Failed to save config')
       }
 
-      await fetchConfigs()
+      // No need to refetch - WebSocket will update configs automatically
 
       toast({
         title: 'Configuration saved',
@@ -114,7 +109,7 @@ export function useConfigs() {
         throw new Error(errorData.error || 'Failed to delete config')
       }
 
-      await fetchConfigs()
+      // No need to refetch - WebSocket will update configs automatically
 
       toast({
         title: 'Configuration deleted',
@@ -175,13 +170,12 @@ export function useConfigs() {
   return {
     configs,
     settings,
-    loading,
     error,
     setError,
-    fetchConfigs,
     saveConfig,
     updateConfigs,
     deleteConfig,
     saveSettings,
+    updateConfigsAndSettings, // Export for WebSocket updates
   }
 }

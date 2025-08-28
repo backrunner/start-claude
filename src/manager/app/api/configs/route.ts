@@ -1,8 +1,8 @@
 import type { NextRequest } from 'next/server'
 import type { ClaudeConfig } from '@/config/types'
 import { NextResponse } from 'next/server'
+import { ConfigManager } from '@/config/manager'
 import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
-import { ConfigManager } from '../../../../config/manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -17,29 +17,6 @@ function getConfigs(): ClaudeConfig[] {
   catch (error) {
     console.error('Error reading configs:', error)
     return []
-  }
-}
-
-function getSettings(): any {
-  try {
-    const configFile = configManager.load()
-    return configFile.settings || { overrideClaudeCommand: false }
-  }
-  catch (error) {
-    console.error('Error reading settings:', error)
-    return { overrideClaudeCommand: false }
-  }
-}
-
-export async function GET(): Promise<NextResponse> {
-  try {
-    const configs = getConfigs()
-    const settings = getSettings()
-    return NextResponse.json({ configs, settings })
-  }
-  catch (error) {
-    console.error('GET /api/configs error:', error)
-    return NextResponse.json({ error: 'Failed to fetch configs' }, { status: 500 })
   }
 }
 

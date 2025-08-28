@@ -2,12 +2,12 @@
 
 import type { DragEndEvent } from '@dnd-kit/core'
 import type { ReactNode } from 'react'
-import type { ClaudeConfig } from '@/config/types'
+import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { AlertCircle } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ConfigFormModal } from '@/components/config/config-form-modal'
 import { ConfigList } from '@/components/config/config-list'
 import { ConfirmDeleteModal } from '@/components/config/confirm-delete-modal'
@@ -23,20 +23,21 @@ import { useWebSocket } from '@/hooks/use-websocket'
 
 interface HomePageProps {
   isVSCode: boolean
+  initialConfigs: ClaudeConfig[]
+  initialSettings: SystemSettings
 }
 
-export default function HomePage({ isVSCode }: HomePageProps): ReactNode {
+export default function HomePage({ isVSCode, initialConfigs, initialSettings }: HomePageProps): ReactNode {
   const {
     configs,
     settings,
-    loading,
     error,
-    fetchConfigs,
     saveConfig,
     updateConfigs,
     deleteConfig: deleteConfigAPI,
     saveSettings,
-  } = useConfigs()
+    updateConfigsAndSettings,
+  } = useConfigs(initialConfigs, initialSettings)
 
   const [editingConfig, setEditingConfig] = useState<ClaudeConfig | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -44,8 +45,13 @@ export default function HomePage({ isVSCode }: HomePageProps): ReactNode {
   const [deleteConfig, setDeleteConfig] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
 
-  const shutdownCoordinator = useShutdownCoordinator()
-  useWebSocket()
+  const { shutdownCoordinator } = useShutdownCoordinator()
+  useWebSocket({
+    onConfigUpdate: (newConfigs, newSettings) => {
+      console.log('Received config update via WebSocket')
+      updateConfigsAndSettings(newConfigs, newSettings)
+    },
+  })
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -54,9 +60,7 @@ export default function HomePage({ isVSCode }: HomePageProps): ReactNode {
     }),
   )
 
-  useEffect(() => {
-    void fetchConfigs()
-  }, [])
+  // No need for useEffect to fetch configs since we get them via SSR and WebSocket updates
 
   const handleSaveConfig = async (config: ClaudeConfig): Promise<void> => {
     await saveConfig(config, !!editingConfig)
@@ -126,25 +130,7 @@ export default function HomePage({ isVSCode }: HomePageProps): ReactNode {
     void updateConfigs(updatedConfigs, `Configuration "${configName}" has been set as the default.`)
   }
 
-  if (loading) {
-    return (
-      <VSCodeProvider isVSCode={isVSCode}>
-        <div className="min-h-screen bg-background">
-          <div className="container mx-auto p-6">
-            <div className="flex items-center justify-center h-64">
-              <div className="flex items-center gap-4">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <div>
-                  <p className="text-lg font-medium">Loading configurations...</p>
-                  <p className="text-sm text-muted-foreground">Please wait while we fetch your Claude settings</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </VSCodeProvider>
-    )
-  }
+  // Remove loading state logic since SSR provides data immediately
 
   return (
     <VSCodeProvider isVSCode={isVSCode}>

@@ -1,5 +1,9 @@
+import { existsSync, statSync, unwatchFile, watchFile } from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { NextResponse } from 'next/server'
 import { WebSocketServer } from 'ws'
+import { ConfigManager } from '@/config/manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -10,6 +14,72 @@ let wsServer: any = null
 
 // Store active WebSocket connections
 const activeConnections = new Set<any>()
+
+// Config file watcher state
+let configWatcher: { cleanup: () => void } | null = null
+
+// Get config file path (same as in ConfigFileManager)
+const CONFIG_FILE = path.join(os.homedir(), '.start-claude', 'config.json')
+
+// Initialize config file watcher
+function initConfigWatcher(): void {
+  if (configWatcher) {
+    return // Already watching
+  }
+
+  try {
+    const configFile = CONFIG_FILE
+
+    if (!existsSync(configFile)) {
+      console.warn('Config file does not exist, skipping file watcher setup')
+      return
+    }
+
+    let lastModified = 0
+
+    // Get initial modification time
+    const stats = statSync(configFile)
+    lastModified = stats.mtime.getTime()
+
+    const watchCallback = (): void => {
+      try {
+        const stats = existsSync(configFile) ? statSync(configFile) : null
+        if (stats && stats.mtime.getTime() !== lastModified) {
+          lastModified = stats.mtime.getTime()
+
+          console.log('Config file changed, broadcasting update to WebSocket clients')
+
+          // Load updated configs and settings
+          const configManager = ConfigManager.getInstance()
+          const configs = configManager.listConfigs()
+          const configFileData = configManager.load()
+          const settings = configFileData.settings || { overrideClaudeCommand: false }
+
+          broadcastConfigUpdate(configs, settings)
+        }
+      }
+      catch (error) {
+        console.error('Error in config file watcher:', error)
+      }
+    }
+
+    // Start watching
+    watchFile(configFile, { interval: 1000 }, watchCallback)
+
+    configWatcher = {
+      cleanup: () => {
+        unwatchFile(configFile, watchCallback)
+        configWatcher = null
+        console.log('Config file watcher stopped')
+      },
+    }
+
+    console.log('Config file watcher started for:', configFile)
+  }
+  catch (error) {
+    console.error('Failed to setup config file watcher:', error)
+  }
+}
 
 // Initialize WebSocket server if not already created
 function initWebSocketServer(): any {
@@ -53,6 +123,10 @@ function initWebSocketServer(): any {
     })
 
     console.log('WebSocket server started on port 3001')
+
+    // Initialize config file watcher when WebSocket server starts
+    initConfigWatcher()
+
     return wsServer
   }
   catch (error) {
@@ -84,6 +158,38 @@ export async function GET(): Promise<NextResponse> {
   }
 }
 
+// Function to broadcast config updates to all connected clients
+export function broadcastConfigUpdate(configs: any[], settings: any): void {
+  console.log(`Broadcasting config update to ${activeConnections.size} connections`)
+
+  if (activeConnections.size === 0) {
+    console.log('No WebSocket connections to notify')
+    return
+  }
+
+  const message = JSON.stringify({
+    type: 'configUpdate',
+    data: {
+      configs,
+      settings,
+    },
+    timestamp: Date.now(),
+  })
+
+  activeConnections.forEach((ws) => {
+    try {
+      if (ws.readyState === 1) { // OPEN
+        ws.send(message)
+        console.log('Config update message sent to WebSocket client')
+      }
+    }
+    catch (error) {
+      console.error('Error sending config update message:', error)
+      activeConnections.delete(ws)
+    }
+  })
+}
+
 // Function to broadcast shutdown message to all connected clients
 export function broadcastShutdown(): void {
   console.log(`Broadcasting shutdown to ${activeConnections.size} connections`)
@@ -110,6 +216,11 @@ export function broadcastShutdown(): void {
       activeConnections.delete(ws)
     }
   })
+
+  // Clean up config watcher
+  if (configWatcher) {
+    configWatcher.cleanup()
+  }
 
   // Clean up connections after sending shutdown
   setTimeout(() => {
