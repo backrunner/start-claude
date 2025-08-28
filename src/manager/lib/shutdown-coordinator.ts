@@ -12,14 +12,32 @@ export class ShutdownCoordinator {
   private isReloading: boolean = false
 
   constructor(channelName = 'claude-manager') {
-    this.channel = new BroadcastChannel(channelName)
+    // Generate unique tab ID
     this.tabId = `tab-${Date.now()}-${Math.random()}`
     this.activeTabs = new Set([this.tabId])
     this.isLastTab = true
     this.isReloading = false
 
-    this.setupChannelListeners()
-    this.announcePresence()
+    // Only initialize browser-specific features in client environment
+    if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+      this.channel = new BroadcastChannel(channelName)
+      this.setupChannelListeners()
+      this.announcePresence()
+    }
+    else {
+      // Create a no-op channel for SSR compatibility
+      this.channel = {
+        name: channelName,
+        postMessage: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        close: () => {},
+        onmessage: null,
+        onmessageerror: null,
+        dispatchEvent: () => false,
+      } as BroadcastChannel
+    }
+
     this.setupReloadDetection()
   }
 
@@ -27,59 +45,103 @@ export class ShutdownCoordinator {
    * Setup reload detection to differentiate between reload and actual close
    */
   private setupReloadDetection(): void {
-    // Detect common reload patterns
-    if (typeof window !== 'undefined') {
-      // Listen for reload-related events
-      window.addEventListener('beforeunload', () => {
+    // Only setup reload detection in browser environment
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    // Listen for reload-related events
+    window.addEventListener(
+      'beforeunload',
+      () => {
         // Check if this is likely a reload vs. actual close
         this.detectReload()
-      }, { passive: true })
+      },
+      { passive: true },
+    )
 
-      // Override window.location.reload to mark as reload
-      const originalReload = window.location.reload.bind(window.location)
-      window.location.reload = () => {
+    // Detect F5, Ctrl+R, Cmd+R keystrokes
+    window.addEventListener('keydown', (event) => {
+      if (
+        event.key === 'F5'
+        || (event.ctrlKey && event.key === 'r')
+        || (event.metaKey && event.key === 'r')
+      ) {
         this.isReloading = true
-        console.log('Reload detected - marking as reload to prevent shutdown')
-        return originalReload()
+        console.log('Reload keyboard shortcut detected')
       }
+    })
 
-      // Detect F5, Ctrl+R, Cmd+R keystrokes
-      window.addEventListener('keydown', (event) => {
-        if (
-          event.key === 'F5'
-          || (event.ctrlKey && event.key === 'r')
-          || (event.metaKey && event.key === 'r')
-        ) {
-          this.isReloading = true
-          console.log('Reload keyboard shortcut detected')
-        }
-      })
+    // Detect programmatic reloads by monitoring navigation type changes
+    // Use a more robust approach with session storage to persist reload state
+    try {
+      const reloadFlag = sessionStorage.getItem('claude-manager-reloading')
+      if (reloadFlag === 'true') {
+        this.isReloading = true
+        sessionStorage.removeItem('claude-manager-reloading')
+        console.log('Reload state restored from session storage')
+      }
     }
+    catch {
+      // Session storage might not be available, ignore
+      console.debug('Session storage not available for reload detection')
+    }
+  }
+
+  /**
+   * Update the isLastTab flag based on active tabs count
+   */
+  private updateLastTabStatus(): void {
+    this.isLastTab = this.activeTabs.size === 1
   }
 
   /**
    * Detect if the unload is likely due to reload
    */
   private detectReload(): void {
-    // Check if performance navigation API indicates a reload
-    if (typeof window !== 'undefined' && window.performance && window.performance.navigation) {
-      const navigationType = window.performance.navigation.type
-      if (navigationType === 1) { // TYPE_RELOAD
-        this.isReloading = true
-        console.log('Performance API detected reload')
+    // Only run in browser environment
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    // Use modern PerformanceNavigationTiming API
+    try {
+      if (window.performance?.getEntriesByType) {
+        const navigationEntries = window.performance.getEntriesByType(
+          'navigation',
+        ) as PerformanceNavigationTiming[]
+        if (navigationEntries.length > 0) {
+          const navigationType = navigationEntries[0].type
+          if (navigationType === 'reload') {
+            this.isReloading = true
+            console.log('Performance API detected reload')
+          }
+        }
       }
+    }
+    catch {
+      console.debug('Performance API not available for reload detection')
     }
 
     // Additional heuristics for reload detection
-    if (typeof window !== 'undefined') {
-      // If the page is being reloaded via history API or location changes to same page
+    try {
+      // Check if the page is being reloaded via history API or location changes to same page
       const currentUrl = window.location.href
       const referrer = document.referrer
 
-      if (currentUrl === referrer) {
+      if (currentUrl === referrer && referrer !== '') {
         this.isReloading = true
         console.log('Same URL reload detected')
       }
+
+      // Store reload flag in session storage for next page load
+      if (this.isReloading) {
+        sessionStorage.setItem('claude-manager-reloading', 'true')
+      }
+    }
+    catch (error) {
+      // Session storage or document might not be available
+      console.debug('Additional reload detection failed:', error)
     }
   }
 
@@ -89,6 +151,16 @@ export class ShutdownCoordinator {
   markAsReload(): void {
     this.isReloading = true
     console.log('Explicitly marked as reload')
+
+    // Store reload flag in session storage for persistence
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('claude-manager-reloading', 'true')
+      }
+    }
+    catch {
+      console.debug('Session storage not available for marking reload')
+    }
   }
 
   /**
@@ -102,6 +174,11 @@ export class ShutdownCoordinator {
    * Setup BroadcastChannel message listeners
    */
   private setupChannelListeners(): void {
+    // Only setup listeners if we have a real BroadcastChannel
+    if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') {
+      return
+    }
+
     this.channel.addEventListener('message', (event) => {
       const { type, tabId: otherTabId } = event.data
 
@@ -134,18 +211,16 @@ export class ShutdownCoordinator {
    * Announce this tab's presence to other tabs
    */
   private announcePresence(): void {
+    // Only announce if we have a real BroadcastChannel
+    if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') {
+      return
+    }
+
     // Announce this tab's presence
     this.channel.postMessage({ type: 'tab-announce', tabId: this.tabId })
 
     // Request existing tabs to announce themselves
     this.channel.postMessage({ type: 'tab-request' })
-  }
-
-  /**
-   * Update the isLastTab flag based on active tabs count
-   */
-  private updateLastTabStatus(): void {
-    this.isLastTab = this.activeTabs.size === 1
   }
 
   /**

@@ -184,7 +184,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
               </div>
 
               {/* VSCode Start Button - smaller and on the right */}
-              <VSCodeStartButton 
+              <VSCodeStartButton
                 configName={config.name}
                 className="text-xs px-2 py-1 h-6"
               />
@@ -248,9 +248,9 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                     </Badge>
                   )}
                 </div>
-                
+
                 {/* VSCode Start Button - only visible in VSCode plugin */}
-                <VSCodeStartButton 
+                <VSCodeStartButton
                   configName={config.name}
                   className="w-fit"
                 />

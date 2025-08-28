@@ -16,22 +16,23 @@ export function VSCodeStartButton({ configName, className }: VSCodeStartButtonPr
   const [isStarting, setIsStarting] = useState(false)
 
   // Check if running in VSCode plugin context
-  const isVSCode = typeof window !== 'undefined' && 
-    (window.location.hostname === 'localhost' && 
-     (window.location.port !== '' || window.parent !== window))
+  const isVSCode = typeof window !== 'undefined'
+    && (window.location.hostname === 'localhost'
+      && (window.location.port !== '' || window.parent !== window))
 
   const handleStartClaude = async (): Promise<void> => {
-    if (isStarting) return
+    if (isStarting)
+      return
 
     setIsStarting(true)
     try {
       const response = await fetch('/api/vscode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action: 'start-claude', 
-          configName 
-        })
+        body: JSON.stringify({
+          action: 'start-claude',
+          configName,
+        }),
       })
 
       const data = await response.json()
@@ -42,26 +43,29 @@ export function VSCodeStartButton({ configName, className }: VSCodeStartButtonPr
           window.parent.postMessage({
             type: 'start-claude-terminal',
             configName,
-            command: data.command
+            command: data.command,
           }, '*')
         }
 
         toast({
           title: 'Starting Claude Code',
           description: `Opening terminal for configuration "${configName}"`,
-          variant: 'success'
+          variant: 'success',
         })
-      } else {
+      }
+      else {
         throw new Error(data.error || 'Failed to start Claude')
       }
-    } catch (error) {
+    }
+    catch (error) {
       console.error('Error starting Claude:', error)
       toast({
         title: 'Failed to start Claude',
         description: error instanceof Error ? error.message : 'Unknown error occurred',
-        variant: 'destructive'
+        variant: 'destructive',
       })
-    } finally {
+    }
+    finally {
       setIsStarting(false)
     }
   }
@@ -73,7 +77,7 @@ export function VSCodeStartButton({ configName, className }: VSCodeStartButtonPr
 
   return (
     <Button
-      onClick={handleStartClaude}
+      onClick={() => void handleStartClaude()}
       disabled={isStarting}
       size="sm"
       variant="outline"

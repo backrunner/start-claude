@@ -8,16 +8,25 @@ export function activate(context: vscode.ExtensionContext): void {
   managerServer = new ManagerServer()
 
   // Register the webview provider for the sidebar
-  const provider = new ManagerWebviewProvider(context.extensionUri, managerServer)
+  const provider = new ManagerWebviewProvider(
+    context.extensionUri,
+    managerServer,
+  )
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(ManagerWebviewProvider.viewType, provider)
+    vscode.window.registerWebviewViewProvider(
+      ManagerWebviewProvider.viewType,
+      provider,
+    ),
   )
 
   // Register the show manager command (for compatibility)
-  const showManagerCommand = vscode.commands.registerCommand('startClaude.showManager', () => {
-    vscode.commands.executeCommand('workbench.view.explorer')
-    vscode.commands.executeCommand('startClaudeManager.focus')
-  })
+  const showManagerCommand = vscode.commands.registerCommand(
+    'startClaude.showManager',
+    () => {
+      vscode.commands.executeCommand('workbench.view.explorer')
+      vscode.commands.executeCommand('startClaudeManager.focus')
+    },
+  )
 
   context.subscriptions.push(showManagerCommand)
 }
@@ -36,12 +45,12 @@ class ManagerWebviewProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _managerServer: ManagerServer
+    private _managerServer: ManagerServer,
   ) {}
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
+    _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ): void {
     this._view = webviewView
@@ -61,19 +70,22 @@ class ManagerWebviewProvider implements vscode.WebviewViewProvider {
         console.log('Message from webview:', message)
 
         if (message.type === 'start-claude-terminal') {
-          this.startClaudeInTerminal(message.configName!, message.command!)
-        } else if (message.type === 'install-packages') {
+          this.startClaudeInTerminal(message.configName!)
+        }
+        else if (message.type === 'install-packages') {
           this.handleInstallPackages()
-        } else if (message.type === 'restart-server') {
+        }
+        else if (message.type === 'restart-server') {
           this.handleRestartServer()
-        } else if (message.type === 'retry-check') {
+        }
+        else if (message.type === 'retry-check') {
           void this._update()
         }
       },
     )
   }
 
-  private startClaudeInTerminal(configName: string, command: string): void {
+  private startClaudeInTerminal(configName: string): void {
     try {
       const timestamp = new Date().toLocaleTimeString()
       const terminal = vscode.window.createTerminal({
@@ -84,25 +96,29 @@ class ManagerWebviewProvider implements vscode.WebviewViewProvider {
 
       terminal.show()
 
-      // Use the actual command from the server which should be: claude --config configName
-      const actualCommand = `claude --config "${configName}"`
-      
+      // Use our CLI tool (start-claude) instead of running claude directly
+      const command = `start-claude --config "${configName}"`
+
       setTimeout(() => {
-        terminal.sendText(actualCommand)
+        terminal.sendText(command)
       }, 100)
 
-      vscode.window.showInformationMessage(
-        `Starting Claude Code with configuration "${configName}"`,
-        'Show Terminal',
-      ).then((selection) => {
-        if (selection === 'Show Terminal') {
-          terminal.show()
-        }
-      })
+      vscode.window
+        .showInformationMessage(
+          `Starting Claude Code with configuration "${configName}"`,
+          'Show Terminal',
+        )
+        .then((selection) => {
+          if (selection === 'Show Terminal') {
+            terminal.show()
+          }
+        })
     }
     catch (error) {
       console.error('Error starting Claude in terminal:', error)
-      vscode.window.showErrorMessage(`Failed to start Claude: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      vscode.window.showErrorMessage(
+        `Failed to start Claude: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
     }
   }
 
@@ -111,14 +127,19 @@ class ManagerWebviewProvider implements vscode.WebviewViewProvider {
       // Force a fresh check and install of packages
       this._managerServer.dispose()
       this._managerServer = new ManagerServer()
-      
+
       // This will trigger the package installation flow
       void this._update()
-      
-      vscode.window.showInformationMessage('Checking and installing required packages...')
-    } catch (error) {
+
+      vscode.window.showInformationMessage(
+        'Checking and installing required packages...',
+      )
+    }
+    catch (error) {
       console.error('Error handling package installation:', error)
-      vscode.window.showErrorMessage(`Failed to start package installation: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      vscode.window.showErrorMessage(
+        `Failed to start package installation: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
     }
   }
 
@@ -127,14 +148,17 @@ class ManagerWebviewProvider implements vscode.WebviewViewProvider {
       // Dispose the current server and create a new one
       this._managerServer.dispose()
       this._managerServer = new ManagerServer()
-      
+
       // Retry the server startup
       void this._update()
-      
+
       vscode.window.showInformationMessage('Restarting manager server...')
-    } catch (error) {
+    }
+    catch (error) {
       console.error('Error restarting server:', error)
-      vscode.window.showErrorMessage(`Failed to restart server: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      vscode.window.showErrorMessage(
+        `Failed to restart server: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
     }
   }
 
@@ -147,19 +171,26 @@ class ManagerWebviewProvider implements vscode.WebviewViewProvider {
       await this._managerServer.start()
       const serverPort = this._managerServer.getPort()
       this._view.webview.html = this._getHtmlForWebview(serverPort)
-    } catch (error) {
+    }
+    catch (error) {
       console.error('Failed to start manager server:', error)
-      
+
       let errorType: 'server-failed' | 'package-missing' = 'server-failed'
-      let errorDetails = error instanceof Error ? error.message : 'Unknown error'
-      
-      if (errorDetails.includes('Package installation cancelled') || 
-          errorDetails.includes('not globally installed') ||
-          errorDetails.includes('Installation verification failed')) {
+      const errorDetails
+        = error instanceof Error ? error.message : 'Unknown error'
+
+      if (
+        errorDetails.includes('Package installation cancelled')
+        || errorDetails.includes('not globally installed')
+        || errorDetails.includes('Installation verification failed')
+      ) {
         errorType = 'package-missing'
       }
-      
-      this._view.webview.html = this._getErrorHtmlForWebview(errorType, errorDetails)
+
+      this._view.webview.html = this._getErrorHtmlForWebview(
+        errorType,
+        errorDetails,
+      )
     }
   }
 
@@ -354,13 +385,16 @@ class ManagerWebviewProvider implements vscode.WebviewViewProvider {
 </html>`
   }
 
-  private _getErrorHtmlForWebview(errorType: 'server-failed' | 'package-missing', errorDetails: string): string {
+  private _getErrorHtmlForWebview(
+    errorType: 'server-failed' | 'package-missing',
+    errorDetails: string,
+  ): string {
     const isPackageMissing = errorType === 'package-missing'
     const title = isPackageMissing ? 'Package Missing' : 'Server Failed'
-    const description = isPackageMissing 
+    const description = isPackageMissing
       ? 'Required packages are not installed'
       : 'Unable to start the manager server'
-    
+
     const actionButtons = isPackageMissing
       ? `<div class="button-group">
            <button class="retry-button primary" onclick="window.installPackages()">Install Packages</button>
@@ -547,9 +581,11 @@ class ManagerWebviewProvider implements vscode.WebviewViewProvider {
         <div class="error-details">${errorDetails}</div>
         ${actionButtons}
         <p class="help-text">
-            ${isPackageMissing 
-              ? 'The plugin requires <code>@anthropic-ai/claude-code</code> and <code>start-claude</code> to be installed globally.' 
-              : 'Try restarting the server or check the output panel for more details.'}
+            ${
+              isPackageMissing
+                ? 'The plugin requires <code>@anthropic-ai/claude-code</code> and <code>start-claude</code> to be installed globally.'
+                : 'Try restarting the server or check the output panel for more details.'
+            }
         </p>
     </div>
 
@@ -592,4 +628,3 @@ class ManagerWebviewProvider implements vscode.WebviewViewProvider {
 </html>`
   }
 }
-

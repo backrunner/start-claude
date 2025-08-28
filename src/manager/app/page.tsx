@@ -32,14 +32,14 @@ export default function HomePage(): ReactNode {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [shutdownCoordinator, setShutdownCoordinator] = useState<ShutdownCoordinator | null>(null)
-  
+
   // Check if running in VSCode plugin context
   const [isVSCode, setIsVSCode] = useState(false)
-  
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const checkVSCode = window.location.hostname === 'localhost' && 
-        (window.location.port !== '' || window.parent !== window)
+      const checkVSCode = window.location.hostname === 'localhost'
+        && (window.location.port !== '' || window.parent !== window)
       setIsVSCode(checkVSCode)
     }
   }, [])
