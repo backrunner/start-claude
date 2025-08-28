@@ -7,6 +7,7 @@ export interface ClaudeConfig {
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
   transformerEnabled?: boolean // Enable transformer for this configuration
   transformer?: string // Specific transformer to use: "auto", "openai", "gemini", "openrouter", etc.
+  transformerHeaders?: Record<string, string> // Additional headers to send when using transformers
   isDefault?: boolean
   order?: number // Lower numbers are prioritized first (0 = highest priority)
   enabled?: boolean // Configuration is enabled/disabled

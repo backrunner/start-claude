@@ -431,6 +431,13 @@ function resolveFieldConflict(
       return mergedEnv
     }
 
+    case 'transformerHeaders': {
+      // For transformer headers, merge both with local taking precedence for conflicts
+      const mergedHeaders = { ...(remoteValue || {}), ...(localValue || {}) }
+      resolutionDetails.push(`Merged transformer headers with local values taking precedence`)
+      return mergedHeaders
+    }
+
     case 'isDeleted':
       // For deletion flags, prefer the more recent deletion
       if (localValue && remoteValue) {

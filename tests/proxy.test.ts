@@ -1008,6 +1008,32 @@ describe('proxyServer', () => {
       expect(Array.isArray(status.transformers)).toBe(true)
     })
 
+    it('should include transformerHeaders in requests to external services', () => {
+      // Test transformer headers configuration
+      const configWithHeaders: ClaudeConfig = {
+        name: 'transformer-with-headers',
+        baseUrl: 'https://api.openrouter.ai',
+        apiKey: 'sk-test-key',
+        transformerEnabled: true,
+        transformerHeaders: {
+          'X-Custom-Header': 'custom-value',
+          'Authorization': 'Bearer custom-token',
+          'User-Agent': 'custom-user-agent',
+        },
+      }
+
+      const proxyMode: ProxyMode = { enableTransform: true }
+      const ps = new ProxyServer([configWithHeaders], proxyMode)
+
+      const status = ps.getStatus()
+      expect(status.endpoints).toHaveLength(1)
+      expect(status.endpoints[0].config.transformerHeaders).toEqual({
+        'X-Custom-Header': 'custom-value',
+        'Authorization': 'Bearer custom-token',
+        'User-Agent': 'custom-user-agent',
+      })
+    })
+
     it('should apply universal response formatting to valid JSON responses', async () => {
       // Test the formatUniversalResponse method directly
       const validJsonResponse = '{"choices":[{"message":{"content":"Hello"}}]}'
