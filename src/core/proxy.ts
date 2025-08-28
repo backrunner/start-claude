@@ -1,6 +1,6 @@
-import type { ClaudeConfig } from '../config/types'
-import type { LLMProvider } from '../types/llm'
-import type { ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
+import type { ClaudeConfig, SystemSettings } from '../config/types'
+import type { LLMChatRequest, LLMProvider } from '../types/llm'
+import type { NormalizeResult, ProxyConfig, ProxyMode, Transformer } from '../types/transformer'
 import { Buffer } from 'node:buffer'
 import * as http from 'node:http'
 import * as https from 'node:https'
@@ -34,6 +34,17 @@ interface EndpointStatus {
   averageResponseTime: number // Calculated average response time
   lastResponseTime?: number // Most recent response time
   totalRequests: number // Total number of requests sent to this endpoint
+}
+
+interface ProxyStatus {
+  total: number
+  healthy: number
+  unhealthy: number
+  endpoints: EndpointStatus[]
+  loadBalance: boolean
+  transform: boolean
+  strategy?: LoadBalancerStrategy
+  transformers?: string[]
 }
 
 export class ProxyServer {
@@ -74,7 +85,7 @@ export class ProxyServer {
 
   private speedTestManager?: SpeedTestManager
 
-  constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode, systemSettings?: any, proxyUrl?: string) {
+  constructor(configs: ClaudeConfig[] | ProxyConfig[], proxyMode?: ProxyMode, systemSettings?: SystemSettings, proxyUrl?: string) {
     this.proxyMode = proxyMode || {}
     this.verbose = this.proxyMode.verbose || false
     this.debug = this.proxyMode.debug || false
@@ -223,7 +234,7 @@ export class ProxyServer {
   private async formatUniversalResponse(
     responseBody: string,
     statusCode: number,
-    headers: any,
+    headers: http.IncomingHttpHeaders,
     res: http.ServerResponse,
   ): Promise<string | null> {
     // This method is only for non-streaming responses
@@ -674,7 +685,7 @@ export class ProxyServer {
   /**
    * Prepare response headers by removing hop-by-hop headers
    */
-  private prepareResponseHeaders(headers: any): any {
+  private prepareResponseHeaders(headers: http.IncomingHttpHeaders): http.IncomingHttpHeaders {
     const cleanHeaders = { ...headers }
     delete cleanHeaders.connection
     delete cleanHeaders['transfer-encoding']
@@ -684,7 +695,7 @@ export class ProxyServer {
   /**
    * Prepare request headers for upstream request
    */
-  private prepareRequestHeaders(originalHeaders: http.IncomingHttpHeaders, targetUrl: URL, apiKey: string): any {
+  private prepareRequestHeaders(originalHeaders: http.IncomingHttpHeaders, targetUrl: URL, apiKey: string): http.IncomingHttpHeaders {
     const headers = { ...originalHeaders }
     headers['x-api-key'] = apiKey
     delete headers.authorization
@@ -708,7 +719,7 @@ export class ProxyServer {
     endpoint: EndpointStatus,
     req: http.IncomingMessage,
     body: Buffer,
-    requestData: any,
+    requestData: Record<string, any>,
     context: { isTransformer?: boolean, transformerName?: string } = {},
   ): Promise<boolean> {
     if (!proxyRes.statusCode || proxyRes.statusCode < 400) {
@@ -764,9 +775,9 @@ export class ProxyServer {
     requestTiming: ResponseTiming | null,
     context: {
       isTransformer?: boolean
-      transformer?: any
+      transformer?: Transformer
       transformerName?: string
-      provider?: any
+      provider?: LLMProvider
       targetUrl?: URL
       clientExpectsStream?: boolean
     } = {},
@@ -811,11 +822,11 @@ export class ProxyServer {
   private async handleDirectStreamConversion(
     proxyRes: http.IncomingMessage,
     res: http.ServerResponse,
-    headers: any,
+    headers: http.IncomingHttpHeaders,
     context: {
-      transformer?: any
+      transformer?: Transformer
       transformerName?: string
-      provider?: any
+      provider?: LLMProvider
     },
   ): Promise<void> {
     try {
@@ -901,12 +912,12 @@ export class ProxyServer {
   private async handleBufferedResponse(
     proxyRes: http.IncomingMessage,
     res: http.ServerResponse,
-    headers: any,
+    headers: http.IncomingHttpHeaders,
     context: {
       isTransformer?: boolean
-      transformer?: any
+      transformer?: Transformer
       transformerName?: string
-      provider?: any
+      provider?: LLMProvider
       targetUrl?: URL
       clientExpectsStream?: boolean
     },
@@ -1080,7 +1091,7 @@ export class ProxyServer {
       void (async () => {
         try {
           const body = Buffer.concat(chunks)
-          let requestData: any = {}
+          let requestData: Record<string, any> = {}
           let bodyText: string | undefined
 
           // Parse request body once and cache the string representation
@@ -1142,7 +1153,7 @@ export class ProxyServer {
               if (!transformer.normalizeRequest) {
                 throw new Error(`Transformer ${transformerName} is missing normalizeRequest method`)
               }
-              const normalizeResult = await transformer.normalizeRequest(requestData, provider)
+              const normalizeResult: NormalizeResult = await transformer.normalizeRequest(requestData as LLMChatRequest, provider)
 
               // Step 2: Format request (Intermediate → Provider-specific format)
               let finalRequest = normalizeResult.body
@@ -1867,16 +1878,16 @@ export class ProxyServer {
     }
   }
 
-  getStatus(): { total: number, healthy: number, unhealthy: number, endpoints: EndpointStatus[], loadBalance: boolean, transform: boolean, strategy?: LoadBalancerStrategy, transformers?: string[] } {
+  getStatus(): ProxyStatus {
     const healthy = this.endpoints.filter(e => e.isHealthy).length
-    const result = {
+    const result: ProxyStatus = {
       total: this.endpoints.length,
       healthy,
       unhealthy: this.endpoints.length - healthy,
       endpoints: this.endpoints,
       loadBalance: this.enableLoadBalance,
       transform: this.enableTransform,
-    } as any
+    }
 
     if (this.enableLoadBalance) {
       result.strategy = this.loadBalancerStrategy

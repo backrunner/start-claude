@@ -1,5 +1,5 @@
 import type { LLMChatRequest, LLMProvider } from '../types/llm'
-import type { Transformer, TransformerOptions } from '../types/transformer'
+import type { NormalizeResult, Transformer, TransformerOptions } from '../types/transformer'
 import { createTransformerUrl } from '../utils/network/transformer-url'
 import {
   buildRequestBody,
@@ -17,10 +17,14 @@ export class GeminiTransformer implements Transformer {
   async normalizeRequest(
     request: LLMChatRequest,
     provider: LLMProvider,
-  ): Promise<Record<string, any>> {
+  ): Promise<NormalizeResult> {
     // Ensure model is configured in provider
     if (!provider.model) {
       throw new Error('Model must be configured in provider for Gemini transformer')
+    }
+
+    if (!provider.apiKey) {
+      throw new Error('API key must be configured in provider for Gemini transformer')
     }
 
     return {
