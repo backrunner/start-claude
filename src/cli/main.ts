@@ -1,7 +1,6 @@
 import type { ClaudeConfig } from '../config/types'
 import type { ProgramOptions } from './common'
 
-import { spawn } from 'node:child_process'
 import process from 'node:process'
 import { Command } from 'commander'
 import inquirer from 'inquirer'
@@ -14,12 +13,15 @@ import { S3SyncManager } from '../storage/s3-sync'
 import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/detection'
 import { UILogger } from '../utils/cli/ui'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
+import { initializeMcpPassthrough } from '../utils/mcp-passthrough'
 import { SpeedTestManager } from '../utils/network/speed-test'
-import { findExecutable } from '../utils/path-utils'
 import { StatusLineManager } from '../utils/statusline/manager'
 import { startClaude } from './claude'
 import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStrategy, resolveConfig } from './common'
 import { handleProxyMode } from './proxy'
+
+// CRITICAL: Handle MCP commands before Commander.js processes arguments
+const isMcpCommand = initializeMcpPassthrough()
 
 const program = new Command()
 
@@ -488,58 +490,7 @@ program
   .option('--live', 'Real-time usage dashboard (for blocks command)')
   .action(async (subcommand, options) => (await import('../commands/usage')).handleUsageCommand(subcommand, options))
 
-// Helper functions for MCP command passthrough
-function findExecutableWithSkipDirs(command: string, env: NodeJS.ProcessEnv): string | null {
-  return findExecutable(command, { env, skipDirs: ['.start-claude'] })
-}
-
-async function startClaudeProcess(
-  executablePath: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-): Promise<number> {
-  return new Promise((resolve) => {
-    const claude = spawn(executablePath, args, {
-      stdio: 'inherit',
-      env,
-      shell: process.platform === 'win32',
-    })
-
-    claude.on('close', (code: number | null) => {
-      resolve(code ?? 0)
-    })
-
-    claude.on('error', (error: Error) => {
-      const ui = new UILogger()
-      ui.error(`Failed to start Claude: ${error.message}`)
-      resolve(1)
-    })
-  })
-}
-
-// Check for MCP commands before Commander.js parses arguments
-async function checkMcpPassthrough(): Promise<void> {
-  const args = process.argv.slice(2)
-  const isMcpCommand = args.length > 0 && args[0] === 'mcp'
-
-  if (isMcpCommand) {
-    // Find the real Claude CLI and pass the command through transparently
-    const claudePath = findExecutableWithSkipDirs('claude', process.env)
-    if (claudePath) {
-      // Pass all original arguments to the real Claude CLI
-      const exitCode = await startClaudeProcess(claudePath, args, process.env)
-      process.exit(exitCode)
-    }
-    else {
-      const ui = new UILogger()
-      ui.error('❌ Claude CLI not found. Please install Claude Code first.')
-      process.exit(1)
-    }
-  }
-}
-
-// Check for MCP commands before parsing
-void (async () => {
-  await checkMcpPassthrough()
+// Only parse with Commander.js if not an MCP command
+if (!isMcpCommand) {
   program.parse()
-})()
+}
