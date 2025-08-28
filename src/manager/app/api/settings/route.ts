@@ -1,8 +1,8 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { ConfigManager } from '@/config/manager'
 import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
 import { settingsUpdateRequestSchema, systemSettingsSchema } from '@/lib/validation'
-import { ConfigManager } from '../../../../config/manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -78,17 +78,6 @@ async function saveSettings(settings: any): Promise<void> {
   catch (error) {
     console.error('Error saving settings:', error)
     throw error
-  }
-}
-
-export async function GET(): Promise<NextResponse> {
-  try {
-    const settings = getSettings()
-    return NextResponse.json({ settings })
-  }
-  catch (error) {
-    console.error('GET /api/settings error:', error)
-    return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 })
   }
 }
 
