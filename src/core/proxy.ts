@@ -1190,6 +1190,7 @@ export class ProxyServer {
               const targetUrl = normalizeResult.config.url
               const headers = {
                 ...normalizeResult.config.headers,
+                ...(endpoint.config.transformerHeaders || {}), // Add transformer-specific headers
                 'Content-Length': Buffer.byteLength(requestBody).toString(),
                 'User-Agent': req.headers['user-agent'] || 'start-claude-proxy',
               }

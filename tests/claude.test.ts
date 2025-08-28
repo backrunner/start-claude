@@ -801,5 +801,43 @@ describe('claude', () => {
       expect(env!.ANTHROPIC_BASE_URL).toBe('https://api.test.com')
       expect(env!.ANTHROPIC_MODEL).toBe('claude-3-sonnet')
     })
+
+    it('should merge env map with individual properties taking precedence', async () => {
+      const configWithEnv: ClaudeConfig = {
+        name: 'env-test',
+        env: {
+          CUSTOM_VAR: 'from-env-map',
+          ANTHROPIC_API_KEY: 'from-env-map', // Should be overridden
+          ANOTHER_VAR: 'only-in-env-map',
+        },
+        apiKey: 'from-individual-property', // Should override env map
+        baseUrl: 'https://api.individual.com',
+      }
+
+      const mockClaudeStartProcess: any = {
+        on: vi.fn((event: string, callback: Function) => {
+          if (event === 'close') {
+            setTimeout(() => callback(0), 10)
+          }
+          return mockClaudeStartProcess
+        }),
+      }
+      mockSpawn.mockReturnValue(mockClaudeStartProcess)
+
+      const result = await startClaude(configWithEnv)
+
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      // Individual property should take precedence over env map
+      expect(env!.ANTHROPIC_API_KEY).toBe('from-individual-property')
+      expect(env!.ANTHROPIC_BASE_URL).toBe('https://api.individual.com')
+      // Env map variables should be present
+      expect(env!.CUSTOM_VAR).toBe('from-env-map')
+      expect(env!.ANOTHER_VAR).toBe('only-in-env-map')
+      expect(result).toBe(0)
+    })
   })
 })
