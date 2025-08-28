@@ -4,13 +4,14 @@ import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Edit, GripVertical, Settings, Shield, Star, Trash2 } from 'lucide-react'
+import { Edit, GripVertical, Shield, Star, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { VSCodeStartButton } from '@/components/vscode-start-button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { VSCodeStartButton } from '@/components/vscode/vscode-start-button'
+import { useVSCode } from '@/context/vscode-context'
 
 interface ConfigItemProps {
   config: ClaudeConfig
@@ -29,6 +30,8 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
     transition,
     isDragging,
   } = useSortable({ id: config.name })
+
+  const { isVSCode } = useVSCode()
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -50,13 +53,21 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
     <div ref={setNodeRef} style={style} className={isDragging ? 'opacity-50' : ''}>
       <Card className={`transition-all duration-200 hover:shadow-md ${config.enabled ?? false ? 'border-primary/20' : 'border-muted'}`}>
         <CardContent className="p-3 sm:p-6 relative">
-          {/* Drag Handle - responsive positioning */}
-          <div {...attributes} {...listeners} className="absolute top-2 right-2 sm:relative sm:top-auto sm:right-auto cursor-grab hover:cursor-grabbing p-1 sm:p-2 rounded-lg hover:bg-muted transition-colors sm:order-none self-center sm:self-auto">
+          {/* Drag Handle - conditional positioning based on VSCode context */}
+          <div
+            {...attributes}
+            {...listeners}
+            className={`cursor-grab hover:cursor-grabbing p-1 sm:p-2 rounded-lg hover:bg-muted transition-colors ${
+              isVSCode
+                ? 'absolute top-2 right-2' // Right top corner in VSCode sidebar
+                : 'absolute left-2 top-1/2 transform -translate-y-1/2 sm:relative sm:top-auto sm:left-auto sm:transform-none sm:order-none self-center sm:self-auto' // Left middle in normal view
+            }`}
+          >
             <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
           </div>
 
-          {/* Mobile Layout (sidebar) */}
-          <div className="flex flex-col gap-2 pr-8 sm:hidden">
+          {/* Mobile/VSCode Layout */}
+          <div className={`flex flex-col gap-2 sm:hidden ${isVSCode ? 'pr-8' : 'pl-8'}`}>
             {/* Title with Order and config name */}
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-300 font-semibold text-xs border border-zinc-200 dark:border-zinc-700 flex-shrink-0">
@@ -339,50 +350,5 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
         </CardContent>
       </Card>
     </div>
-  )
-}
-
-interface ConfigListProps {
-  configs: ClaudeConfig[]
-  onEdit: (config: ClaudeConfig) => void
-  onDelete: (name: string) => void
-  onToggleEnabled: (name: string, enabled: boolean) => void
-  onSetDefault: (name: string) => void
-}
-
-export function ConfigList({ configs, onEdit, onDelete, onToggleEnabled, onSetDefault }: ConfigListProps): ReactNode {
-  const sortedConfigs = [...configs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-
-  if (configs.length === 0) {
-    return (
-      <Card className="border-dashed border-2 bg-muted/20">
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
-            <Settings className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <h3 className="mt-4 text-lg font-semibold text-muted-foreground">No configurations</h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Create your first Claude configuration to get started.
-          </p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <TooltipProvider>
-      <div className="space-y-4">
-        {sortedConfigs.map(config => (
-          <ConfigItem
-            key={config.name}
-            config={config}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onToggleEnabled={onToggleEnabled}
-            onSetDefault={onSetDefault}
-          />
-        ))}
-      </div>
-    </TooltipProvider>
   )
 }

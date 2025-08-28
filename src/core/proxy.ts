@@ -357,7 +357,7 @@ export class ProxyServer {
       })
 
       this.server.listen(port, () => {
-        const features = []
+        const features: string[] = []
         if (this.enableLoadBalance) {
           features.push(`Load Balancer (${this.loadBalancerStrategy})`)
         }

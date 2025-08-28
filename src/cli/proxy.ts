@@ -156,7 +156,7 @@ export async function handleProxyMode(
         else {
           // Show only the current transformer matching the base config when not in balance mode
           if (baseConfig?.baseUrl) {
-            let matchingTransformer = null
+            let matchingTransformer: { name: string, hasDomain: boolean, domain?: string } | undefined
 
             // First, check if a specific transformer is configured
             if (baseConfig.transformer && baseConfig.transformer !== 'auto') {

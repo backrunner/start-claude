@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Terminal } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { useVSCode } from '@/context/vscode-context'
 import { useToast } from '@/lib/use-toast'
 
 interface VSCodeStartButtonProps {
@@ -14,11 +15,7 @@ interface VSCodeStartButtonProps {
 export function VSCodeStartButton({ configName, className }: VSCodeStartButtonProps): ReactNode {
   const { toast } = useToast()
   const [isStarting, setIsStarting] = useState(false)
-
-  // Check if running in VSCode plugin context
-  const isVSCode = typeof window !== 'undefined'
-    && (window.location.hostname === 'localhost'
-      && (window.location.port !== '' || window.parent !== window))
+  const { isVSCode } = useVSCode()
 
   const handleStartClaude = async (): Promise<void> => {
     if (isStarting)
@@ -26,36 +23,22 @@ export function VSCodeStartButton({ configName, className }: VSCodeStartButtonPr
 
     setIsStarting(true)
     try {
-      const response = await fetch('/api/vscode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'start-claude',
+      const command = `claude --config "${configName}"`
+
+      // Send message to VSCode webview parent
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'start-claude-terminal',
           configName,
-        }),
+          command,
+        }, '*')
+      }
+
+      toast({
+        title: 'Starting Claude Code',
+        description: `Opening terminal for configuration "${configName}"`,
+        variant: 'success',
       })
-
-      const data = await response.json()
-
-      if (response.ok && data.success) {
-        // Send message to VSCode webview parent
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage({
-            type: 'start-claude-terminal',
-            configName,
-            command: data.command,
-          }, '*')
-        }
-
-        toast({
-          title: 'Starting Claude Code',
-          description: `Opening terminal for configuration "${configName}"`,
-          variant: 'success',
-        })
-      }
-      else {
-        throw new Error(data.error || 'Failed to start Claude')
-      }
     }
     catch (error) {
       console.error('Error starting Claude:', error)
