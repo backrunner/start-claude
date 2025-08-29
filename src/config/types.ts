@@ -87,6 +87,25 @@ export interface StatusLineConfig {
 }
 
 /**
+ * MCP server configuration interface
+ */
+export interface McpServerConfig {
+  type?: 'stdio' | 'sse'
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+}
+
+/**
+ * MCP sync configuration interface
+ */
+export interface McpSyncConfig {
+  enabled: boolean
+  servers: Record<string, McpServerConfig>
+  lastSyncTime?: string
+}
+
+/**
  * System settings interface
  */
 export interface SystemSettings {
@@ -118,6 +137,7 @@ export interface SystemSettings {
     endpointUrl?: string
     remoteConfigCheckIntervalMinutes?: number // Default: 60 (1 hour)
   }
+  mcpSync?: McpSyncConfig
 }
 
 /**

@@ -14,6 +14,7 @@ import { checkClaudeInstallation, promptClaudeInstallation } from '../utils/cli/
 import { UILogger } from '../utils/cli/ui'
 import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
 import { initializeMcpPassthrough } from '../utils/mcp-passthrough'
+import { McpSyncManager } from '../utils/mcp/sync-manager'
 import { SpeedTestManager } from '../utils/network/speed-test'
 import { StatusLineManager } from '../utils/statusline/manager'
 import { startClaude } from './claude'
@@ -30,6 +31,7 @@ program.enablePositionalOptions()
 const configManager = ConfigManager.getInstance()
 const s3SyncManager = S3SyncManager.getInstance()
 const statusLineManager = StatusLineManager.getInstance()
+const mcpSyncManager = McpSyncManager.getInstance()
 
 // Initialize S3 sync for the config manager
 configManager.initializeS3Sync().catch(console.error)
@@ -57,6 +59,23 @@ async function handleStatusLineSync(options: { verbose?: boolean } = {}): Promis
   catch (error) {
     // Don't fail the entire startup for statusline issues
     ui.verbose(`⚠️ Statusline sync error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Handle MCP sync on startup
+ */
+async function handleMcpSync(options: { verbose?: boolean } = {}): Promise<void> {
+  const ui = new UILogger(options.verbose)
+  try {
+    ui.verbose('🔍 Checking MCP configuration sync...')
+
+    // Sync MCP settings from Claude Desktop and ~/.claude/settings.json
+    await mcpSyncManager.checkAndSyncMcp(options)
+  }
+  catch (error) {
+    // Don't fail the entire startup for MCP sync issues
+    ui.verbose(`⚠️ MCP sync error: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
@@ -169,17 +188,54 @@ program
       ui.info(`🎯 Using ${cliStrategy} load balancer strategy`)
     }
 
-    if (!shouldUseProxy && options.balance !== false) {
-      try {
-        systemSettings = await s3SyncManager.getSystemSettings()
-        if (systemSettings && typeof systemSettings === 'object' && 'balanceMode' in systemSettings) {
-          const balanceMode = (systemSettings as { balanceMode?: { enableByDefault?: boolean } }).balanceMode
-          shouldUseProxy = balanceMode?.enableByDefault === true
-        }
+    // Perform multiple async operations in parallel for faster startup
+    const [
+      systemSettingsResult,
+      updateInfo,
+      remoteUpdateResult,
+      claudeCheckResult,
+    ] = await Promise.allSettled([
+      // Get system settings if needed
+      (!shouldUseProxy && options.balance !== false)
+        ? s3SyncManager.getSystemSettings().catch(() => null)
+        : Promise.resolve(null),
+
+      // Check for updates
+      checkForUpdates(options.checkUpdates || configManager.needsImmediateUpdate()),
+
+      // Check for remote config updates
+      s3SyncManager.isS3Configured().then(async (isConfigured) => {
+        if (!isConfigured)
+          return false
+        return s3SyncManager.checkAutoSync({ verbose: options.verbose }).catch(() => false)
+      }),
+
+      // Check Claude installation
+      checkClaudeInstallation(),
+    ])
+
+    // Process system settings result
+    if (systemSettingsResult.status === 'fulfilled' && systemSettingsResult.value) {
+      systemSettings = systemSettingsResult.value
+      if (systemSettings && typeof systemSettings === 'object' && 'balanceMode' in systemSettings) {
+        const balanceMode = (systemSettings as { balanceMode?: { enableByDefault?: boolean } }).balanceMode
+        shouldUseProxy = balanceMode?.enableByDefault === true
       }
-      catch {
-        // Ignore errors getting system settings, just use default behavior
-      }
+    }
+
+    // Process update check result
+    const updateCheckInfo = updateInfo?.status === 'fulfilled' ? updateInfo.value : null
+
+    // Process remote update result
+    if (remoteUpdateResult.status === 'fulfilled' && remoteUpdateResult.value) {
+      ui.verbose('✨ Remote configuration updated successfully')
+    }
+
+    // Process Claude installation check
+    const claudeCheck = claudeCheckResult.status === 'fulfilled' ? claudeCheckResult.value : { isInstalled: false }
+    if (!claudeCheck.isInstalled) {
+      await promptClaudeInstallation()
+      process.exit(1)
     }
 
     // If not yet using proxy, check if we need it for transformer-enabled configs
@@ -191,14 +247,9 @@ program
       if (configName) {
         // Check config directly without fuzzy search to avoid prompts
         config = configManager.getConfig(configName)
-        if (!config) {
-          // If config not found locally, check S3 silently
-          if (await s3SyncManager.isS3Configured()) {
-            const syncSuccess = await s3SyncManager.checkAutoSync({ verbose: options.verbose })
-            if (syncSuccess) {
-              config = configManager.getConfig(configName)
-            }
-          }
+        if (!config && remoteUpdateResult.status === 'fulfilled' && remoteUpdateResult.value) {
+          // Config might have been updated during the remote sync
+          config = configManager.getConfig(configName)
         }
       }
       else {
@@ -212,43 +263,24 @@ program
       }
     }
 
-    // Check for updates (rate limited to once per day, unless forced)
-    // First check if an immediate update is needed due to outdated CLI
-    const needsImmediateUpdate = configManager.needsImmediateUpdate()
-    const updateInfo = await checkForUpdates(options.checkUpdates || needsImmediateUpdate)
-
-    // Check for remote config updates (once per day, unless forced)
-    let remoteUpdateResult = false
-    if (await s3SyncManager.isS3Configured()) {
-      remoteUpdateResult = await s3SyncManager.checkAutoSync({ verbose: options.verbose })
-      if (remoteUpdateResult) {
-        ui.verbose('✨ Remote configuration updated successfully')
-      }
-    }
-
     if (shouldUseProxy) {
       // Get fresh system settings if we haven't already
       if (!systemSettings) {
-        try {
-          systemSettings = await s3SyncManager.getSystemSettings()
-        }
-        catch {
-          // Use null if we can't get settings
-        }
+        systemSettings = await s3SyncManager.getSystemSettings().catch(() => null)
       }
       await handleProxyMode(configManager, options, configArg, systemSettings, undefined, cliStrategy)
       return
     }
 
-    if (updateInfo?.hasUpdate) {
-      ui.warning(`🔔 Update available: ${updateInfo.currentVersion} → ${updateInfo.latestVersion}`)
+    if (updateCheckInfo?.hasUpdate) {
+      ui.warning(`🔔 Update available: ${updateCheckInfo.currentVersion} → ${updateCheckInfo.latestVersion}`)
 
       const updateAnswer = await inquirer.prompt([
         {
           type: 'confirm',
           name: 'autoUpdate',
           message: 'Would you like to update now?',
-          default: needsImmediateUpdate, // Default to Y if immediate update is needed
+          default: configManager.needsImmediateUpdate(), // Default to Y if immediate update is needed
         },
       ])
 
@@ -257,7 +289,7 @@ program
         const updateResult = await performAutoUpdate()
 
         if (updateResult.success) {
-          ui.success(`✅ Successfully updated to version ${updateInfo.latestVersion}!`)
+          ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion}!`)
           ui.info('🔄 Relaunching with new version...')
 
           // Small delay to ensure the message is displayed
@@ -268,7 +300,7 @@ program
         }
         else {
           ui.error('❌ Failed to auto-update. Please run manually:')
-          ui.error(updateInfo.updateCommand)
+          ui.error(updateCheckInfo.updateCommand)
           if (updateResult.error) {
             ui.error(`Error details: ${updateResult.error}`)
           }
@@ -277,16 +309,21 @@ program
       }
     }
 
-    const claudeCheck = await checkClaudeInstallation()
-    if (!claudeCheck.isInstalled) {
-      await promptClaudeInstallation()
-      process.exit(1)
-    }
-
     const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
 
-    // Handle statusline sync after S3 sync
-    await handleStatusLineSync(options)
+    // Handle statusline and MCP sync in parallel for faster startup with error resilience
+    try {
+      await Promise.allSettled([
+        handleStatusLineSync(options),
+        handleMcpSync(options),
+      ])
+    }
+    catch (error) {
+      // This should rarely happen since we use allSettled, but just in case
+      if (options.verbose) {
+        ui.verbose(`⚠️ Sync operations completed with some issues: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
 
     if (config) {
       ui.displayBoxedConfig(config)
