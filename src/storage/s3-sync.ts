@@ -1,6 +1,6 @@
 import type { S3ClientConfig } from '@aws-sdk/client-s3'
 import type { ConfigFile, SystemSettings } from '../config/types'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, statSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
@@ -53,6 +53,7 @@ export class S3SyncManager {
   private static instance: S3SyncManager
   private s3Client: S3Client | null = null
   private readonly CONFIG_PATH = join(homedir(), '.start-claude', 'config.json')
+  private readonly SYNC_STATE_PATH = join(homedir(), '.start-claude', 'sync.json')
 
   constructor() {
     // Simplified constructor - no dependencies or callbacks
@@ -91,6 +92,15 @@ export class S3SyncManager {
   }
 
   private async getS3Config(): Promise<S3Config | null> {
+    // Prefer standalone S3 config file if present; fallback to settings.s3Sync for backward compatibility
+    try {
+      const { S3ConfigFileManager } = await import('../config/s3-config')
+      const fileMgr = S3ConfigFileManager.getInstance()
+      const fileConfig = fileMgr.getS3Config()
+      if (fileConfig) return fileConfig as unknown as S3Config
+    }
+    catch {}
+
     const configManager = await this.getConfigManager()
     return configManager.getSettings().s3Sync || null
   }
@@ -133,6 +143,23 @@ export class S3SyncManager {
 
     this.s3Client = new S3Client(clientConfig)
     logger.displayVerbose(`✅ S3 client initialized successfully`)
+  }
+
+  /**
+   * Check whether a local cloud sync (iCloud/OneDrive/Custom) is enabled.
+   * When true, S3 should be treated as backup (upload-only).
+   * Reads ~/.start-claude/sync.json directly to avoid circular deps.
+   */
+  private isCloudSyncEnabled(): boolean {
+    try {
+      if (!existsSync(this.SYNC_STATE_PATH)) return false
+      const raw = readFileSync(this.SYNC_STATE_PATH, 'utf-8') as string
+      const state = JSON.parse(raw) as { enabled?: boolean, provider?: string }
+      return Boolean(state?.enabled) && state?.provider !== 's3'
+    }
+    catch {
+      return false
+    }
   }
 
   async setupS3Sync(config: S3Config, options: { verbose?: boolean } = {}): Promise<boolean> {
@@ -721,6 +748,12 @@ export class S3SyncManager {
       logger.displayVerbose(`🔄 Starting configuration synchronization...`)
       this.initializeS3Client(s3Config, options)
 
+      // Guard: if local cloud sync is enabled, treat S3 as backup (upload only)
+      if (this.isCloudSyncEnabled()) {
+        logger.displayInfo('📤 Cloud sync enabled; S3 will be used as backup (upload only). Skipping download checks.')
+        return await this.uploadConfigs(true, { verbose: options.verbose, silent: true })
+      }
+
       const localFile = this.getLocalFileInfo(options)
       const remoteInfo = await this.getS3ObjectInfo(s3Config, options)
 
@@ -792,6 +825,13 @@ export class S3SyncManager {
 
       const logger = new UILogger(options.verbose)
       logger.displayVerbose('🔍 Starting automatic S3 config sync check...')
+
+      // Guard: if local cloud sync is enabled, skip downloads and treat S3 as backup
+      if (this.isCloudSyncEnabled()) {
+        logger.displayVerbose('☁️  Cloud sync detected; performing upload-only backup to S3')
+        await this.uploadConfigs(true, { silent: true, verbose: options.verbose })
+        return true
+      }
 
       const configManager = await this.getConfigManager()
       const localConfig = configManager.getConfigFile()

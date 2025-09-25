@@ -112,17 +112,30 @@ export class CloudConfigSyncer {
 
       // Create symlink if not already a symlink
       if (!this.isSymlinkCompatible(configInfo.localPath)) {
+        let backupPath: string | undefined
         // Backup original file if requested
         if (options.backupOnReplace) {
-          const backupPath = `${configInfo.localPath}.backup.${Date.now()}`
+          backupPath = `${configInfo.localPath}.backup.${Date.now()}`
           copyFileSync(configInfo.localPath, backupPath)
           new UILogger().displayInfo(`💾 Backed up ${configInfo.description} to: ${backupPath}`)
         }
 
-        // Remove original and create symlink
+        // Remove original and create symlink, with rollback on failure
         unlinkSync(configInfo.localPath)
-        this.createSymlink(cloudConfigPath, configInfo.localPath)
-        new UILogger().displayInfo(`🔗 Created symlink for ${configInfo.description} to cloud storage`)
+        try {
+          this.createSymlink(cloudConfigPath, configInfo.localPath)
+          new UILogger().displayInfo(`🔗 Created symlink for ${configInfo.description} to cloud storage`)
+        }
+        catch (linkErr) {
+          if (backupPath) {
+            try {
+              copyFileSync(backupPath, configInfo.localPath)
+              new UILogger().displayWarning(`⚠️  Failed to create symlink; restored ${configInfo.description} from backup`)
+            }
+            catch {}
+          }
+          throw linkErr
+        }
       }
     }
     catch (error) {

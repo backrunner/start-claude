@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -114,10 +114,21 @@ function detectOneDriveMacOS(): CloudStorageInfo {
     const hasOneDriveApp = oneDriveAppPaths.some(path => existsSync(path))
 
     // Check for OneDrive folder in user's home directory
+    // Include common variants and any directory starting with "OneDrive"
     const oneDrivePaths = [
       join(homedir(), 'OneDrive'),
       join(homedir(), 'OneDrive - Personal'),
       join(homedir(), 'OneDrive - Business'),
+      ...(() => {
+        try {
+          return readdirSync(homedir(), { withFileTypes: true })
+            .filter(d => d.isDirectory() && d.name.startsWith('OneDrive'))
+            .map(d => join(homedir(), d.name))
+        }
+        catch {
+          return [] as string[]
+        }
+      })(),
     ]
 
     let oneDrivePath: string | undefined
@@ -335,7 +346,7 @@ export function getAvailableCloudServices(): Array<{ name: string, path?: string
   const status = getCloudStorageStatus()
   const services: Array<{ name: string, path?: string, isEnabled: boolean }> = []
 
-  if (status.oneDrive.isAvailable) {
+  if (status.oneDrive.isAvailable || status.oneDrive.isEnabled) {
     services.push({
       name: 'OneDrive',
       path: status.oneDrive.path,
@@ -343,7 +354,7 @@ export function getAvailableCloudServices(): Array<{ name: string, path?: string
     })
   }
 
-  if (status.iCloud.isAvailable) {
+  if (status.iCloud.isAvailable || status.iCloud.isEnabled) {
     services.push({
       name: 'iCloud',
       path: status.iCloud.path,

@@ -393,6 +393,7 @@ export class SyncManager {
   private async createConfigLink(targetPath: string): Promise<void> {
     try {
       // Remove existing file/link
+      let backupPath: string | undefined
       if (existsSync(this.configFile)) {
         const stats = statSync(this.configFile)
         if (stats.isSymbolicLink()) {
@@ -401,7 +402,7 @@ export class SyncManager {
         }
         else {
           // Backup existing file
-          const backupPath = `${this.configFile}.backup.${Date.now()}`
+          backupPath = `${this.configFile}.backup.${Date.now()}`
           copyFileSync(this.configFile, backupPath)
           unlinkSync(this.configFile)
           this.ui.displayInfo(`💾 Backed up existing config to: ${backupPath}`)
@@ -409,13 +410,26 @@ export class SyncManager {
       }
 
       // Create symlink
-      if (process.platform === 'win32') {
-        // On Windows, create junction for directories or symlink for files
-        symlinkSync(targetPath, this.configFile, 'file')
+      try {
+        if (process.platform === 'win32') {
+          // On Windows, create junction for directories or symlink for files
+          symlinkSync(targetPath, this.configFile, 'file')
+        }
+        else {
+          // On Unix systems, create symbolic link
+          symlinkSync(targetPath, this.configFile)
+        }
       }
-      else {
-        // On Unix systems, create symbolic link
-        symlinkSync(targetPath, this.configFile)
+      catch (linkErr) {
+        // Roll back to backup if available
+        if (backupPath) {
+          try {
+            copyFileSync(backupPath, this.configFile)
+            this.ui.displayWarning('⚠️  Symlink creation failed; restored original config from backup')
+          }
+          catch {}
+        }
+        throw linkErr
       }
 
       this.ui.displayInfo('🔗 Created symlink to cloud config')
@@ -483,8 +497,7 @@ export class SyncManager {
 
       // If config is symlinked, replace with actual file
       if (existsSync(this.configFile)) {
-        const stats = statSync(this.configFile)
-        if (stats.isSymbolicLink()) {
+        if (this.isSymlinkCompatible(this.configFile)) {
           const targetPath = readlinkSync(this.configFile)
 
           // Copy target file to local location
@@ -504,6 +517,28 @@ export class SyncManager {
           }
         }
       }
+
+      // Also restore any additional config symlinks we created (e.g., s3-config.json)
+      try {
+        const additional = CloudConfigSyncer.getStandardConfigFiles().filter(f => f.name !== 'main-config')
+        for (const file of additional) {
+          try {
+            if (existsSync(file.localPath) && this.isSymlinkCompatible(file.localPath)) {
+              const target = readlinkSync(file.localPath)
+              unlinkSync(file.localPath)
+              if (existsSync(target)) {
+                copyFileSync(target, file.localPath)
+                this.ui.displayInfo(`📥 Restored ${file.description} from cloud location`)
+              }
+              else {
+                this.ui.displayWarning(`⚠️  Cloud ${file.description} not found, removed broken symlink`)
+              }
+            }
+          }
+          catch {}
+        }
+      }
+      catch {}
 
       // Remove sync configuration
       if (existsSync(this.syncConfigFile)) {

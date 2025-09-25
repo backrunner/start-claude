@@ -60,7 +60,7 @@ export class ConfigFileManager {
   /**
    * Read and parse the configuration file with migration support
    */
-  load(): ConfigFile {
+  async load(): Promise<ConfigFile> {
     if (!this.exists()) {
       const defaultConfig = this.getDefaultConfigFile()
       this.save(defaultConfig)
@@ -73,7 +73,16 @@ export class ConfigFileManager {
 
       // Check if this is a legacy config file (no version field)
       if (!('version' in rawConfig)) {
-        return this.migrateLegacyConfig(rawConfig as LegacyConfigFile)
+        const migrated = this.migrateLegacyConfig(rawConfig as LegacyConfigFile)
+        // After migrating legacy to v1, run structured migrations (e.g., extract S3 config)
+        try {
+          await this.runStructuredMigrations()
+        }
+        catch (e) {
+          // Non-fatal: continue with migrated config
+          new UILogger().displayWarning(`Structured migration after legacy migration failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+        }
+        return migrated
       }
 
       const config = rawConfig as ConfigFile
@@ -83,9 +92,15 @@ export class ConfigFileManager {
         this.handleOutdatedCLI(config.version)
       }
 
-      // Check if migration is needed
-      if (config.version < CURRENT_CONFIG_VERSION) {
-        return this.migrateConfig(config)
+      // Prefer structured migrator for schema migrations (e.g., S3 split)
+      try {
+        await this.runStructuredMigrations()
+      }
+      catch (e) {
+        // Fallback to simple migrate if structured migrator not available
+        if (config.version < CURRENT_CONFIG_VERSION) {
+          return this.migrateConfig(config)
+        }
       }
 
       // Validate and fill in missing fields
@@ -106,6 +121,34 @@ export class ConfigFileManager {
       const defaultConfig = this.getDefaultConfigFile()
       this.save(defaultConfig)
       return defaultConfig
+    }
+  }
+
+  /**
+   * Execute structured migrations defined in migrator (idempotent)
+   */
+  private async runStructuredMigrations(): Promise<void> {
+    try {
+      // Dynamic import to avoid circular deps and load cost on every call
+      const migratorModule = await import('../migrator/src/index')
+      const { Migrator, CURRENT_CONFIG_VERSION: TARGET } = migratorModule
+
+      const migrator = new Migrator({
+        currentVersion: TARGET,
+        backupDirectory: path.join(CONFIG_DIR, 'backups'),
+      })
+
+      const detection = migrator.detectMigrationNeeded(CONFIG_FILE)
+      if (detection.needsMigration) {
+        const ui = new UILogger()
+        ui.displayInfo(`Migrating configuration from version ${detection.currentVersion} to ${detection.targetVersion}...`)
+        await migrator.migrate(CONFIG_FILE, { backup: true, verbose: false })
+      }
+      // Re-read and normalize handled by caller
+    }
+    catch (error) {
+      // If migrator is not available or fails, propagate to caller to fallback
+      throw error
     }
   }
 

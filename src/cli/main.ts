@@ -504,6 +504,13 @@ program
   .action(async () => (await import('../commands/edit-config')).handleEditConfigCommand())
 
 program
+  .command('migrate')
+  .description('Run configuration migrations (e.g., extract S3 config)')
+  .option('--dry-run', 'Show pending migrations without applying changes')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (options) => (await import('../commands/migrate')).handleMigrateCommand(options))
+
+program
   .command('manage')
   .alias('manager')
   .description('Open the Claude Configuration Manager web interface')
@@ -526,6 +533,26 @@ program
   .option('--project <name>', 'Filter to specific project')
   .option('--live', 'Real-time usage dashboard (for blocks command)')
   .action(async (subcommand, options) => (await import('../commands/usage')).handleUsageCommand(subcommand, options))
+
+// Cloud sync command group (iCloud / OneDrive / Custom)
+const syncCmd = program
+  .command('sync')
+  .description('Cloud sync operations (iCloud, OneDrive, Custom)')
+
+syncCmd
+  .command('setup')
+  .description('Interactive setup for cloud sync')
+  .action(async () => (await import('../commands/sync')).setupSyncCommand())
+
+syncCmd
+  .command('status')
+  .description('Show cloud sync status')
+  .action(async () => (await import('../commands/sync')).syncStatusCommand())
+
+syncCmd
+  .command('disable')
+  .description('Disable cloud sync and restore local config')
+  .action(async () => (await import('../commands/sync')).disableSyncCommand())
 
 // Only parse with Commander.js if not an MCP command
 if (!isMcpCommand) {
