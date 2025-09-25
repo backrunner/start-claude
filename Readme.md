@@ -30,7 +30,7 @@ pnpm add -g start-claude
 # Start Claude Code directly with CLI overrides (no config needed)
 start-claude --api-key sk-your-key --model claude-3-sonnet
 
-# Use the short command alias (may not work on Windows)
+# Use the short command alias
 scc --api-key sk-your-key --model claude-3-sonnet
 
 # Windows users: Enable override for better compatibility
@@ -127,22 +127,20 @@ Configure via web interface (`start-claude manager`) or system settings:
 - **Disable Health Checks**: Use simple round-robin with endpoint banning
   start-claude -e DEBUG=1 -e NODE_ENV=prod --verbose
 
-# Short alias
+## Short alias
 
-scc --api-key sk-key --model claude-3-haiku
-
-````
+scc --api-key sk-key --model claude-3-haik
 
 ## Editor Mode
 
-Edit configurations in your preferred editor:
+Editing configuration in your prefer editor.
 
 ```bash
 # Supported editors: VS Code, Cursor, Windsurf, Notepad, etc.
 start-claude add -e             # Create config in editor
 start-claude edit myconfig -e   # Edit config in editor
 start-claude edit-config        # Edit config file directly with live reload
-````
+```
 
 ## Claude Code Documentation
 
@@ -163,41 +161,10 @@ We welcome contributions! See our [Development Guide](docs/en/development.md) fo
 
 MIT License
 
----
-
-## ⚠️ Important Notice for Windows Users
-
-**The `scc` command may not work on Windows** due to system command conflicts. Windows reserves `sc` for Service Control operations. If you encounter issues, please use one of these alternatives:
-
-```bash
-# Option 1: Use the full command name
-start-claude --api-key sk-your-key
-
-# Option 2: Set up command override (Recommended)
-start-claude override
-
-# Option 3: Create a custom alias
-doskey scc=start-claude $*
-```
-
-We recommend using the **override feature** for the best Windows experience.
-
----
-
-💡 **Pro Tip**: Windows users should use `start-claude override` for the best experience, as the `scc` alias may conflict with system commands.
-
 ## Credits
 
 This project integrates and builds upon several excellent open source tools:
 
-### Third-Party Tools
-
+- **[llms](https://github.com/musistudio/llms)** - Claude Code Router Core Service
 - **[ccusage](https://github.com/LouisShark/ccusage)** - Comprehensive Claude Code usage analytics and cost tracking
 - **[ccstatusline](https://github.com/LouisShark/ccstatusline)** - Real-time Claude Code status line integration for shells and editors
-
-### Special Thanks
-
-We express our gratitude to:
-
-- **LouisShark** for creating the excellent ccusage and ccstatusline tools that enhance the Claude Code experience
-- The open-source community for various dependencies and tools that make this project possible

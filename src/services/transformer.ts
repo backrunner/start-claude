@@ -75,13 +75,12 @@ export class TransformerService {
       if (config.path) {
         // Use require.cache manipulation instead of Module._load override
         const originalRequire = module.constructor.prototype.require
-        const logger = this.logger
 
         // Temporarily override require for the specific module loading
-        module.constructor.prototype.require = function (id: string) {
+        module.constructor.prototype.require = (id: string) => {
           if (id === 'claude-code-router') {
             return {
-              displayVerbose: (msg: string) => logger.displayVerbose(msg),
+              displayVerbose: (msg: string) => this.logger.displayVerbose(msg),
             }
           }
           return originalRequire.call(this, id)

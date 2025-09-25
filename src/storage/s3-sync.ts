@@ -481,63 +481,79 @@ export class S3SyncManager {
   async uploadConfigs(force = false, options: { verbose?: boolean, silent?: boolean } = {}): Promise<boolean> {
     const s3Config = await this.getS3Config()
     if (!s3Config) {
-      if (!options.silent) {
-        const logger = new UILogger()
-        logger.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
-      }
+      const logger = new UILogger()
+      logger.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
       return false
     }
 
     try {
       const logger = new UILogger(options.verbose)
-      if (!options.silent) {
-        logger.displayVerbose(`📤 Starting configuration upload to S3...`)
-      }
+      logger.displayVerbose(`📤 Starting configuration upload to S3...`)
       this.initializeS3Client(s3Config, options)
 
       // Get file timestamps for comparison
       const localFile = this.getLocalFileInfo(options)
       const remoteInfo = await this.getS3ObjectInfo(s3Config, options)
 
+      // Prepare local configuration data for comparison
+      const configManager = await this.getConfigManager()
+      const configFile = configManager.getConfigFile()
+      const localConfigData = JSON.stringify(configFile, null, 2)
+
+      // Check if remote file exists and compare content if it does
+      if (remoteInfo.exists && !force) {
+        logger.displayVerbose(`📊 Comparing local and remote configuration content...`)
+        try {
+          const getCommand = new GetObjectCommand({
+            Bucket: s3Config.bucket,
+            Key: this.normalizeS3Key(s3Config.key),
+          })
+          const response = await this.s3Client!.send(getCommand)
+          const remoteConfigData = await response.Body?.transformToString() || ''
+
+          // Compare content (normalize JSON formatting)
+          const localNormalized = JSON.stringify(JSON.parse(localConfigData))
+          const remoteNormalized = JSON.stringify(JSON.parse(remoteConfigData))
+
+          if (localNormalized === remoteNormalized) {
+            logger.displayVerbose(`✅ Local and remote configurations are identical, skipping upload`)
+            return true
+          }
+
+          logger.displayVerbose(`🔄 Configuration content differs, proceeding with upload`)
+        }
+        catch (compareError) {
+          logger.displayVerbose(`⚠️ Failed to compare content, proceeding with upload: ${compareError instanceof Error ? compareError.message : 'Unknown error'}`)
+        }
+      }
+
       // Check if we need to warn about overwriting newer remote file
       if (!force && remoteInfo.exists && remoteInfo.lastModified > localFile.lastModified) {
-        if (!options.silent) {
-          logger.displayWarning('⚠️  Remote file is newer than local file!')
-          logger.displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
-          logger.displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
+        logger.displayWarning('⚠️  Remote file is newer than local file!')
+        logger.displayInfo(`Local file:  ${this.formatTimestamp(localFile.lastModified)}`)
+        logger.displayInfo(`Remote file: ${this.formatTimestamp(remoteInfo.lastModified)}`)
 
-          const overwriteAnswer = await inquirer.prompt([
-            {
-              type: 'confirm',
-              name: 'overwrite',
-              message: 'Upload local file and overwrite newer remote configuration?',
-              default: false,
-            },
-          ])
+        const overwriteAnswer = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'overwrite',
+            message: 'Upload local file and overwrite newer remote configuration?',
+            default: false,
+          },
+        ])
 
-          if (!overwriteAnswer.overwrite) {
-            logger.displayInfo('Upload cancelled.')
-            return false
-          }
-        }
-        else {
-          // In silent mode, don't overwrite newer remote files unless forced
+        if (!overwriteAnswer.overwrite) {
+          logger.displayInfo('Upload cancelled.')
           return false
         }
       }
 
-      if (!options.silent) {
-        logger.displayVerbose(`📝 Preparing configuration data for upload...`)
-      }
-      const configManager = await this.getConfigManager()
-      const configFile = configManager.getConfigFile()
-      const configData = JSON.stringify(configFile, null, 2)
+      logger.displayVerbose(`📝 Preparing configuration data for upload...`)
+      const configData = localConfigData
       const now = new Date()
 
-      if (!options.silent) {
-        logger.displayVerbose(`📤 Uploading to s3://${s3Config.bucket}/${this.normalizeS3Key(s3Config.key)}`)
-        logger.displayVerbose(`📊 Upload metadata - Version: ${configFile.version || 1}, Size: ${configData.length} bytes`)
-      }
+      logger.displayVerbose(`📤 Uploading to s3://${s3Config.bucket}/${this.normalizeS3Key(s3Config.key)}`)
+      logger.displayVerbose(`📊 Upload metadata - Version: ${configFile.version || 1}, Size: ${configData.length} bytes`)
 
       const command = new PutObjectCommand({
         Bucket: s3Config.bucket,
@@ -552,16 +568,14 @@ export class S3SyncManager {
       })
 
       await this.s3Client!.send(command)
-      if (!options.silent) {
+      if (!options.silent || options.verbose) {
         logger.displaySuccess(`✅ Configuration uploaded to S3 successfully! (${this.formatTimestamp(now)})`)
       }
       return true
     }
     catch (error: unknown) {
-      if (!options.silent) {
-        const logger = new UILogger()
-        logger.displayError(`❌ Failed to upload to S3: ${this.formatAwsError(error)}`)
-      }
+      const logger = new UILogger()
+      logger.displayError(`❌ Failed to upload to S3: ${this.formatAwsError(error)}`)
       return false
     }
   }
@@ -759,11 +773,11 @@ export class S3SyncManager {
    * Enhanced with version checking and smart conflict resolution
    */
   async checkAutoSync(options: { verbose?: boolean, silent?: boolean } = {}): Promise<boolean> {
+    // Default to silent mode for auto-sync unless explicitly set to false
+    const silentMode = options.silent !== false
     if (!(await this.isS3Configured())) {
       const logger = new UILogger(options.verbose)
-      if (!options.silent) {
-        logger.displayVerbose('S3 not configured, skipping auto-sync')
-      }
+      logger.displayVerbose('S3 not configured, skipping auto-sync')
       return true // No S3 config, nothing to sync
     }
 
@@ -771,17 +785,13 @@ export class S3SyncManager {
       const s3Config = await this.getS3Config()
       if (!s3Config) {
         const logger = new UILogger(options.verbose)
-        if (!options.silent) {
-          logger.displayVerbose('No S3 config found, skipping auto-sync')
-        }
+        logger.displayVerbose('No S3 config found, skipping auto-sync')
         return true // No S3 config, nothing to sync
       }
       this.initializeS3Client(s3Config, options)
 
       const logger = new UILogger(options.verbose)
-      if (!options.silent) {
-        logger.displayVerbose('🔍 Starting automatic S3 config sync check...')
-      }
+      logger.displayVerbose('🔍 Starting automatic S3 config sync check...')
 
       const configManager = await this.getConfigManager()
       const localConfig = configManager.getConfigFile()
@@ -792,48 +802,36 @@ export class S3SyncManager {
       const syncAnalysis = await this.analyzeSyncRequirements(localConfig, remoteInfo, localFile, options)
 
       if (!syncAnalysis.shouldSync) {
-        if (!options.silent) {
-          logger.displayVerbose('✅ No sync needed - configurations are up to date')
-        }
+        logger.displayVerbose('✅ No sync needed - configurations are up to date')
         return true // No sync needed
       }
 
-      if (!options.silent) {
-        logger.displayVerbose(`🔄 Sync required: ${syncAnalysis.reason}`)
-      }
+      logger.displayVerbose(`🔄 Sync required: ${syncAnalysis.reason}`)
 
       // Perform sync based on analysis
       switch (syncAnalysis.syncDirection) {
         case 'upload':
-          if (!options.silent) {
-            logger.displayVerbose('📤 Uploading local config to S3...')
-          }
-          return await this.uploadConfigs(true, options)
+          logger.displayVerbose('📤 Uploading local config to S3...')
+          return await this.uploadConfigs(true, { ...options, silent: silentMode })
 
         case 'download':
           // Silent download with conflict resolution
-          if (!options.silent) {
-            logger.displayVerbose('📥 Downloading remote config from S3...')
-          }
-          return await this.downloadConfigs(true, { silent: options.silent || true, verbose: options.verbose })
+          logger.displayVerbose('📥 Downloading remote config from S3...')
+          return await this.downloadConfigs(true, { silent: silentMode, verbose: options.verbose })
 
         case 'conflict':
           // Silent conflict resolution - auto-merge conflicts
-          if (!options.silent) {
-            logger.displayVerbose('🔄 Resolving config conflicts automatically...')
-          }
-          return await this.downloadConfigs(true, { silent: options.silent || true, verbose: options.verbose })
+          logger.displayVerbose('🔄 Resolving config conflicts automatically...')
+          return await this.downloadConfigs(true, { silent: silentMode, verbose: options.verbose })
 
         default:
-          if (!options.silent) {
-            logger.displayVerbose('✅ No action needed')
-          }
+          logger.displayVerbose('✅ No action needed')
           return true
       }
     }
     catch (error) {
       // Silent fail for auto-sync, but show verbose error if enabled
-      if (options.verbose && !options.silent) {
+      if (options.verbose) {
         const logger = new UILogger(options.verbose)
         logger.displayVerbose(`⚠️ Auto-sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
@@ -853,7 +851,7 @@ export class S3SyncManager {
       // Small delay to ensure file is written completely
       await new Promise(resolve => setTimeout(resolve, 1000))
 
-      await this.uploadConfigs(true)
+      await this.uploadConfigs(true, { silent: true })
     }
     catch (error) {
       // Silent fail for auto-upload, but log for debugging

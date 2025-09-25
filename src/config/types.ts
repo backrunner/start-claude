@@ -7,11 +7,15 @@ export interface ClaudeConfig {
   permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
   transformerEnabled?: boolean // Enable transformer for this configuration
   transformer?: string // Specific transformer to use: "auto", "openai", "gemini", "openrouter", etc.
+  transformerHeaders?: Record<string, string> // Additional headers to send when using transformers
   isDefault?: boolean
   order?: number // Lower numbers are prioritized first (0 = highest priority)
   enabled?: boolean // Configuration is enabled/disabled
   deletedAt?: string // ISO timestamp when config was deleted, for soft deletion tracking
   isDeleted?: boolean // Simple flag to mark config as deleted (tombstone)
+
+  // Environment variables map - conflicts resolved by individual properties taking precedence
+  env?: Record<string, string>
 
   // Environment variables for Claude Code
   authToken?: string
@@ -52,9 +56,24 @@ export interface ClaudeConfig {
 }
 
 /**
+ * Speed test strategy types
+ */
+export enum SpeedTestStrategy {
+  ResponseTime = 'response-time', // Default: Send minimal request and measure response time
+  HeadRequest = 'head-request', // Send HEAD request to measure network latency
+  Ping = 'ping', // Use ping-like approach to measure connection time
+}
+
+/**
  * Load balancer strategy types
  */
-export type LoadBalancerStrategy = 'Fallback' | 'Polling' | 'Speed First'
+export enum LoadBalancerStrategy {
+  Fallback = 'Fallback',
+  Polling = 'Polling',
+  SpeedFirst = 'Speed First',
+}
+
+export type LoadBalancerStrategyType = LoadBalancerStrategy
 
 /**
  * Status line configuration interface
@@ -65,6 +84,25 @@ export interface StatusLineConfig {
     // ccstatusline configuration
     [key: string]: any
   }
+}
+
+/**
+ * MCP server configuration interface
+ */
+export interface McpServerConfig {
+  type?: 'stdio' | 'sse'
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+}
+
+/**
+ * MCP sync configuration interface
+ */
+export interface McpSyncConfig {
+  enabled: boolean
+  servers: Record<string, McpServerConfig>
+  lastSyncTime?: string
 }
 
 /**
@@ -86,6 +124,8 @@ export interface SystemSettings {
     speedFirst?: {
       responseTimeWindowMs: number // Time window for calculating average response times
       minSamples: number // Minimum number of samples before reordering
+      speedTestIntervalSeconds?: number // How often to perform speed tests in seconds (default: 300s = 5 minutes)
+      speedTestStrategy?: SpeedTestStrategy // Strategy for speed testing (default: response-time)
     }
   }
   sync?: {
@@ -111,6 +151,7 @@ export interface SystemSettings {
     endpointUrl?: string
     remoteConfigCheckIntervalMinutes?: number // Default: 60 (1 hour)
   }
+  mcpSync?: McpSyncConfig
 }
 
 /**

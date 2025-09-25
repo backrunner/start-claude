@@ -1,8 +1,9 @@
 import type { ConfigManager } from '../config/manager'
-import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
+import type { ClaudeConfig } from '../config/types'
 import type { S3SyncManager } from '../storage/s3-sync'
 import process from 'node:process'
 import inquirer from 'inquirer'
+import { LoadBalancerStrategy } from '../config/types'
 import { TransformerService } from '../services/transformer'
 import { findClosestMatch, isSimilarEnough } from '../utils/cli/fuzzy-match'
 import { UILogger } from '../utils/cli/ui'
@@ -11,6 +12,7 @@ export interface ProgramOptions {
   config?: string
   list?: boolean
   balance?: boolean | string
+  healthCheck?: boolean
   addDir?: string[]
   allowedTools?: string[]
   disallowedTools?: string[]
@@ -52,12 +54,12 @@ export function parseBalanceStrategy(balanceOption: boolean | string | undefined
 
   switch (strategy) {
     case 'fallback':
-      return { enabled: true, strategy: 'Fallback' }
+      return { enabled: true, strategy: LoadBalancerStrategy.Fallback }
     case 'polling':
-      return { enabled: true, strategy: 'Polling' }
+      return { enabled: true, strategy: LoadBalancerStrategy.Polling }
     case 'speedfirst':
     case 'speed-first':
-      return { enabled: true, strategy: 'Speed First' }
+      return { enabled: true, strategy: LoadBalancerStrategy.SpeedFirst }
     default:
       ui.warning(`❌ Unknown balance strategy '${strategy}'.`)
       ui.info('💡 Available strategies:')
@@ -65,7 +67,7 @@ export function parseBalanceStrategy(balanceOption: boolean | string | undefined
       ui.info('   • polling     - Round-robin across all endpoints')
       ui.info('   • speedfirst  - Route to fastest responding endpoint')
       ui.error('Using fallback strategy instead.')
-      return { enabled: true, strategy: 'Fallback' } // Fallback to a safe default
+      return { enabled: true, strategy: LoadBalancerStrategy.Fallback } // Fallback to a safe default
   }
 }
 
@@ -167,6 +169,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--config',
       '--list',
       '--balance',
+      '--health-check',
       '--add-dir',
       '--allowedTools',
       '--disallowedTools',

@@ -1,8 +1,8 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import type { LoadBalancerStrategy, SystemSettings } from '@/config/types'
-import { Activity, AlertCircle, Cloud, Database, FolderOpen, Globe, HardDrive, Key, Lock, Settings2, Timer, Zap } from 'lucide-react'
+import type { SystemSettings } from '@/config/types'
+import { Activity, AlertCircle, Cloud, Database, Globe, Key, Lock, Settings2, Timer, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
 
 interface SystemSettingsModalProps {
   open: boolean
@@ -25,7 +26,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
     overrideClaudeCommand: initialSettings?.overrideClaudeCommand || false,
     balanceMode: {
       enableByDefault: initialSettings?.balanceMode?.enableByDefault || false,
-      strategy: initialSettings?.balanceMode?.strategy || 'Fallback',
+      strategy: initialSettings?.balanceMode?.strategy || LoadBalancerStrategy.Fallback,
       healthCheck: {
         enabled: initialSettings?.balanceMode?.healthCheck?.enabled !== false,
         intervalMs: initialSettings?.balanceMode?.healthCheck?.intervalMs || 30000,
@@ -36,9 +37,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
       speedFirst: initialSettings?.balanceMode?.speedFirst || {
         responseTimeWindowMs: 300000,
         minSamples: 2,
+        speedTestIntervalSeconds: 300,
+        speedTestStrategy: SpeedTestStrategy.ResponseTime,
       },
     },
-    sync: initialSettings?.sync || undefined,
     s3Sync: initialSettings?.s3Sync
       ? {
           bucket: initialSettings.s3Sync.bucket || '',
@@ -119,16 +121,6 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
     }))
   }
 
-  const handleSyncChange = (field: keyof NonNullable<SystemSettings['sync']>, value: any): void => {
-    setSettings(prev => ({
-      ...prev,
-      sync: {
-        ...prev.sync!,
-        [field]: value,
-      },
-    }))
-  }
-
   const handleS3Change = (field: keyof NonNullable<SystemSettings['s3Sync']>, value: string | number): void => {
     setSettings(prev => ({
       ...prev,
@@ -136,26 +128,6 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
         ...prev.s3Sync!,
         [field]: value,
       },
-    }))
-  }
-
-  const enableSync = (): void => {
-    if (!settings.sync) {
-      setSettings(prev => ({
-        ...prev,
-        sync: {
-          enabled: true,
-          provider: 'custom',
-          linkedAt: new Date().toISOString(),
-        },
-      }))
-    }
-  }
-
-  const disableSync = (): void => {
-    setSettings(prev => ({
-      ...prev,
-      sync: undefined,
     }))
   }
 
@@ -240,22 +212,22 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                     </p>
                   </div>
                   <Select
-                    value={settings.balanceMode?.strategy || 'Fallback'}
+                    value={settings.balanceMode?.strategy || LoadBalancerStrategy.Fallback}
                     onValueChange={(value: LoadBalancerStrategy) => handleBalanceModeChange('strategy', value)}
                   >
                     <SelectTrigger className="w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Fallback">Fallback</SelectItem>
-                      <SelectItem value="Polling">Polling</SelectItem>
-                      <SelectItem value="Speed First">Speed First</SelectItem>
+                      <SelectItem value={LoadBalancerStrategy.Fallback}>Fallback</SelectItem>
+                      <SelectItem value={LoadBalancerStrategy.Polling}>Polling</SelectItem>
+                      <SelectItem value={LoadBalancerStrategy.SpeedFirst}>Speed First</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 {/* Speed First Configuration */}
-                {settings.balanceMode?.strategy === 'Speed First' && (
+                {settings.balanceMode?.strategy === LoadBalancerStrategy.SpeedFirst && (
                   <div className="space-y-3 p-3 rounded-lg border bg-muted/50">
                     <div className="flex items-center gap-2 mb-2">
                       <Timer className="h-4 w-4 text-orange-600 dark:text-orange-400" />
@@ -293,6 +265,45 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                         />
                         <p className="text-xs text-muted-foreground mt-1">
                           Minimum samples before using speed-based routing
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="speedTestInterval" className="text-sm font-medium">Speed Test Interval</Label>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            id="speedTestInterval"
+                            type="number"
+                            min="30"
+                            max="3600"
+                            className="w-20"
+                            value={settings.balanceMode?.speedFirst?.speedTestIntervalSeconds || 300}
+                            onChange={e => handleSpeedFirstChange('speedTestIntervalSeconds', Number(e.target.value))}
+                          />
+                          <span className="text-sm text-muted-foreground">seconds</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          How often to test endpoint speeds (30-3600 seconds)
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="speedTestStrategy" className="text-sm font-medium">Speed Test Strategy</Label>
+                        <Select
+                          value={settings.balanceMode?.speedFirst?.speedTestStrategy || SpeedTestStrategy.ResponseTime}
+                          onValueChange={(value: SpeedTestStrategy) => handleSpeedFirstChange('speedTestStrategy', value)}
+                        >
+                          <SelectTrigger className="w-full mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={SpeedTestStrategy.ResponseTime}>Response Time</SelectItem>
+                            <SelectItem value={SpeedTestStrategy.HeadRequest}>Head Request</SelectItem>
+                            <SelectItem value={SpeedTestStrategy.Ping}>Ping</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Method used to measure endpoint speed
                         </p>
                       </div>
                     </div>
@@ -362,144 +373,6 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                   </div>
                 </div>
               </CardContent>
-            </Card>
-
-            {/* Configuration Sync Settings - Full Width */}
-            <Card className="transition-all hover:shadow-md">
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/20">
-                      <Cloud className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-lg">Cloud Storage Sync</CardTitle>
-                      <CardDescription>Sync configurations across devices using cloud storage or custom folders</CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {settings.sync?.enabled && <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">Active</Badge>}
-                    <Switch
-                      id="enableSync"
-                      checked={settings.sync?.enabled || false}
-                      onCheckedChange={checked => checked ? enableSync() : disableSync()}
-                    />
-                  </div>
-                </div>
-              </CardHeader>
-
-              {settings.sync?.enabled && (
-                <CardContent className="pt-0">
-                  <div className="space-y-6">
-                    {/* Sync Provider Selection */}
-                    <div className="p-3 rounded-lg border bg-muted/50">
-                      <Label htmlFor="syncProvider" className="font-medium">Sync Provider</Label>
-                      <p className="text-sm text-muted-foreground mt-1 mb-3">
-                        Choose how to sync your configurations
-                      </p>
-                      <Select
-                        value={settings.sync.provider}
-                        onValueChange={(value: 'icloud' | 'onedrive' | 'custom') => handleSyncChange('provider', value)}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="icloud">
-                            <div className="flex items-center gap-2">
-                              <Cloud className="h-4 w-4" />
-                              iCloud Drive
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="onedrive">
-                            <div className="flex items-center gap-2">
-                              <FolderOpen className="h-4 w-4" />
-                              OneDrive
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="custom">
-                            <div className="flex items-center gap-2">
-                              <HardDrive className="h-4 w-4" />
-                              Custom Folder
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Provider-specific configuration */}
-                    {settings.sync.provider === 'custom' && (
-                      <div className="space-y-4 p-3 rounded-lg border bg-muted/50">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
-                          <HardDrive className="h-4 w-4" />
-                          Custom Folder Configuration
-                        </div>
-                        <div>
-                          <Label htmlFor="customPath" className="font-medium">Folder Path</Label>
-                          <Input
-                            id="customPath"
-                            type="text"
-                            className="mt-1"
-                            value={settings.sync.customPath || ''}
-                            onChange={e => handleSyncChange('customPath', e.target.value)}
-                            placeholder="/path/to/sync/folder"
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Full path to the directory where configurations will be synced
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {(settings.sync.provider === 'icloud' || settings.sync.provider === 'onedrive') && (
-                      <div className="space-y-4 p-3 rounded-lg border bg-muted/50">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
-                          {settings.sync.provider === 'icloud' ? <Cloud className="h-4 w-4" /> : <FolderOpen className="h-4 w-4" />}
-                          {settings.sync.provider === 'icloud' ? 'iCloud Drive' : 'OneDrive'}
-                          {' '}
-                          Configuration
-                        </div>
-                        <div>
-                          <Label htmlFor="cloudPath" className="font-medium">Cloud Path</Label>
-                          <Input
-                            id="cloudPath"
-                            type="text"
-                            className="mt-1"
-                            value={settings.sync.cloudPath || ''}
-                            onChange={e => handleSyncChange('cloudPath', e.target.value)}
-                            placeholder={settings.sync.provider === 'icloud' ? '~/Library/Mobile Documents/com~apple~CloudDocs' : '~/OneDrive'}
-                            readOnly
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            This path is automatically detected from your system
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Sync Status */}
-                    {settings.sync.linkedAt && (
-                      <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
-                        <div className="flex items-center gap-2 text-sm">
-                          <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                          <span className="font-medium text-green-900 dark:text-green-100">
-                            Sync configured on
-                            {' '}
-                            {new Date(settings.sync.linkedAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                        {settings.sync.lastVerified && (
-                          <p className="text-xs text-green-700 dark:text-green-300 mt-1">
-                            Last verified:
-                            {' '}
-                            {new Date(settings.sync.lastVerified).toLocaleString()}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              )}
             </Card>
 
             {/* S3 Sync Settings - Full Width */}

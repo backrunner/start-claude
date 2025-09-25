@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
 import { settingsUpdateRequestSchema, systemSettingsSchema } from '@/lib/validation'
 import { ConfigManager } from '../../../../config/manager'
 
@@ -19,7 +20,7 @@ async function getSettings(): Promise<any> {
     if (!settings.balanceMode) {
       settings.balanceMode = {
         enableByDefault: false,
-        strategy: 'Fallback',
+        strategy: LoadBalancerStrategy.Fallback,
         healthCheck: {
           enabled: true,
           intervalMs: 30000,
@@ -30,6 +31,8 @@ async function getSettings(): Promise<any> {
         speedFirst: {
           responseTimeWindowMs: 300000,
           minSamples: 2,
+          speedTestIntervalSeconds: 300,
+          speedTestStrategy: SpeedTestStrategy.ResponseTime,
         },
       }
     }
@@ -42,7 +45,7 @@ async function getSettings(): Promise<any> {
       overrideClaudeCommand: false,
       balanceMode: {
         enableByDefault: false,
-        strategy: 'Fallback',
+        strategy: LoadBalancerStrategy.Fallback,
         healthCheck: {
           enabled: true,
           intervalMs: 30000,
@@ -53,6 +56,8 @@ async function getSettings(): Promise<any> {
         speedFirst: {
           responseTimeWindowMs: 300000,
           minSamples: 2,
+          speedTestIntervalSeconds: 300,
+          speedTestStrategy: SpeedTestStrategy.ResponseTime,
         },
       },
     }

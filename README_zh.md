@@ -28,7 +28,7 @@ pnpm add -g start-claude
 # 直接使用 CLI 覆盖启动 Claude Code（无需配置）
 start-claude --api-key sk-your-key --model claude-3-sonnet
 
-# 使用短命令别名（在 Windows 上可能无效）
+# 使用短命令别名
 scc --api-key sk-your-key --model claude-3-sonnet
 
 # Windows 用户：启用覆盖以获得更好的兼容性
@@ -111,22 +111,19 @@ start-claude manager
 - **禁用健康检查**：使用带端点禁用的简单轮询
   start-claude -e DEBUG=1 -e NODE_ENV=prod --verbose
 
-# 短别名
+## 短别名
 
 scc --api-key sk-key --model claude-3-haiku
-
-````
 
 ## 编辑器模式
 
 在你喜欢的编辑器中编辑配置：
 
 ```bash
-# 支持的编辑器：VS Code、Cursor、Windsurf、记事本等
 start-claude add -e             # 在编辑器中创建配置
 start-claude edit myconfig -e   # 在编辑器中编辑配置
 start-claude edit-config        # 直接编辑配置文件，支持实时重载
-````
+```
 
 ## Claude Code 文档
 
@@ -147,41 +144,14 @@ start-claude edit-config        # 直接编辑配置文件，支持实时重载
 
 MIT 许可证
 
----
-
-## ⚠️ Windows 用户重要通知
-
-**`sc` 命令在 Windows 上可能无效**，因为存在系统命令冲突。Windows 保留 `sc` 用于服务控制操作。如果遇到问题，请使用以下替代方案之一：
-
-```bash
-# 选项 1：使用完整命令名
-start-claude --api-key sk-your-key
-
-# 选项 2：设置命令覆盖（推荐）
-start-claude override
-
-# 选项 3：创建自定义别名
-doskey sc=start-claude $*
-```
-
-我们推荐使用**覆盖功能**以获得最佳 Windows 体验。
-
----
-
-💡 **专业提示**：Windows 用户应该使用 `start-claude override` 以获得最佳体验，因为 `sc` 别名可能与系统命令冲突。
-
 ## 致谢
 
 本项目整合并基于多个优秀的开源工具：
 
-### 第三方工具
-
+- **[llms](https://github.com/musistudio/llms)** - Claude Code Router Core Service
 - **[ccusage](https://github.com/LouisShark/ccusage)** - 全面的 Claude Code 使用分析和成本跟踪工具
 - **[ccstatusline](https://github.com/LouisShark/ccstatusline)** - Shell 和编辑器的实时 Claude Code 状态行集成
 
-### 特别感谢
+```
 
-我们表达对以下的感谢：
-
-- **LouisShark** 创建了出色的 ccusage 和 ccstatusline 工具，增强了 Claude Code 体验
-- 开源社区提供各种依赖项和工具，使这个项目成为可能
+```
