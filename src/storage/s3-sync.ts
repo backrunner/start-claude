@@ -97,12 +97,34 @@ export class S3SyncManager {
       const { S3ConfigFileManager } = await import('../config/s3-config')
       const fileMgr = S3ConfigFileManager.getInstance()
       const fileConfig = fileMgr.getS3Config()
-      if (fileConfig) return fileConfig as unknown as S3Config
+      if (fileConfig) {
+        const config = fileConfig as unknown as S3Config
+        // Validate required fields
+        if (!config.bucket || !config.region || !config.accessKeyId || !config.secretAccessKey || !config.key) {
+          throw new Error('S3 config is missing required fields: bucket, region, accessKeyId, secretAccessKey, or key')
+        }
+        return config
+      }
     }
-    catch {}
+    catch (error) {
+      if (error instanceof Error && error.message.includes('missing required fields')) {
+        throw error // Re-throw validation errors
+      }
+      // Log other errors but continue to fallback
+      console.error('Error loading S3 config file:', error)
+    }
 
     const configManager = await this.getConfigManager()
-    return configManager.getSettings().s3Sync || null
+    const s3Config = configManager.getSettings().s3Sync
+
+    if (s3Config) {
+      // Validate required fields for fallback config too
+      if (!s3Config.bucket || !s3Config.region || !s3Config.accessKeyId || !s3Config.secretAccessKey || !s3Config.key) {
+        throw new Error('S3 config is missing required fields: bucket, region, accessKeyId, secretAccessKey, or key')
+      }
+    }
+
+    return s3Config || null
   }
 
   public async getSystemSettings(): Promise<SystemSettings> {
@@ -116,7 +138,11 @@ export class S3SyncManager {
     return ConfigManager.getInstance()
   }
 
-  private normalizeS3Key(key: string): string {
+  private normalizeS3Key(key: string | undefined | null): string {
+    // Handle undefined/null keys
+    if (!key) {
+      throw new Error('S3 key cannot be undefined or null')
+    }
     // Remove leading slash if present
     return key.startsWith('/') ? key.slice(1) : key
   }

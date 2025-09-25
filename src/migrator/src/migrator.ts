@@ -68,7 +68,11 @@ export class Migrator {
    * Execute migrations for a config file
    * Only loads migration modules when actually needed
    */
-  async migrate(configPath: string, options: MigrationOptions = {}): Promise<MigrationResult> {
+  async migrate(
+    configPath: string,
+    options: MigrationOptions = {},
+    fileCreator?: (filePath: string, content: any, config: any) => Promise<void>
+  ): Promise<MigrationResult> {
     const detection = this.detectMigrationNeeded(configPath)
 
     if (!detection.needsMigration) {
@@ -120,24 +124,14 @@ export class Migrator {
         if (migrationEntry.structured) {
           const { StructuredMigrationProcessor } = await import('./structured-processor')
 
-          // Create a file creator callback for S3 config files
-          const fileCreator = async (filePath: string, content: any, configToModify: any): Promise<void> => {
-            if (filePath.includes('s3-config.json')) {
-              // Store S3 config in temporary location for the calling system to handle
-              if (!configToModify.__migration_temp__) {
-                configToModify.__migration_temp__ = {}
-              }
-              configToModify.__migration_temp__.s3ConfigToCreate = content
+          config = await StructuredMigrationProcessor.execute(
+            migrationEntry.structured,
+            config,
+            {
+              fileCreator,
+              migrationsDir: join(__dirname, '../migrations')
             }
-            else {
-              // For other files, write directly
-              const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2)
-              const fs = await import('node:fs')
-              fs.writeFileSync(filePath, contentStr, 'utf8')
-            }
-          }
-
-          config = await StructuredMigrationProcessor.execute(migrationEntry.structured, config, { fileCreator })
+          )
           migrationsApplied.push(migrationEntry.description)
         }
         // Handle class-based migrations

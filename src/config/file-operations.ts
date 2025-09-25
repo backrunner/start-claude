@@ -69,18 +69,18 @@ export class ConfigFileManager {
 
     try {
       const content = fs.readFileSync(CONFIG_FILE, 'utf-8')
-      const rawConfig = JSON.parse(content)
+      const rawConfig: unknown = JSON.parse(content)
 
       // Check if this is a legacy config file (no version field)
-      if (!('version' in rawConfig)) {
+      if (typeof rawConfig === 'object' && rawConfig !== null && !('version' in rawConfig)) {
         const migrated = this.migrateLegacyConfig(rawConfig as LegacyConfigFile)
         // After migrating legacy to v1, run structured migrations (e.g., extract S3 config)
         try {
           await this.runStructuredMigrations()
         }
-        catch (e) {
+        catch (error) {
           // Non-fatal: continue with migrated config
-          new UILogger().displayWarning(`Structured migration after legacy migration failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
+          new UILogger().displayWarning(`Structured migration after legacy migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
         return migrated
       }
@@ -96,7 +96,7 @@ export class ConfigFileManager {
       try {
         await this.runStructuredMigrations()
       }
-      catch (e) {
+      catch {
         // Fallback to simple migrate if structured migrator not available
         if (config.version < CURRENT_CONFIG_VERSION) {
           return this.migrateConfig(config)
@@ -128,28 +128,28 @@ export class ConfigFileManager {
    * Execute structured migrations defined in migrator (idempotent)
    */
   private async runStructuredMigrations(): Promise<void> {
-    try {
-      // Dynamic import to avoid circular deps and load cost on every call
-      const migratorModule = await import('../migrator/src/index')
-      const { Migrator, CURRENT_CONFIG_VERSION: TARGET } = migratorModule
+    // Dynamic import to avoid circular deps and load cost on every call
+    const migratorModule = await import('../migrator/src/index')
+    const { Migrator, CURRENT_CONFIG_VERSION: TARGET } = migratorModule
 
-      const migrator = new Migrator({
-        currentVersion: TARGET,
-        backupDirectory: path.join(CONFIG_DIR, 'backups'),
-      })
+    const migrator = new Migrator({
+      currentVersion: TARGET,
+      backupDirectory: path.join(CONFIG_DIR, 'backups'),
+    })
 
-      const detection = migrator.detectMigrationNeeded(CONFIG_FILE)
-      if (detection.needsMigration) {
-        const ui = new UILogger()
-        ui.displayInfo(`Migrating configuration from version ${detection.currentVersion} to ${detection.targetVersion}...`)
-        await migrator.migrate(CONFIG_FILE, { backup: true, verbose: false })
+    const detection = migrator.detectMigrationNeeded(CONFIG_FILE)
+    if (detection.needsMigration) {
+      const ui = new UILogger()
+      ui.displayInfo(`Migrating configuration from version ${detection.currentVersion} to ${detection.targetVersion}...`)
+
+      // Execute migration - all file creation logic is now handled by migration scripts/schema
+      const result = await migrator.migrate(CONFIG_FILE, { backup: true, verbose: false })
+
+      if (result.success) {
+        ui.displaySuccess(`Configuration migrated successfully to version ${detection.targetVersion}`)
       }
-      // Re-read and normalize handled by caller
     }
-    catch (error) {
-      // If migrator is not available or fails, propagate to caller to fallback
-      throw error
-    }
+    // Re-read and normalize handled by caller
   }
 
   /**
@@ -295,9 +295,9 @@ export class ConfigFileManager {
     try {
       fs.appendFileSync(MIGRATION_LOG_FILE, logEntry)
     }
-    catch {
+    catch (error: unknown) {
       // Don't fail if we can't write to log file
-      console.error('Failed to write migration log')
+      console.error('Failed to write migration log:', error instanceof Error ? error.message : 'Unknown error')
     }
   }
 
@@ -313,7 +313,7 @@ export class ConfigFileManager {
       const content = fs.readFileSync(MIGRATION_LOG_FILE, 'utf-8')
       const lines = content.trim().split('\n').filter(line => line.trim())
 
-      return lines.map((line) => {
+      return lines.map((line): MigrationInfo => {
         const match = line.match(/^(.+?) - Migration (\d+) → (\d+): (.+)$/)
         if (!match) {
           throw new Error(`Invalid migration log line: ${line}`)
@@ -321,13 +321,13 @@ export class ConfigFileManager {
 
         return {
           timestamp: new Date(match[1]).getTime(),
-          fromVersion: Number.parseInt(match[2]),
-          toVersion: Number.parseInt(match[3]),
+          fromVersion: Number.parseInt(match[2], 10),
+          toVersion: Number.parseInt(match[3], 10),
           description: match[4],
         }
       })
     }
-    catch (error) {
+    catch (error: unknown) {
       const logger = new UILogger()
       logger.displayWarning(`Error reading migration history: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return []
@@ -344,15 +344,16 @@ export class ConfigFileManager {
 
     try {
       const content = fs.readFileSync(CONFIG_FILE, 'utf-8')
-      const rawConfig = JSON.parse(content)
+      const rawConfig: unknown = JSON.parse(content)
 
       // Legacy config (no version) needs migration
-      if (!('version' in rawConfig)) {
+      if (typeof rawConfig !== 'object' || rawConfig === null || !('version' in rawConfig)) {
         return true
       }
 
       // Check if version is outdated
-      return rawConfig.version < CURRENT_CONFIG_VERSION
+      const config = rawConfig as { version?: number }
+      return (config.version || 0) < CURRENT_CONFIG_VERSION
     }
     catch {
       // If we can't parse the file, we'll need to create a new one
@@ -370,8 +371,14 @@ export class ConfigFileManager {
 
     try {
       const content = fs.readFileSync(CONFIG_FILE, 'utf-8')
-      const rawConfig = JSON.parse(content)
-      return rawConfig.version || 0
+      const rawConfig: unknown = JSON.parse(content)
+
+      if (typeof rawConfig === 'object' && rawConfig !== null && 'version' in rawConfig) {
+        const config = rawConfig as { version?: number }
+        return config.version || 0
+      }
+
+      return 0
     }
     catch {
       return 0

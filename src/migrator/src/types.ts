@@ -12,13 +12,30 @@ export interface ConfigMigration<T = any, U = any> {
  * Structured migration operations for declarative migrations
  */
 export interface MigrationOperation {
-  type: 'move' | 'copy' | 'delete' | 'transform' | 'create_file' | 'custom'
+  type: 'move' | 'copy' | 'delete' | 'transform' | 'create_file' | 'custom' | 'run_script'
   source?: string
   target?: string
   transform?: (value: any) => any
-  condition?: (config: any) => boolean
+  condition?: (config: any) => boolean | string // Support both function and string expression
   filePath?: string
-  fileContent?: (config: any) => any
+  fileContent?: (config: any) => any | any // Support both function and static object
+  scriptPath?: string // Path to migration script file (relative to migrations directory)
+  scriptArgs?: any // Arguments to pass to the migration script
+}
+
+/**
+ * JSON-based migration operation for file storage
+ */
+export interface JsonMigrationOperation {
+  type: 'move' | 'copy' | 'delete' | 'transform' | 'create_file' | 'custom' | 'run_script'
+  source?: string
+  target?: string
+  transform?: string // JavaScript expression as string
+  condition?: string // JavaScript expression as string
+  filePath?: string
+  fileContent?: any // Static object or JavaScript expression strings
+  scriptPath?: string // Path to migration script file (relative to migrations directory)
+  scriptArgs?: any // Arguments to pass to the migration script
 }
 
 /**
@@ -29,6 +46,16 @@ export interface StructuredMigration {
   toVersion: number
   description: string
   operations: MigrationOperation[]
+}
+
+/**
+ * JSON-based migration definition for file storage
+ */
+export interface JsonMigrationDefinition {
+  fromVersion: number
+  toVersion: number
+  description: string
+  operations: JsonMigrationOperation[]
 }
 
 /**

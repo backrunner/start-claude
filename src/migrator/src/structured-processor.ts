@@ -1,5 +1,6 @@
 import type { MigrationOperation, StructuredMigration } from './types'
 import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 /**
  * Processor for structured declarative migrations
@@ -14,6 +15,7 @@ export class StructuredMigrationProcessor {
     config: any,
     options?: {
       fileCreator?: (filePath: string, content: any, config: any) => Promise<void>
+      migrationsDir?: string // Directory containing migration scripts
     },
   ): Promise<any> {
     let result = JSON.parse(JSON.stringify(config)) // Deep clone
@@ -41,6 +43,7 @@ export class StructuredMigrationProcessor {
     config: any,
     options?: {
       fileCreator?: (filePath: string, content: any, config: any) => Promise<void>
+      migrationsDir?: string
     },
   ): Promise<any> {
     switch (operation.type) {
@@ -61,12 +64,52 @@ export class StructuredMigrationProcessor {
         await this.createFile(operation.filePath!, operation.fileContent!(config), options?.fileCreator, config)
         return config
 
+      case 'run_script':
+        return await this.runMigrationScript(operation, config, options?.migrationsDir)
+
       case 'custom':
         // For custom operations, the transform function does the work
         return operation.transform!(config)
 
       default:
         throw new Error(`Unknown operation type: ${(operation as any).type}`)
+    }
+  }
+
+  /**
+   * Run a migration script
+   */
+  private static async runMigrationScript(
+    operation: MigrationOperation,
+    config: any,
+    migrationsDir?: string,
+  ): Promise<any> {
+    if (!operation.scriptPath) {
+      throw new Error('scriptPath is required for run_script operation')
+    }
+
+    const scriptPath = migrationsDir
+      ? join(migrationsDir, operation.scriptPath)
+      : join(__dirname, '../migrations/scripts', operation.scriptPath)
+
+    try {
+      // Dynamic import of the migration script
+      const scriptModule = await import(scriptPath)
+
+      // Look for default export or 'migrate' function
+      const migrateFn = scriptModule.default || scriptModule.migrate
+
+      if (typeof migrateFn !== 'function') {
+        throw new Error(`Migration script ${operation.scriptPath} must export a default function or 'migrate' function`)
+      }
+
+      // Execute the migration script with config and optional arguments
+      const result = await migrateFn(config, operation.scriptArgs)
+
+      return result || config // Return modified config or original if no return value
+    }
+    catch (error) {
+      throw new Error(`Failed to execute migration script ${operation.scriptPath}: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 

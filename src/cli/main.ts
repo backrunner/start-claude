@@ -33,9 +33,6 @@ const s3SyncManager = S3SyncManager.getInstance()
 const statusLineManager = StatusLineManager.getInstance()
 const mcpSyncManager = McpSyncManager.getInstance()
 
-// Initialize S3 sync for the config manager
-configManager.initializeS3Sync().catch(console.error)
-
 /**
  * Handle statusline sync on startup
  */
@@ -226,9 +223,11 @@ program
     // Process update check result
     const updateCheckInfo = updateInfo?.status === 'fulfilled' ? updateInfo.value : null
 
-    // Process remote update result
+    // Process remote update result - this tells us if S3 sync happened
+    let hasS3Synced = false
     if (remoteUpdateResult.status === 'fulfilled' && remoteUpdateResult.value) {
       ui.verbose('✨ Remote configuration updated successfully')
+      hasS3Synced = true
     }
 
     // Process Claude installation check
@@ -309,7 +308,7 @@ program
       }
     }
 
-    const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
+    const config = await resolveConfig(configManager, s3SyncManager, options, configArg, hasS3Synced)
 
     // Handle statusline and MCP sync in parallel for faster startup with error resilience
     try {
@@ -508,7 +507,7 @@ program
   .description('Run configuration migrations (e.g., extract S3 config)')
   .option('--dry-run', 'Show pending migrations without applying changes')
   .option('--verbose', 'Enable verbose output')
-  .action(async (options) => (await import('../commands/migrate')).handleMigrateCommand(options))
+  .action(async options => (await import('../commands/migrate')).handleMigrateCommand(options))
 
 program
   .command('manage')

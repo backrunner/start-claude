@@ -1,0 +1,15 @@
+{
+  "fromVersion": 1,
+  "toVersion": 2,
+  "description": "Extract S3 configuration to separate file for cloud sync support",
+  "operations": [
+    {
+      "type": "run_script",
+      "condition": "config.settings?.s3Sync !== undefined",
+      "scriptPath": "extract-s3-config.ts",
+      "scriptArgs": {
+        "configDir": null
+      }
+    }
+  ]
+}

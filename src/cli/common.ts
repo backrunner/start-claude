@@ -254,19 +254,24 @@ async function handleS3ConfigLookup(
   configManager: ConfigManager,
   s3SyncManager: S3SyncManager,
   configName: string,
+  hasAlreadySynced = false, // New parameter to avoid double sync
 ): Promise<ClaudeConfig | undefined> {
   const ui = new UILogger()
   if (!(await s3SyncManager.isS3Configured())) {
     return undefined
   }
 
-  ui.info(`Configuration "${configName}" not found locally. Checking S3 for updates...`)
-  // Use silent auto-sync to avoid prompts during startup
-  const syncSuccess = await s3SyncManager.checkAutoSync({ silent: true })
-  if (syncSuccess) {
-    return configManager.getConfig(configName)
+  // Only perform sync if it hasn't been done already
+  if (!hasAlreadySynced) {
+    ui.info(`Configuration "${configName}" not found locally. Checking S3 for updates...`)
+    // Use silent auto-sync to avoid prompts during startup
+    const syncSuccess = await s3SyncManager.checkAutoSync({ silent: true })
+    if (!syncSuccess) {
+      return undefined
+    }
   }
-  return undefined
+
+  return configManager.getConfig(configName)
 }
 
 /**
@@ -344,6 +349,7 @@ export async function resolveConfig(
   s3SyncManager: S3SyncManager,
   options: ProgramOptions,
   configArg?: string,
+  hasAlreadySynced = false, // New parameter to avoid double sync
 ): Promise<ClaudeConfig | undefined> {
   let config: ClaudeConfig | undefined
   const configName = options.config || configArg
@@ -352,7 +358,7 @@ export async function resolveConfig(
     config = await configManager.getConfig(configName)
     if (!config) {
       // If config not found and S3 is configured, check for newer remote config
-      config = await handleS3ConfigLookup(configManager, s3SyncManager, configName)
+      config = await handleS3ConfigLookup(configManager, s3SyncManager, configName, hasAlreadySynced)
       if (!config) {
         // Try fuzzy matching before giving up
         const allConfigs = await configManager.listConfigs()
