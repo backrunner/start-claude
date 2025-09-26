@@ -4,9 +4,10 @@ import type {
   MigrationOptions,
   MigrationResult,
   MigratorConfig,
-} from './types'
+} from '../types'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { StructuredMigrationProcessor } from '../processors/structured-processor'
 import { CURRENT_CONFIG_VERSION, findMigrationPath, getAvailableMigrations } from './registry'
 
 /**
@@ -118,8 +119,6 @@ export class Migrator {
 
         // Handle structured migrations
         if (migrationEntry.structured) {
-          const { StructuredMigrationProcessor } = await import('./structured-processor')
-
           // Create a file creator callback for S3 config files
           const fileCreator = async (filePath: string, content: any, configToModify: any): Promise<void> => {
             if (filePath.includes('s3-config.json')) {

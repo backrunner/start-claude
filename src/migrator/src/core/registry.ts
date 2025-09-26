@@ -1,4 +1,4 @@
-import type { MigrationRegistryEntry } from './types'
+import type { MigrationRegistryEntry } from '../types'
 
 /**
  * Migration registry defining all available migrations
