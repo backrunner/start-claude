@@ -1,6 +1,6 @@
 /* eslint-disable ts/no-implied-eval */
 /* eslint-disable no-new-func */
-import type { JsonMigrationDefinition, MigrationRegistryEntry, StructuredMigration } from './types'
+import type { JsonMigrationDefinition, MigrationRegistryEntry, StructuredMigration } from '../types'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 

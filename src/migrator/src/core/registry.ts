@@ -1,5 +1,5 @@
-import type { MigrationRegistryEntry } from './types'
-import { MigrationLoader } from './migration-loader'
+import type { MigrationRegistryEntry } from '../types'
+import { MigrationLoader } from './loader'
 
 /**
  * Migration registry defining all available migrations

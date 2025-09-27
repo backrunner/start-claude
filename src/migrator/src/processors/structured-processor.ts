@@ -3,10 +3,6 @@ import type { MigrationOperation, StructuredMigration } from '../types'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-interface FileCreatorOptions {
-  fileCreator?: (filePath: string, content: unknown, config: Record<string, unknown>) => Promise<void>
-}
-
 /**
  * Processor for structured declarative migrations
  * This allows migrations to be defined as data rather than code
@@ -85,7 +81,7 @@ export class StructuredMigrationProcessor {
         return config
 
       case 'run_script':
-        return await this.runMigrationScript(operation, config, options?.migrationsDir)
+        return this.runMigrationScript(operation, config, options?.migrationsDir)
 
       case 'custom':
         if (!operation.transform) {
@@ -123,7 +119,7 @@ export class StructuredMigrationProcessor {
       const migrateFn = scriptModule.default || scriptModule.migrate
 
       if (typeof migrateFn !== 'function') {
-        throw new Error(`Migration script ${operation.scriptPath} must export a default function or 'migrate' function`)
+        throw new TypeError(`Migration script ${operation.scriptPath} must export a default function or 'migrate' function`)
       }
 
       // Execute the migration script with config and optional arguments

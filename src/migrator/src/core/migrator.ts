@@ -72,7 +72,7 @@ export class Migrator {
   async migrate(
     configPath: string,
     options: MigrationOptions = {},
-    fileCreator?: (filePath: string, content: any, config: any) => Promise<void>
+    fileCreator?: (filePath: string, content: any, config: any) => Promise<void>,
   ): Promise<MigrationResult> {
     const detection = this.detectMigrationNeeded(configPath)
 
@@ -123,15 +123,13 @@ export class Migrator {
 
         // Handle structured migrations
         if (migrationEntry.structured) {
-          const { StructuredMigrationProcessor } = await import('./structured-processor')
-
           config = await StructuredMigrationProcessor.execute(
             migrationEntry.structured,
             config,
             {
               fileCreator,
-              migrationsDir: join(__dirname, '../migrations')
-            }
+              migrationsDir: join(__dirname, '../migrations'),
+            },
           )
           migrationsApplied.push(migrationEntry.description)
         }
