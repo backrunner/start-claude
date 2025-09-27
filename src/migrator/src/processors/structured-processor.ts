@@ -1,6 +1,11 @@
-import type { MigrationOperation, StructuredMigration } from './types'
+import type { MigrationOperation, StructuredMigration } from '../types'
+
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+interface FileCreatorOptions {
+  fileCreator?: (filePath: string, content: unknown, config: Record<string, unknown>) => Promise<void>
+}
 
 /**
  * Processor for structured declarative migrations
@@ -10,7 +15,7 @@ export class StructuredMigrationProcessor {
   /**
    * Execute a structured migration on a config object
    */
-  static async execute(
+  static async execute<T extends Record<string, unknown>>(
     migration: StructuredMigration,
     config: any,
     options?: {
@@ -30,7 +35,7 @@ export class StructuredMigrationProcessor {
     }
 
     // Update version
-    result.version = migration.toVersion
+    ;(result as T & { version: number }).version = migration.toVersion
 
     return result
   }
@@ -48,28 +53,46 @@ export class StructuredMigrationProcessor {
   ): Promise<any> {
     switch (operation.type) {
       case 'move':
-        return this.moveProperty(config, operation.source!, operation.target!)
+        if (!operation.source || !operation.target) {
+          throw new Error('Move operation requires both source and target paths')
+        }
+        return this.moveProperty(config, operation.source, operation.target)
 
       case 'copy':
-        return this.copyProperty(config, operation.source!, operation.target!)
+        if (!operation.source || !operation.target) {
+          throw new Error('Copy operation requires both source and target paths')
+        }
+        return this.copyProperty(config, operation.source, operation.target)
 
       case 'delete':
-        return this.deleteProperty(config, operation.source!)
+        if (!operation.source) {
+          throw new Error('Delete operation requires a source path')
+        }
+        return this.deleteProperty(config, operation.source)
 
       case 'transform':
-        return this.transformProperty(config, operation.source!, operation.transform!)
+        if (!operation.source || !operation.transform) {
+          throw new Error('Transform operation requires both source path and transform function')
+        }
+        return this.transformProperty(config, operation.source, operation.transform)
 
       case 'create_file':
+        if (!operation.filePath || !operation.fileContent) {
+          throw new Error('Create file operation requires both filePath and fileContent')
+        }
         // Call the file creator with the current config and allow it to modify the config
-        await this.createFile(operation.filePath!, operation.fileContent!(config), options?.fileCreator, config)
+        await this.createFile(operation.filePath, operation.fileContent(config), options?.fileCreator, config)
         return config
 
       case 'run_script':
         return await this.runMigrationScript(operation, config, options?.migrationsDir)
 
       case 'custom':
+        if (!operation.transform) {
+          throw new Error('Custom operation requires a transform function')
+        }
         // For custom operations, the transform function does the work
-        return operation.transform!(config)
+        return operation.transform(config)
 
       default:
         throw new Error(`Unknown operation type: ${(operation as any).type}`)

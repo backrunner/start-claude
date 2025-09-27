@@ -4,9 +4,10 @@ import type {
   MigrationOptions,
   MigrationResult,
   MigratorConfig,
-} from './types'
+} from '../types'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { StructuredMigrationProcessor } from '../processors/structured-processor'
 import { CURRENT_CONFIG_VERSION, findMigrationPath, getAvailableMigrations } from './registry'
 
 /**

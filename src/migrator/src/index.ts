@@ -7,3 +7,5 @@ export { MigrationLoader } from './migration-loader'
 
 // Re-export types
 export * from './types'
+
+export { MigrationDetector } from './utils/detector'
