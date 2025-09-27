@@ -39,7 +39,7 @@ const mcpSyncManager = McpSyncManager.getInstance()
 async function handleStatusLineSync(options: { verbose?: boolean } = {}): Promise<void> {
   const ui = new UILogger(options.verbose)
   try {
-    const settings = configManager.getSettings()
+    const settings = await configManager.getSettings()
     const statusLineConfig = settings.statusLine
 
     // Only proceed if statusline is enabled and has config
@@ -113,7 +113,7 @@ program
 
     if (options.list === true) {
       ui.displayWelcome()
-      const configs = configManager.listConfigs()
+      const configs = await configManager.listConfigs()
       ui.displayConfigList(configs)
       return
     }
@@ -245,15 +245,15 @@ program
 
       if (configName) {
         // Check config directly without fuzzy search to avoid prompts
-        config = configManager.getConfig(configName)
+        config = await configManager.getConfig(configName)
         if (!config && remoteUpdateResult.status === 'fulfilled' && remoteUpdateResult.value) {
           // Config might have been updated during the remote sync
-          config = configManager.getConfig(configName)
+          config = await configManager.getConfig(configName)
         }
       }
       else {
         // For default config, we can check normally
-        config = configManager.getDefaultConfig()
+        config = await configManager.getDefaultConfig()
       }
 
       if (TransformerService.isTransformerEnabled(config?.transformerEnabled)) {

@@ -29,7 +29,7 @@
     "src/migrator"
   ],
   "scripts": {
-    "build": "node --experimental-strip-types scripts/clean.ts && turbo build && pnpm run postbuild",
+    "build": "node --experimental-strip-types scripts/clean.ts && pnpm run build:cli && turbo build && pnpm run postbuild",
     "build:cli": "rollup -c rollup.config.ts --configPlugin typescript",
     "build:manager": "turbo build --filter=@start-claude/manager",
     "postbuild": "node --experimental-strip-types scripts/postbuild.ts",
