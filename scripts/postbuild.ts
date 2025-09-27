@@ -3,6 +3,32 @@ import { chmod, cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import process from 'node:process'
 
+async function copyMigrationsDir() {
+  const srcPath = join(process.cwd(), 'src/migrator/migrations')
+  const destPath = join(process.cwd(), 'bin/migrations')
+
+  try {
+    if (!existsSync(srcPath)) {
+      console.warn(`Warning: Migrations source path does not exist: ${srcPath}`)
+      return
+    }
+
+    await mkdir(join(process.cwd(), 'bin'), { recursive: true })
+
+    console.log(`Copying ${srcPath} to ${destPath}...`)
+    await cp(srcPath, destPath, {
+      recursive: true,
+      force: true,
+    })
+
+    console.log('✅ Migrations directory copied successfully!')
+  }
+  catch (error) {
+    console.error('❌ Failed to copy migrations directory:', error)
+    process.exit(1)
+  }
+}
+
 async function copyManagerStandalone() {
   const srcPath = join(process.cwd(), 'src/manager/.next/standalone')
   const staticSrcPath = join(process.cwd(), 'src/manager/.next/static')
@@ -66,6 +92,7 @@ async function makeCliExecutable() {
 
 async function main() {
   console.log('🔧 Running post-build script...')
+  await copyMigrationsDir()
   await copyManagerStandalone()
   await makeCliExecutable()
   console.log('✅ Post-build script completed!')

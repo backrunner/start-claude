@@ -1,4 +1,5 @@
 import type { ClaudeConfig, ConfigFile } from './types'
+import { randomUUID } from 'node:crypto'
 import dayjs from 'dayjs'
 import { ConfigFileManager } from './file-operations'
 
@@ -81,9 +82,27 @@ export class ConfigManager {
   async addConfig(config: ClaudeConfig): Promise<void> {
     const configFile = await this.load()
 
-    const existingIndex = configFile.configs.findIndex(c => c.name.toLowerCase() === config.name.toLowerCase())
+    // Ensure the config has a UUID
+    if (!config.id) {
+      config.id = randomUUID()
+    }
+
+    // When updating, prefer to match by UUID if available, otherwise fall back to name
+    let existingIndex = -1
+    if (config.id) {
+      existingIndex = configFile.configs.findIndex(c => c.id === config.id)
+    }
+    if (existingIndex === -1) {
+      existingIndex = configFile.configs.findIndex(c => c.name.toLowerCase() === config.name.toLowerCase())
+    }
+
     if (existingIndex >= 0) {
-      configFile.configs[existingIndex] = config
+      // Update existing config while preserving UUID
+      const existingConfig = configFile.configs[existingIndex]
+      configFile.configs[existingIndex] = {
+        ...config,
+        id: existingConfig.id || config.id, // Preserve existing UUID if present
+      }
     }
     else {
       configFile.configs.push(config)
@@ -111,9 +130,40 @@ export class ConfigManager {
     return true
   }
 
+  /**
+   * Remove configuration by UUID - preferred method for unique identification
+   */
+  async removeConfigById(id: string): Promise<boolean> {
+    const configFile = await this.load()
+    const targetConfig = configFile.configs.find(c => c.id === id)
+
+    if (!targetConfig) {
+      return false
+    }
+
+    // Mark config as deleted (tombstone approach)
+    targetConfig.isDeleted = true
+    targetConfig.deletedAt = dayjs().format('YYYY-MM-DD HH:mm:ss')
+
+    // Clear sensitive data from deleted config
+    delete targetConfig.apiKey
+
+    await this.save(configFile)
+    return true
+  }
+
   async getConfig(name: string): Promise<ClaudeConfig | undefined> {
     const configFile = await this.load()
     const config = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
+    return config?.isDeleted ? undefined : config
+  }
+
+  /**
+   * Get configuration by UUID - preferred method for unique identification
+   */
+  async getConfigById(id: string): Promise<ClaudeConfig | undefined> {
+    const configFile = await this.load()
+    const config = configFile.configs.find(c => c.id === id)
     return config?.isDeleted ? undefined : config
   }
 
@@ -129,6 +179,23 @@ export class ConfigManager {
     configFile.configs.forEach(c => c.isDefault = false)
 
     const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase() && !c.isDeleted)
+    if (targetConfig) {
+      targetConfig.isDefault = true
+      await this.save(configFile)
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Set default configuration by UUID - preferred method for unique identification
+   */
+  async setDefaultConfigById(id: string): Promise<boolean> {
+    const configFile = await this.load()
+
+    configFile.configs.forEach(c => c.isDefault = false)
+
+    const targetConfig = configFile.configs.find(c => c.id === id && !c.isDeleted)
     if (targetConfig) {
       targetConfig.isDefault = true
       await this.save(configFile)

@@ -1,15 +1,45 @@
 /* eslint-disable ts/no-implied-eval */
 /* eslint-disable no-new-func */
 import type { JsonMigrationDefinition, MigrationRegistryEntry, StructuredMigration } from '../types'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { getCurrentDir } from '../utils/path'
 
 /**
  * Migration loader that automatically discovers and loads migration files
  */
 export class MigrationLoader {
   private static migrationsCache: MigrationRegistryEntry[] | null = null
-  private static readonly MIGRATIONS_DIR = join(import.meta.dirname, '../migrations/definitions')
+
+  /**
+   * Get the migrations directory path, supporting both development and bundled environments
+   */
+  private static getMigrationsDir(): string {
+    // In bundled CLI environment: CLI is in bin/cli.mjs, migrations in bin/migrations/
+    // In development: code is in src/migrator/src/core/, migrations in src/migrator/migrations/
+
+    const currentDir = getCurrentDir()
+
+    // First try relative to bundled CLI location (most reliable)
+    const bundledPath = join(currentDir, 'migrations', 'definitions')
+    if (existsSync(bundledPath)) {
+      return bundledPath
+    }
+
+    // Then try development environment path
+    const devPath = join(currentDir, '../migrations/definitions')
+    if (existsSync(devPath)) {
+      return devPath
+    }
+
+    // Fallback for other bundled scenarios where migrations might be relative to the script
+    const altBundledPath = join(currentDir, '..', 'migrations', 'definitions')
+    if (existsSync(altBundledPath)) {
+      return altBundledPath
+    }
+
+    throw new Error(`Migrations directory not found. Tried: ${bundledPath}, ${devPath}, ${altBundledPath}`)
+  }
 
   /**
    * Load all migrations from the migrations directory
@@ -24,13 +54,14 @@ export class MigrationLoader {
 
     try {
       // Read all JSON files from migrations directory
-      const files = readdirSync(this.MIGRATIONS_DIR)
+      const migrationsDir = this.getMigrationsDir()
+      const files = readdirSync(migrationsDir)
         .filter(file => file.endsWith('.json'))
         .sort() // Ensure consistent ordering
 
       for (const file of files) {
         try {
-          const filePath = join(this.MIGRATIONS_DIR, file)
+          const filePath = join(migrationsDir, file)
           const content = readFileSync(filePath, 'utf-8')
           const jsonMigration: JsonMigrationDefinition = JSON.parse(content)
 

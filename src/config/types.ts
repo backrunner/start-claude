@@ -1,4 +1,5 @@
 export interface ClaudeConfig {
+  id?: string // UUID for unique identification
   name: string
   profileType?: 'default' | 'official'
   baseUrl?: string
@@ -184,7 +185,7 @@ export interface LegacyConfigFile {
 /**
  * Current configuration file version
  */
-export const CURRENT_CONFIG_VERSION = 2
+export const CURRENT_CONFIG_VERSION = 3
 
 /**
  * Current S3 configuration file version

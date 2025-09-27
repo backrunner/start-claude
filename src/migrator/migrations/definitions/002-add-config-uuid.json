@@ -1,0 +1,13 @@
+{
+  "version": 3,
+  "fromVersion": 2,
+  "toVersion": 3,
+  "description": "Add UUID to configurations for unique identification",
+  "operations": [
+    {
+      "type": "run_script",
+      "scriptPath": "add-config-uuid.ts",
+      "description": "Add UUID to all configurations and set up unique identification system"
+    }
+  ]
+}

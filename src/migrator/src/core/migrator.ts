@@ -8,6 +8,7 @@ import type {
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { StructuredMigrationProcessor } from '../processors/structured-processor'
+import { getCurrentDir } from '../utils/path'
 import { CURRENT_CONFIG_VERSION, findMigrationPath, getAvailableMigrations } from './registry'
 
 /**
@@ -18,6 +19,36 @@ export class Migrator {
 
   constructor(config: MigratorConfig) {
     this.config = config
+  }
+
+  /**
+   * Get the migrations scripts directory path, supporting both development and bundled environments
+   */
+  private getMigrationsScriptsDir(): string {
+    // In bundled CLI environment: CLI is in bin/cli.mjs, migrations in bin/migrations/
+    // In development: code is in src/migrator/src/core/, migrations in src/migrator/migrations/
+
+    const currentDir = getCurrentDir()
+
+    // First try relative to bundled CLI location (most reliable)
+    const bundledPath = join(currentDir, 'migrations', 'scripts')
+    if (existsSync(bundledPath)) {
+      return bundledPath
+    }
+
+    // Then try development environment path
+    const devPath = join(currentDir, '../migrations/scripts')
+    if (existsSync(devPath)) {
+      return devPath
+    }
+
+    // Fallback for other bundled scenarios where migrations might be relative to the script
+    const altBundledPath = join(currentDir, '..', 'migrations', 'scripts')
+    if (existsSync(altBundledPath)) {
+      return altBundledPath
+    }
+
+    throw new Error(`Migrations scripts directory not found. Tried: ${bundledPath}, ${devPath}, ${altBundledPath}`)
   }
 
   /**
@@ -128,7 +159,7 @@ export class Migrator {
             config,
             {
               fileCreator,
-              migrationsDir: join(import.meta.dirname, '../migrations'),
+              migrationsDir: this.getMigrationsScriptsDir(),
             },
           )
           migrationsApplied.push(migrationEntry.description)

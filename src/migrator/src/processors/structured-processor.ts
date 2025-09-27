@@ -2,6 +2,8 @@ import type { MigrationOperation, StructuredMigration } from '../types'
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { getCurrentDir } from '../utils/path'
 
 /**
  * Processor for structured declarative migrations
@@ -109,11 +111,12 @@ export class StructuredMigrationProcessor {
 
     const scriptPath = migrationsDir
       ? join(migrationsDir, operation.scriptPath)
-      : join(import.meta.dirname, '../migrations/scripts', operation.scriptPath)
+      : join(getCurrentDir(), '../migrations/scripts', operation.scriptPath)
 
     try {
-      // Dynamic import of the migration script
-      const scriptModule = await import(scriptPath)
+      // Dynamic import of the migration script - convert to file URL for Windows compatibility
+      const scriptUrl = pathToFileURL(scriptPath).href
+      const scriptModule = await import(scriptUrl)
 
       // Look for default export or 'migrate' function
       const migrateFn = scriptModule.default || scriptModule.migrate
