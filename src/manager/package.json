@@ -3,11 +3,11 @@
   "version": "0.4.1",
   "private": true,
   "scripts": {
-    "dev": "nx serve manager",
-    "build": "nx build manager",
-    "start": "nx start manager",
-    "lint": "nx lint manager",
-    "typecheck": "nx typecheck manager"
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { MIGRATION_REGISTRY } from '../src/registry'
-import { StructuredMigrationProcessor } from '../src/structured-processor'
+import { MIGRATION_REGISTRY } from '../src/core/registry'
+import { StructuredMigrationProcessor } from '../src/processors/structured-processor'
 
 describe('structuredMigrationProcessor', () => {
-  const testDir = join(__dirname, 'test-structured')
+  const testDir = join(import.meta.dirname, 'test-structured')
 
   beforeEach(() => {
     if (existsSync(testDir)) {

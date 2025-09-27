@@ -2,9 +2,6 @@ packages:
   - src/manager
   - src/migrator
 
-ignoredBuiltDependencies:
-  - nx
-
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - esbuild

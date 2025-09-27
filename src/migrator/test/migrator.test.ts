@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CURRENT_CONFIG_VERSION, MigrationDetector, Migrator } from '../src/index'
 
 describe('migrator', () => {
-  const testDir = join(__dirname, 'test-configs')
+  const testDir = join(import.meta.dirname, 'test-configs')
   const configPath = join(testDir, 'config.json')
 
   beforeEach(() => {

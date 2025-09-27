@@ -128,7 +128,7 @@ export class Migrator {
             config,
             {
               fileCreator,
-              migrationsDir: join(__dirname, '../migrations'),
+              migrationsDir: join(import.meta.dirname, '../migrations'),
             },
           )
           migrationsApplied.push(migrationEntry.description)

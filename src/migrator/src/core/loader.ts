@@ -9,7 +9,7 @@ import { join } from 'node:path'
  */
 export class MigrationLoader {
   private static migrationsCache: MigrationRegistryEntry[] | null = null
-  private static readonly MIGRATIONS_DIR = join(__dirname, '../migrations/definitions')
+  private static readonly MIGRATIONS_DIR = join(import.meta.dirname, '../migrations/definitions')
 
   /**
    * Load all migrations from the migrations directory

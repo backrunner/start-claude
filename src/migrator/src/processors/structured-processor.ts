@@ -109,7 +109,7 @@ export class StructuredMigrationProcessor {
 
     const scriptPath = migrationsDir
       ? join(migrationsDir, operation.scriptPath)
-      : join(__dirname, '../migrations/scripts', operation.scriptPath)
+      : join(import.meta.dirname, '../migrations/scripts', operation.scriptPath)
 
     try {
       // Dynamic import of the migration script
