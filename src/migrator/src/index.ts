@@ -4,3 +4,4 @@ export { CURRENT_CONFIG_VERSION, findMigrationPath, getAvailableMigrations, MIGR
 export { StructuredMigrationProcessor } from './processors/structured-processor'
 export * from './types'
 export { MigrationDetector } from './utils/detector'
+export { MigrationFlagManager } from './utils/flag-manager'

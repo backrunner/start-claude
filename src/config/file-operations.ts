@@ -137,16 +137,19 @@ export class ConfigFileManager {
       backupDirectory: path.join(CONFIG_DIR, 'backups'),
     })
 
-    const detection = migrator.detectMigrationNeeded(CONFIG_FILE)
+    const detection = migrator.detectMigrationNeeded(CONFIG_FILE, { useFlagSystem: true })
     if (detection.needsMigration) {
       const ui = new UILogger()
       ui.displayInfo(`Migrating configuration from version ${detection.currentVersion} to ${detection.targetVersion}...`)
 
       // Execute migration - all file creation logic is now handled by migration scripts/schema
-      const result = await migrator.migrate(CONFIG_FILE, { backup: true, verbose: false })
+      const result = await migrator.migrate(CONFIG_FILE, { backup: true, verbose: false, useFlagSystem: true })
 
       if (result.success) {
         ui.displaySuccess(`Configuration migrated successfully to version ${detection.targetVersion}`)
+        if (result.migrationsSkipped.length > 0) {
+          ui.displayInfo(`Skipped ${result.migrationsSkipped.length} previously completed migrations`)
+        }
       }
     }
     // Re-read and normalize handled by caller

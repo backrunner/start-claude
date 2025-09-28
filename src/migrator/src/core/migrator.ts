@@ -8,6 +8,7 @@ import type {
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { StructuredMigrationProcessor } from '../processors/structured-processor'
+import { MigrationFlagManager } from '../utils/flag-manager'
 import { getCurrentDir } from '../utils/path'
 import { CURRENT_CONFIG_VERSION, findMigrationPath, getAvailableMigrations } from './registry'
 
@@ -16,9 +17,11 @@ import { CURRENT_CONFIG_VERSION, findMigrationPath, getAvailableMigrations } fro
  */
 export class Migrator {
   private config: MigratorConfig
+  private flagManager: MigrationFlagManager
 
   constructor(config: MigratorConfig) {
     this.config = config
+    this.flagManager = MigrationFlagManager.getInstance(config.backupDirectory ? dirname(config.backupDirectory) : undefined)
   }
 
   /**
@@ -54,8 +57,11 @@ export class Migrator {
   /**
    * Detect if migration is needed for a given config file
    * This is lightweight and only reads the config file, no dynamic imports
+   * Uses flag system by default instead of version-based detection
    */
-  detectMigrationNeeded(configPath: string): MigrationDetectionResult {
+  detectMigrationNeeded(configPath: string, options: { useFlagSystem?: boolean } = {}): MigrationDetectionResult {
+    const useFlagSystem = options.useFlagSystem !== false // Default to true
+
     if (!existsSync(configPath)) {
       return {
         needsMigration: false,
@@ -71,24 +77,56 @@ export class Migrator {
       const currentVersion = config.version || 1
       const targetVersion = this.config.currentVersion
 
-      if (currentVersion >= targetVersion) {
+      // Get all available migrations from current version to target
+      const availableMigrations = getAvailableMigrations(currentVersion)
+      const migrationPath = findMigrationPath(currentVersion, targetVersion)
+
+      if (!migrationPath || migrationPath.length === 0) {
         return {
           needsMigration: false,
           currentVersion,
           targetVersion,
-          availableMigrations: [],
+          availableMigrations,
         }
       }
 
-      const availableMigrations = getAvailableMigrations(currentVersion)
-      const migrationPath = findMigrationPath(currentVersion, targetVersion)
+      if (useFlagSystem) {
+        // Use flag system: check which migrations haven't been completed yet
+        const pendingMigrations = migrationPath.filter((migration) => {
+          const migrationId = MigrationFlagManager.generateMigrationId(
+            migration.fromVersion,
+            migration.toVersion,
+            migration.description,
+          )
+          return !this.flagManager.isMigrationCompleted(migrationId)
+        })
 
-      return {
-        needsMigration: true,
-        currentVersion,
-        targetVersion,
-        availableMigrations,
-        migrationPath,
+        return {
+          needsMigration: pendingMigrations.length > 0,
+          currentVersion,
+          targetVersion,
+          availableMigrations,
+          migrationPath: pendingMigrations,
+        }
+      }
+      else {
+        // Legacy version-based detection
+        if (currentVersion >= targetVersion) {
+          return {
+            needsMigration: false,
+            currentVersion,
+            targetVersion,
+            availableMigrations,
+          }
+        }
+
+        return {
+          needsMigration: true,
+          currentVersion,
+          targetVersion,
+          availableMigrations,
+          migrationPath,
+        }
       }
     }
     catch (error) {
@@ -99,13 +137,15 @@ export class Migrator {
   /**
    * Execute migrations for a config file
    * Only loads migration modules when actually needed
+   * Uses flag system to track completed migrations
    */
   async migrate(
     configPath: string,
     options: MigrationOptions = {},
     fileCreator?: (filePath: string, content: any, config: any) => Promise<void>,
   ): Promise<MigrationResult> {
-    const detection = this.detectMigrationNeeded(configPath)
+    const useFlagSystem = options.useFlagSystem !== false // Default to true
+    const detection = this.detectMigrationNeeded(configPath, { useFlagSystem })
 
     if (!detection.needsMigration) {
       return {
@@ -113,6 +153,7 @@ export class Migrator {
         fromVersion: detection.currentVersion,
         toVersion: detection.targetVersion,
         migrationsApplied: [],
+        migrationsSkipped: [],
       }
     }
 
@@ -140,46 +181,86 @@ export class Migrator {
           fromVersion: detection.currentVersion,
           toVersion: detection.targetVersion,
           migrationsApplied: detection.migrationPath.map(m => m.description),
+          migrationsSkipped: [],
           backupPath,
         }
       }
 
       // Apply migrations sequentially
       const migrationsApplied: string[] = []
+      const migrationsSkipped: string[] = []
 
       for (const migrationEntry of detection.migrationPath) {
+        const migrationId = MigrationFlagManager.generateMigrationId(
+          migrationEntry.fromVersion,
+          migrationEntry.toVersion,
+          migrationEntry.description,
+        )
+
+        // Check flag system unless skipFlagCheck is enabled
+        if (useFlagSystem && !options.skipFlagCheck && this.flagManager.isMigrationCompleted(migrationId)) {
+          if (options.verbose) {
+            console.log(`⏭️ Skipping migration (already completed): ${migrationEntry.description}`)
+          }
+          migrationsSkipped.push(migrationEntry.description)
+          continue
+        }
+
         if (options.verbose) {
-          console.log(`Applying migration: ${migrationEntry.description}`)
+          console.log(`🔄 Applying migration: ${migrationEntry.description}`)
         }
 
-        // Handle structured migrations
-        if (migrationEntry.structured) {
-          config = await StructuredMigrationProcessor.execute(
-            migrationEntry.structured,
-            config,
-            {
-              fileCreator,
-              migrationsDir: this.getMigrationsScriptsDir(),
-            },
-          )
-          migrationsApplied.push(migrationEntry.description)
-        }
-        // Handle class-based migrations
-        else if (migrationEntry.moduleId && migrationEntry.exportName) {
-          // Dynamic import - only load when needed
-          const migrationModule = await import(migrationEntry.moduleId)
-          const MigrationClass = migrationModule[migrationEntry.exportName]
+        let migrationSuccess = false
 
-          if (!MigrationClass) {
-            throw new Error(`Migration class not found: ${migrationEntry.exportName} in ${migrationEntry.moduleId}`)
+        try {
+          // Handle structured migrations
+          if (migrationEntry.structured) {
+            config = await StructuredMigrationProcessor.execute(
+              migrationEntry.structured,
+              config,
+              {
+                fileCreator,
+                migrationsDir: this.getMigrationsScriptsDir(),
+              },
+            )
+            migrationSuccess = true
+          }
+          // Handle class-based migrations
+          else if (migrationEntry.moduleId && migrationEntry.exportName) {
+            // Dynamic import - only load when needed
+            const migrationModule = await import(migrationEntry.moduleId)
+            const MigrationClass = migrationModule[migrationEntry.exportName]
+
+            if (!MigrationClass) {
+              throw new Error(`Migration class not found: ${migrationEntry.exportName} in ${migrationEntry.moduleId}`)
+            }
+
+            const migration: ConfigMigration = new MigrationClass()
+            config = await migration.migrate(config)
+            migrationSuccess = true
+          }
+          else {
+            throw new Error(`Invalid migration entry: must have either 'structured' or 'moduleId' + 'exportName'`)
           }
 
-          const migration: ConfigMigration = new MigrationClass()
-          config = await migration.migrate(config)
+          // Mark migration as completed if it succeeded
+          if (migrationSuccess && useFlagSystem) {
+            const configChecksum = MigrationFlagManager.generateChecksum(JSON.stringify(config))
+            this.flagManager.markMigrationCompleted(migrationId, migrationEntry.description, configChecksum)
+          }
+
           migrationsApplied.push(migrationEntry.description)
+
+          if (options.verbose) {
+            console.log(`✅ Migration completed: ${migrationEntry.description}`)
+          }
         }
-        else {
-          throw new Error(`Invalid migration entry: must have either 'structured' or 'moduleId' + 'exportName'`)
+        catch (migrationError) {
+          console.error(`❌ Migration failed: ${migrationEntry.description}`)
+          console.error(`   Error: ${migrationError instanceof Error ? migrationError.message : 'Unknown error'}`)
+
+          // Don't mark migration as completed if it failed
+          throw migrationError
         }
       }
 
@@ -191,6 +272,7 @@ export class Migrator {
         fromVersion: detection.currentVersion,
         toVersion: detection.targetVersion,
         migrationsApplied,
+        migrationsSkipped,
         backupPath,
       }
     }
@@ -200,6 +282,7 @@ export class Migrator {
         fromVersion: detection.currentVersion,
         toVersion: detection.targetVersion,
         migrationsApplied: [],
+        migrationsSkipped: [],
         error: error instanceof Error ? error.message : 'Unknown error',
         backupPath,
       }

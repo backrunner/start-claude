@@ -89,6 +89,8 @@ export interface MigrationOptions {
   backup?: boolean
   verbose?: boolean
   force?: boolean
+  skipFlagCheck?: boolean // Skip migration flag validation (use with caution)
+  useFlagSystem?: boolean // Use flag system instead of version-based detection (default: true)
 }
 
 /**
@@ -99,6 +101,7 @@ export interface MigrationResult {
   fromVersion: number
   toVersion: number
   migrationsApplied: string[]
+  migrationsSkipped: string[] // Migrations skipped due to flags
   error?: string
   backupPath?: string
 }

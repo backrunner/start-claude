@@ -507,6 +507,8 @@ program
   .description('Run configuration migrations (e.g., extract S3 config)')
   .option('--dry-run', 'Show pending migrations without applying changes')
   .option('--verbose', 'Enable verbose output')
+  .option('--use-legacy-version-check', 'Use old version-based detection instead of flag system')
+  .option('--force', 'Force re-run migrations (skip flag check)')
   .action(async options => (await import('../commands/migrate')).handleMigrateCommand(options))
 
 program
