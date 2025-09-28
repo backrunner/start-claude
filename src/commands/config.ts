@@ -6,7 +6,7 @@ import { UILogger } from '../utils/cli/ui'
 export async function handleRemoveCommand(name: string): Promise<void> {
   const ui = new UILogger()
   const configManager = ConfigManager.getInstance()
-  const config = configManager.getConfig(name)
+  const config = await configManager.getConfig(name)
   if (!config) {
     ui.displayError(`Configuration "${name}" not found`)
     process.exit(1)
@@ -33,7 +33,7 @@ export async function handleRemoveCommand(name: string): Promise<void> {
 export async function handleListCommand(): Promise<void> {
   const ui = new UILogger()
   const configManager = ConfigManager.getInstance()
-  const configs = configManager.listConfigs()
+  const configs = await configManager.listConfigs()
   ui.displayWelcome()
   ui.displayConfigList(configs)
 }

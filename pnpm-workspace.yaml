@@ -1,8 +1,6 @@
 packages:
   - src/manager
-
-ignoredBuiltDependencies:
-  - nx
+  - src/migrator
 
 onlyBuiltDependencies:
   - '@parcel/watcher'

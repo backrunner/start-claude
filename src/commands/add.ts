@@ -14,15 +14,15 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
     const newConfig = await createConfigInEditor()
     if (newConfig) {
       // Check if config name already exists
-      const existing = configManager.getConfig(newConfig.name)
+      const existing = await configManager.getConfig(newConfig.name)
       if (existing) {
         ui.displayError('Configuration with this name already exists')
         return
       }
 
       if (newConfig.isDefault) {
-        const configs = configManager.listConfigs()
-        configs.forEach(c => c.isDefault = false)
+        const configs = await configManager.listConfigs()
+        configs.forEach((c: ClaudeConfig) => c.isDefault = false)
       }
 
       await configManager.addConfig(newConfig)
@@ -55,12 +55,7 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
         if (!name) {
           return 'Name is required'
         }
-
-        const existing = configManager.getConfig(name)
-        if (existing) {
-          return 'Configuration with this name already exists'
-        }
-
+        // Note: We'll check for duplicates after the input is provided
         return true
       },
     },
@@ -127,6 +122,13 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
   )
 
   const answers = await inquirer.prompt(questions)
+
+  // Check if config name already exists after getting the input
+  const existing = await configManager.getConfig(answers.name.trim())
+  if (existing) {
+    ui.displayError('Configuration with this name already exists')
+    return
+  }
 
   const config: ClaudeConfig = {
     name: answers.name.trim(),

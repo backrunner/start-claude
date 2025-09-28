@@ -38,7 +38,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
   // Fetch available transformers
   useEffect(() => {
-    const fetchTransformers = async () => {
+    const fetchTransformers = async (): Promise<void> => {
       setLoadingTransformers(true)
       try {
         const response = await fetch('/api/transformers')
@@ -54,7 +54,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         setLoadingTransformers(false)
       }
     }
-    fetchTransformers()
+    void fetchTransformers()
   }, [])
 
   const validateFormData = (data: ClaudeConfig): boolean => {

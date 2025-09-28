@@ -1,4 +1,5 @@
 export interface ClaudeConfig {
+  id?: string // UUID for unique identification
   name: string
   profileType?: 'default' | 'official'
   baseUrl?: string
@@ -128,6 +129,20 @@ export interface SystemSettings {
       speedTestStrategy?: SpeedTestStrategy // Strategy for speed testing (default: response-time)
     }
   }
+  sync?: {
+    enabled: boolean
+    provider: 'icloud' | 'onedrive' | 'custom' | 's3'
+    cloudPath?: string
+    customPath?: string
+    s3Config?: {
+      bucket: string
+      region: string
+      key: string
+      endpointUrl?: string
+    }
+    linkedAt: string
+    lastVerified?: string
+  }
   s3Sync?: {
     bucket: string
     region: string
@@ -170,7 +185,33 @@ export interface LegacyConfigFile {
 /**
  * Current configuration file version
  */
-export const CURRENT_CONFIG_VERSION = 1
+export const CURRENT_CONFIG_VERSION = 3
+
+/**
+ * Current S3 configuration file version
+ */
+export const CURRENT_S3_CONFIG_VERSION = 1
+
+/**
+ * S3 configuration file structure
+ */
+export interface S3ConfigFile {
+  version: number
+  s3Config: {
+    bucket: string
+    region: string
+    accessKeyId: string
+    secretAccessKey: string
+    key: string
+    endpointUrl?: string
+    remoteConfigCheckIntervalMinutes?: number // Default: 60 (1 hour)
+  }
+  metadata: {
+    createdAt: string
+    lastModified: string
+    migratedFrom?: 'system-settings' // Track if migrated from old location
+  }
+}
 
 /**
  * Migration information interface

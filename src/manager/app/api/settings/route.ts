@@ -11,9 +11,9 @@ export const revalidate = 0
 // Initialize the ConfigManager instance
 const configManager = ConfigManager.getInstance()
 
-function getSettings(): any {
+async function getSettings(): Promise<any> {
   try {
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     const settings = configFile.settings || { overrideClaudeCommand: false }
 
     // Ensure balanceMode structure exists with defaults
@@ -66,7 +66,7 @@ function getSettings(): any {
 
 async function saveSettings(settings: any): Promise<void> {
   try {
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     const updatedConfigFile = {
       ...configFile,
       settings: { ...configFile.settings, ...settings },
@@ -83,7 +83,7 @@ async function saveSettings(settings: any): Promise<void> {
 
 export async function GET(): Promise<NextResponse> {
   try {
-    const settings = getSettings()
+    const settings = await getSettings()
     return NextResponse.json({ settings })
   }
   catch (error) {
@@ -117,7 +117,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     }
 
     await saveSettings(settingsValidation.data)
-    return NextResponse.json({ success: true, settings: getSettings() })
+    return NextResponse.json({ success: true, settings: await getSettings() })
   }
   catch (error) {
     console.error('PUT /api/settings error:', error)

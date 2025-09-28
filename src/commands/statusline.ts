@@ -97,7 +97,7 @@ export async function handleStatusLineStatusCommand(options: { verbose?: boolean
   const statusLineManager = StatusLineManager.getInstance()
 
   try {
-    const settings = configManager.getSettings()
+    const settings = await configManager.getSettings()
     const statusLine = settings.statusLine
 
     ui.displayInfo('📊 Statusline Integration Status:')

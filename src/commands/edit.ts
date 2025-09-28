@@ -10,7 +10,7 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
   ui.displayWelcome()
 
   const configManager = ConfigManager.getInstance()
-  const config = configManager.getConfig(name)
+  const config = await configManager.getConfig(name)
   if (!config) {
     ui.displayError(`Configuration "${name}" not found`)
     process.exit(1)
@@ -20,8 +20,8 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
     const updatedConfig = await editConfigInEditor(config)
     if (updatedConfig) {
       if (updatedConfig.isDefault && !config.isDefault) {
-        const configs = configManager.listConfigs()
-        configs.forEach(c => c.isDefault = false)
+        const configs = await configManager.listConfigs()
+        configs.forEach((c: ClaudeConfig) => c.isDefault = false)
       }
 
       await configManager.addConfig(updatedConfig)

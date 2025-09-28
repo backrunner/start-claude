@@ -1,5 +1,5 @@
 import type { ConfigManager } from '../config/manager'
-import type { LoadBalancerStrategy } from '../config/types'
+import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { ProgramOptions } from './common'
 import process from 'node:process'
 import { ProxyServer } from '../core/proxy'
@@ -25,7 +25,7 @@ export async function handleProxyMode(
   const shouldStartNewProxy = await checkAndHandleExistingProxy()
   if (!shouldStartNewProxy) {
     // Proxy server is already running, just start Claude Code with existing proxy
-    const baseConfig = resolveBaseConfig(configManager, options, configArg, forcedConfigs || configManager.listConfigs())
+    const baseConfig = await resolveBaseConfig(configManager, options, configArg, forcedConfigs || await configManager.listConfigs())
     const claudeArgs = buildClaudeArgs(options, baseConfig)
     const filteredArgs = filterProcessArgs(configArg)
     const allArgs = [...claudeArgs, ...filteredArgs]
@@ -47,14 +47,13 @@ export async function handleProxyMode(
   // Setup cleanup handlers for lock file
   setupProxyCleanup()
 
-  // Get configurations for proxy mode - use forced configs or all configs
   // If a specific config was requested, use only that config
-  let configs = forcedConfigs || configManager.listConfigs()
+  let configs: ClaudeConfig[] = forcedConfigs || await configManager.listConfigs()
 
   const requestedConfigName = options.config || configArg
   if (requestedConfigName && !forcedConfigs) {
     // User specified a particular config, so only use that one for the proxy
-    const specificConfig = configManager.getConfig(requestedConfigName)
+    const specificConfig = await configManager.getConfig(requestedConfigName)
     if (specificConfig) {
       configs = [specificConfig]
     }
@@ -103,7 +102,7 @@ export async function handleProxyMode(
     const hasTransformerEnabled = proxyableConfigs.some(c => TransformerService.isTransformerEnabled(c.transformerEnabled))
 
     // Set up a proxy configuration that preserves other settings - resolve early for transformer matching
-    const baseConfig = resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
+    const baseConfig = await resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
 
     // Override system settings with CLI strategy if provided
     let effectiveSystemSettings = systemSettings

@@ -1,6 +1,7 @@
 import type { ClaudeConfig, ConfigFile } from './types'
+import { randomUUID } from 'node:crypto'
 import dayjs from 'dayjs'
-import { ConfigFileManager } from './file-manager'
+import { ConfigFileManager } from './file-operations'
 
 export class ConfigManager {
   private static instance: ConfigManager
@@ -17,14 +18,14 @@ export class ConfigManager {
     return ConfigManager.instance
   }
 
-  load(): ConfigFile {
+  async load(): Promise<ConfigFile> {
     return this.configFileManager.load()
   }
 
   async save(config: ConfigFile, skipSync = false): Promise<void> {
     // Check if content has actually changed to avoid unnecessary syncs
     if (!skipSync) {
-      const currentConfig = this.load()
+      const currentConfig = await this.load()
       const hasChanges = this.hasConfigChanges(currentConfig, config)
 
       if (!hasChanges) {
@@ -79,11 +80,29 @@ export class ConfigManager {
   }
 
   async addConfig(config: ClaudeConfig): Promise<void> {
-    const configFile = this.load()
+    const configFile = await this.load()
 
-    const existingIndex = configFile.configs.findIndex(c => c.name.toLowerCase() === config.name.toLowerCase())
+    // Ensure the config has a UUID
+    if (!config.id) {
+      config.id = randomUUID()
+    }
+
+    // When updating, prefer to match by UUID if available, otherwise fall back to name
+    let existingIndex = -1
+    if (config.id) {
+      existingIndex = configFile.configs.findIndex(c => c.id === config.id)
+    }
+    if (existingIndex === -1) {
+      existingIndex = configFile.configs.findIndex(c => c.name.toLowerCase() === config.name.toLowerCase())
+    }
+
     if (existingIndex >= 0) {
-      configFile.configs[existingIndex] = config
+      // Update existing config while preserving UUID
+      const existingConfig = configFile.configs[existingIndex]
+      configFile.configs[existingIndex] = {
+        ...config,
+        id: existingConfig.id || config.id, // Preserve existing UUID if present
+      }
     }
     else {
       configFile.configs.push(config)
@@ -93,7 +112,7 @@ export class ConfigManager {
   }
 
   async removeConfig(name: string): Promise<boolean> {
-    const configFile = this.load()
+    const configFile = await this.load()
     const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
 
     if (!targetConfig) {
@@ -111,20 +130,51 @@ export class ConfigManager {
     return true
   }
 
-  getConfig(name: string): ClaudeConfig | undefined {
-    const configFile = this.load()
+  /**
+   * Remove configuration by UUID - preferred method for unique identification
+   */
+  async removeConfigById(id: string): Promise<boolean> {
+    const configFile = await this.load()
+    const targetConfig = configFile.configs.find(c => c.id === id)
+
+    if (!targetConfig) {
+      return false
+    }
+
+    // Mark config as deleted (tombstone approach)
+    targetConfig.isDeleted = true
+    targetConfig.deletedAt = dayjs().format('YYYY-MM-DD HH:mm:ss')
+
+    // Clear sensitive data from deleted config
+    delete targetConfig.apiKey
+
+    await this.save(configFile)
+    return true
+  }
+
+  async getConfig(name: string): Promise<ClaudeConfig | undefined> {
+    const configFile = await this.load()
     const config = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
     return config?.isDeleted ? undefined : config
   }
 
-  getDefaultConfig(): ClaudeConfig | undefined {
-    const configFile = this.load()
+  /**
+   * Get configuration by UUID - preferred method for unique identification
+   */
+  async getConfigById(id: string): Promise<ClaudeConfig | undefined> {
+    const configFile = await this.load()
+    const config = configFile.configs.find(c => c.id === id)
+    return config?.isDeleted ? undefined : config
+  }
+
+  async getDefaultConfig(): Promise<ClaudeConfig | undefined> {
+    const configFile = await this.load()
     const config = configFile.configs.find(c => c.isDefault && !c.isDeleted)
     return config
   }
 
   async setDefaultConfig(name: string): Promise<boolean> {
-    const configFile = this.load()
+    const configFile = await this.load()
 
     configFile.configs.forEach(c => c.isDefault = false)
 
@@ -137,23 +187,40 @@ export class ConfigManager {
     return false
   }
 
-  listConfigs(): ClaudeConfig[] {
-    const configFile = this.load()
+  /**
+   * Set default configuration by UUID - preferred method for unique identification
+   */
+  async setDefaultConfigById(id: string): Promise<boolean> {
+    const configFile = await this.load()
+
+    configFile.configs.forEach(c => c.isDefault = false)
+
+    const targetConfig = configFile.configs.find(c => c.id === id && !c.isDeleted)
+    if (targetConfig) {
+      targetConfig.isDefault = true
+      await this.save(configFile)
+      return true
+    }
+    return false
+  }
+
+  async listConfigs(): Promise<ClaudeConfig[]> {
+    const configFile = await this.load()
     return configFile.configs.filter(c => !c.isDeleted)
   }
 
   async updateSettings(settings: Partial<ConfigFile['settings']>, skipSync = false): Promise<void> {
-    const configFile = this.load()
+    const configFile = await this.load()
     configFile.settings = { ...configFile.settings, ...settings }
     await this.save(configFile, skipSync)
   }
 
-  getSettings(): ConfigFile['settings'] {
-    const configFile = this.load()
+  async getSettings(): Promise<ConfigFile['settings']> {
+    const configFile = await this.load()
     return configFile.settings
   }
 
-  getConfigFile(): ConfigFile {
+  async getConfigFile(): Promise<ConfigFile> {
     return this.load()
   }
 
@@ -183,7 +250,7 @@ export class ConfigManager {
    * Permanently delete a config (cleanup tombstone)
    */
   async cleanupDeletedConfig(name: string): Promise<boolean> {
-    const configFile = this.load()
+    const configFile = await this.load()
     const initialLength = configFile.configs.length
 
     configFile.configs = configFile.configs.filter(c =>
@@ -201,7 +268,7 @@ export class ConfigManager {
    * Restore a deleted config
    */
   async restoreConfig(name: string): Promise<boolean> {
-    const configFile = this.load()
+    const configFile = await this.load()
 
     const config = configFile.configs.find(c =>
       c.name.toLowerCase() === name.toLowerCase() && c.isDeleted,
@@ -223,7 +290,7 @@ export class ConfigManager {
    * Clean up old deleted configs (older than specified days)
    */
   async cleanupOldDeletions(daysOld = 30): Promise<number> {
-    const configFile = this.load()
+    const configFile = await this.load()
     const cutoffDate = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000)
     const initialLength = configFile.configs.length
 
@@ -245,8 +312,8 @@ export class ConfigManager {
   /**
    * Get list of deleted configs
    */
-  getDeletedConfigs(): ClaudeConfig[] {
-    const configFile = this.load()
+  async getDeletedConfigs(): Promise<ClaudeConfig[]> {
+    const configFile = await this.load()
     return configFile.configs.filter(c => c.isDeleted)
   }
 

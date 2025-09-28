@@ -27,6 +27,7 @@
     "src/commands/**/*",
     "src/config/**/*",
     "src/core/**/*",
+    "src/migrator/**/*",
     "src/services/**/*",
     "src/storage/**/*",
     "src/types/**/*",

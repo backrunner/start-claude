@@ -10,19 +10,19 @@ export const revalidate = 0
 
 const configManager = ConfigManager.getInstance()
 
-function getConfigs(): ClaudeConfig[] {
+async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
-    return configManager.listConfigs()
+    return await configManager.listConfigs()
   }
   catch (error) {
     console.error('Error reading configs:', error)
-    return []
+    return Promise.resolve([])
   }
 }
 
-function getSettings(): any {
+async function getSettings(): Promise<any> {
   try {
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     return configFile.settings || { overrideClaudeCommand: false }
   }
   catch (error) {
@@ -33,8 +33,8 @@ function getSettings(): any {
 
 export async function GET(): Promise<NextResponse> {
   try {
-    const configs = getConfigs()
-    const settings = getSettings()
+    const configs = await getConfigs()
+    const settings = await getSettings()
     return NextResponse.json({ configs, settings })
   }
   catch (error) {
@@ -63,8 +63,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Use ConfigManager.addConfig() to ensure proper S3 sync
-    const configs = getConfigs()
-    const existingIndex = configs.findIndex(c => c.name === config.name)
+    const configs = await getConfigs()
+    const existingIndex = configs.findIndex((c: ClaudeConfig) => c.name === config.name)
 
     if (existingIndex >= 0) {
       // Validate the updated config before saving
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     else {
       // Calculate the next order value as max existing order + 1
-      const maxOrder = configs.length === 0 ? 0 : Math.max(...configs.map(c => c.order ?? 0))
+      const maxOrder = configs.length === 0 ? 0 : Math.max(...configs.map((c: ClaudeConfig) => c.order ?? 0))
 
       // Validate new config
       const newConfigResult = claudeConfigSchema.safeParse({
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       await configManager.addConfig(newConfigResult.data)
     }
 
-    const updatedConfigs = getConfigs()
+    const updatedConfigs = await getConfigs()
     return NextResponse.json({ success: true, configs: updatedConfigs })
   }
   catch (error) {
@@ -145,7 +145,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     }
 
     // Use ConfigManager.saveConfigFile() to ensure proper S3 sync
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     await configManager.saveConfigFile({
       ...configFile,
       configs: validatedConfigs,
@@ -179,7 +179,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     }
 
     // Re-order remaining configs to create a continuous sequence
-    const configs = getConfigs()
+    const configs = await getConfigs()
     const reorderedConfigs = configs
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map((config, index) => ({
@@ -188,7 +188,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       }))
 
     // Save reordered configs using ConfigManager
-    const configFile = configManager.load()
+    const configFile = await configManager.load()
     await configManager.saveConfigFile({
       ...configFile,
       configs: reorderedConfigs,

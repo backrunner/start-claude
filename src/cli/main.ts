@@ -33,16 +33,13 @@ const s3SyncManager = S3SyncManager.getInstance()
 const statusLineManager = StatusLineManager.getInstance()
 const mcpSyncManager = McpSyncManager.getInstance()
 
-// Initialize S3 sync for the config manager
-configManager.initializeS3Sync().catch(console.error)
-
 /**
  * Handle statusline sync on startup
  */
 async function handleStatusLineSync(options: { verbose?: boolean } = {}): Promise<void> {
   const ui = new UILogger(options.verbose)
   try {
-    const settings = configManager.getSettings()
+    const settings = await configManager.getSettings()
     const statusLineConfig = settings.statusLine
 
     // Only proceed if statusline is enabled and has config
@@ -116,7 +113,7 @@ program
 
     if (options.list === true) {
       ui.displayWelcome()
-      const configs = configManager.listConfigs()
+      const configs = await configManager.listConfigs()
       ui.displayConfigList(configs)
       return
     }
@@ -226,9 +223,11 @@ program
     // Process update check result
     const updateCheckInfo = updateInfo?.status === 'fulfilled' ? updateInfo.value : null
 
-    // Process remote update result
+    // Process remote update result - this tells us if S3 sync happened
+    let hasS3Synced = false
     if (remoteUpdateResult.status === 'fulfilled' && remoteUpdateResult.value) {
       ui.verbose('✨ Remote configuration updated successfully')
+      hasS3Synced = true
     }
 
     // Process Claude installation check
@@ -246,15 +245,15 @@ program
 
       if (configName) {
         // Check config directly without fuzzy search to avoid prompts
-        config = configManager.getConfig(configName)
+        config = await configManager.getConfig(configName)
         if (!config && remoteUpdateResult.status === 'fulfilled' && remoteUpdateResult.value) {
           // Config might have been updated during the remote sync
-          config = configManager.getConfig(configName)
+          config = await configManager.getConfig(configName)
         }
       }
       else {
         // For default config, we can check normally
-        config = configManager.getDefaultConfig()
+        config = await configManager.getDefaultConfig()
       }
 
       if (TransformerService.isTransformerEnabled(config?.transformerEnabled)) {
@@ -309,7 +308,7 @@ program
       }
     }
 
-    const config = await resolveConfig(configManager, s3SyncManager, options, configArg)
+    const config = await resolveConfig(configManager, s3SyncManager, options, configArg, hasS3Synced)
 
     // Handle statusline and MCP sync in parallel for faster startup with error resilience
     try {
@@ -504,6 +503,15 @@ program
   .action(async () => (await import('../commands/edit-config')).handleEditConfigCommand())
 
 program
+  .command('migrate')
+  .description('Run configuration migrations (e.g., extract S3 config)')
+  .option('--dry-run', 'Show pending migrations without applying changes')
+  .option('--verbose', 'Enable verbose output')
+  .option('--use-legacy-version-check', 'Use old version-based detection instead of flag system')
+  .option('--force', 'Force re-run migrations (skip flag check)')
+  .action(async options => (await import('../commands/migrate')).handleMigrateCommand(options))
+
+program
   .command('manage')
   .alias('manager')
   .description('Open the Claude Configuration Manager web interface')
@@ -526,6 +534,26 @@ program
   .option('--project <name>', 'Filter to specific project')
   .option('--live', 'Real-time usage dashboard (for blocks command)')
   .action(async (subcommand, options) => (await import('../commands/usage')).handleUsageCommand(subcommand, options))
+
+// Cloud sync command group (iCloud / OneDrive / Custom)
+const syncCmd = program
+  .command('sync')
+  .description('Cloud sync operations (iCloud, OneDrive, Custom)')
+
+syncCmd
+  .command('setup')
+  .description('Interactive setup for cloud sync')
+  .action(async () => (await import('../commands/sync')).setupSyncCommand())
+
+syncCmd
+  .command('status')
+  .description('Show cloud sync status')
+  .action(async () => (await import('../commands/sync')).syncStatusCommand())
+
+syncCmd
+  .command('disable')
+  .description('Disable cloud sync and restore local config')
+  .action(async () => (await import('../commands/sync')).disableSyncCommand())
 
 // Only parse with Commander.js if not an MCP command
 if (!isMcpCommand) {

@@ -341,11 +341,11 @@ export class ProxyServer {
     }
 
     return new Promise((resolve, reject) => {
-      this.server = http.createServer((req, res) => {
+      this.server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse) => {
         void this.handleRequest(req, res)
       })
 
-      this.server.listen(port, () => {
+      this.server!.listen(port, () => {
         const features = []
         if (this.enableLoadBalance) {
           features.push(`Load Balancer (${this.loadBalancerStrategy})`)
@@ -369,7 +369,7 @@ export class ProxyServer {
         resolve()
       })
 
-      this.server.on('error', (error) => {
+      this.server!.on('error', (error) => {
         this.ui.error(`❌ Failed to start proxy server: ${error.message}`)
         reject(error)
       })
@@ -1074,12 +1074,12 @@ export class ProxyServer {
 
     // Collect request body
     const chunks: Buffer[] = []
-    req.on('data', chunk => chunks.push(chunk))
+    req.on('data', (chunk: Buffer) => chunks.push(chunk))
 
     req.on('end', () => {
       void (async () => {
         try {
-          const body = Buffer.concat(chunks)
+          const body = Buffer.concat(chunks as unknown as readonly Uint8Array[])
           let requestData: any = {}
           let bodyText: string | undefined
 
