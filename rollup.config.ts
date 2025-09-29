@@ -26,7 +26,7 @@ const extensions = ['.js', '.ts']
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const migratorDistPath = pathResolve(__dirname, 'src/migrator/dist/index.js')
+const migratorDistPath = pathResolve(__dirname, 'src/migrator/dist/index.esm.js')
 
 /** @type {import('rollup').RollupOptions} */
 const config = {
@@ -57,7 +57,9 @@ const config = {
       extensions,
       preferBuiltins: true,
     }),
-    commonjs(),
+    commonjs({
+      ignoreDynamicRequires: true,
+    }),
     json(),
   ],
 }
