@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
-import { AlertCircle, Brain, Globe, Key, Shield } from 'lucide-react'
+import { AlertCircle, Brain, Globe, Key, Settings, Shield } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,6 +30,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     transformer: 'auto',
     isDefault: false,
     enabled: true,
+    authToken: '',
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -89,6 +90,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         transformer: 'auto',
         isDefault: false,
         enabled: true,
+        authToken: '',
       }
       const isValid = validateFormData(defaultData)
       onFormDataChange(defaultData, isValid)
@@ -384,6 +386,37 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   onCheckedChange={checked => handleChange('enabled', checked)}
                 />
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Advanced Settings */}
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <Settings className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <CardTitle className="text-lg">Advanced Settings</CardTitle>
+            </div>
+            <CardDescription>Configure advanced environment variables and settings</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="authToken" className="font-medium flex items-center gap-2">
+                <Key className="h-3 w-3" />
+                Auth Token
+                <Badge variant="outline" className="text-xs">Optional</Badge>
+              </Label>
+              <Input
+                id="authToken"
+                type="password"
+                value={formData.authToken ?? ''}
+                onChange={e => handleChange('authToken', e.target.value)}
+                placeholder="Bearer token for authentication"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Additional authentication token for Claude Code operations
+              </p>
             </div>
           </CardContent>
         </Card>

@@ -371,6 +371,14 @@ program
   .command('default <name>')
   .description('Set a configuration as default')
   .action(async name => (await import('../commands/config')).handleDefaultCommand(name))
+program
+  .command('set <name> <property> <value>')
+  .description('Set a configuration property (e.g., authToken, apiKey, baseUrl)')
+  .action(async (name, property, value) => (await import('../commands/config')).handleSetCommand(name, property, value))
+program
+  .command('get <name> [property]')
+  .description('Get configuration property value or display all properties')
+  .action(async (name, property) => (await import('../commands/config')).handleGetCommand(name, property))
 
 const overrideCmd = program
   .command('override')
