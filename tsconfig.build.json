@@ -5,8 +5,8 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "paths": {
-      "@/*": ["src/*"],
-      "@start-claude/migrator": ["src/migrator/dist/index"]
+      "@/*": ["packages/cli/src/*"],
+      "@start-claude/migrator": ["packages/migrator/dist/index"]
     },
     "resolveJsonModule": true,
     "allowUmdGlobalAccess": false,
@@ -24,16 +24,7 @@
     "skipLibCheck": true
   },
   "include": [
-    "src/cli/**/*",
-    "src/commands/**/*",
-    "src/config/**/*",
-    "src/core/**/*",
-    "src/migrator/**/*",
-    "src/services/**/*",
-    "src/storage/**/*",
-    "src/types/**/*",
-    "src/transformers/**/*",
-    "src/utils/**/*"
+    "packages/cli/src/**/*"
   ],
   "exclude": [
     "node_modules/**/*",
@@ -47,6 +38,6 @@
     "lib",
     "libs",
     "coverage",
-    "src/manager/**/*"
+    "packages/manager/**/*"
   ]
 }

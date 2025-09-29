@@ -26,20 +26,20 @@ const extensions = ['.js', '.ts']
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const migratorDistPath = pathResolve(__dirname, 'src/migrator/dist/index.esm.js')
+const migratorDistPath = pathResolve(__dirname, 'packages/migrator/dist/index.esm.js')
 
 /** @type {import('rollup').RollupOptions} */
 const config = {
-  input: 'src/cli/main.ts',
+  input: pathResolve(__dirname, 'packages/cli/src/cli/main.ts'),
   output: [
     {
-      file: './bin/cli.cjs',
+      file: pathResolve(__dirname, 'bin/cli.cjs'),
       format: 'cjs',
       banner: '#!/usr/bin/env node',
       inlineDynamicImports: true,
     },
     {
-      file: './bin/cli.mjs',
+      file: pathResolve(__dirname, 'bin/cli.mjs'),
       format: 'esm',
       banner: '#!/usr/bin/env node',
       inlineDynamicImports: true,
@@ -48,10 +48,13 @@ const config = {
   external,
   plugins: [
     alias({
-      entries: [{ find: '@start-claude/migrator', replacement: migratorDistPath }],
+      entries: [
+        { find: '@start-claude/migrator', replacement: migratorDistPath },
+        { find: '@', replacement: pathResolve(__dirname, 'packages/cli/src') },
+      ],
     }),
     typescript({
-      tsconfig: './tsconfig.build.json',
+      tsconfig: pathResolve(__dirname, 'packages/cli/tsconfig.build.json'),
     }),
     nodeResolve({
       extensions,

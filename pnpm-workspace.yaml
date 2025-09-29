@@ -1,6 +1,5 @@
 packages:
-  - src/manager
-  - src/migrator
+  - packages/*
 
 onlyBuiltDependencies:
   - '@parcel/watcher'

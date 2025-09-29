@@ -25,17 +25,14 @@
     "bin"
   ],
   "workspaces": [
-    "src/manager",
-    "src/migrator"
+    "packages/*"
   ],
   "scripts": {
-    "build": "node --experimental-strip-types scripts/clean.ts && turbo build && pnpm run build:cli && pnpm run postbuild",
-    "build:cli": "rollup -c rollup.config.ts --configPlugin typescript",
+    "build": "node --experimental-strip-types scripts/clean.ts && turbo build && pnpm run postbuild",
     "build:manager": "turbo build --filter=@start-claude/manager",
     "postbuild": "node --experimental-strip-types scripts/postbuild.ts",
     "dev": "turbo dev --filter=@start-claude/manager",
     "dev:manager": "turbo dev --filter=@start-claude/manager",
-    "watch": "rollup -c rollup.config.ts --configPlugin typescript --watch",
     "lint": "turbo lint",
     "lint:fix": "turbo lint --",
     "lint:inspect": "pnpm dlx @eslint/config-inspector",
@@ -52,7 +49,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.872.0",
-    "@start-claude/migrator": "workspace:*",
     "boxen": "^8.0.1",
     "chalk": "^5.6.0",
     "commander": "^14.0.0",

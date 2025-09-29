@@ -41,5 +41,8 @@
       "cache": false,
       "persistent": true
     }
-  }
+  },
+  "globalPassThroughEnv": [
+    "NODE_ENV"
+  ]
 }

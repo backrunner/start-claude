@@ -5,7 +5,7 @@ import process from 'node:process'
 import * as ts from 'typescript'
 
 async function copyMigrationsDir() {
-  const srcPath = join(process.cwd(), 'src/migrator/migrations')
+  const srcPath = join(process.cwd(), 'packages/migrator/migrations')
   const destPath = join(process.cwd(), 'bin/migrations')
 
   try {
@@ -108,8 +108,8 @@ async function rewriteDefinitionScriptPaths() {
 }
 
 async function copyManagerStandalone() {
-  const srcPath = join(process.cwd(), 'src/manager/.next/standalone')
-  const staticSrcPath = join(process.cwd(), 'src/manager/.next/static')
+  const srcPath = join(process.cwd(), 'packages/manager/.next/standalone')
+  const staticSrcPath = join(process.cwd(), 'packages/manager/.next/static')
   const destPath = join(process.cwd(), 'bin/manager')
 
   try {
