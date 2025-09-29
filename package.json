@@ -29,7 +29,7 @@
     "src/migrator"
   ],
   "scripts": {
-    "build": "node --experimental-strip-types scripts/clean.ts && pnpm run build:cli && turbo build && pnpm run postbuild",
+    "build": "node --experimental-strip-types scripts/clean.ts && turbo build && pnpm run build:cli && pnpm run postbuild",
     "build:cli": "rollup -c rollup.config.ts --configPlugin typescript",
     "build:manager": "turbo build --filter=@start-claude/manager",
     "postbuild": "node --experimental-strip-types scripts/postbuild.ts",
@@ -52,6 +52,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.872.0",
+    "@start-claude/migrator": "workspace:*",
     "boxen": "^8.0.1",
     "chalk": "^5.6.0",
     "commander": "^14.0.0",
@@ -71,6 +72,7 @@
     "@babel/preset-env": "^7.28.3",
     "@babel/preset-typescript": "^7.27.1",
     "@changesets/cli": "^2.29.7",
+    "@rollup/plugin-alias": "^5.1.1",
     "@rollup/plugin-babel": "^6.0.4",
     "@rollup/plugin-commonjs": "^28.0.6",
     "@rollup/plugin-json": "^6.1.0",

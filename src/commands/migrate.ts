@@ -44,7 +44,7 @@ export async function handleMigrateCommand(options: {
           ui.displayInfo(`✅ No migration needed (${completedMigrations.length} migrations already completed)`)
           if (options.verbose) {
             ui.displayInfo('Completed migrations:')
-            completedMigrations.forEach((flag) => {
+            completedMigrations.forEach((flag: { description: string, completedAt: string }) => {
               ui.displayInfo(`  - ${flag.description} (${flag.completedAt})`)
             })
           }
@@ -59,7 +59,7 @@ export async function handleMigrateCommand(options: {
       return
     }
 
-    const pendingMigrations = detection.migrationPath?.map(m => m.description).join(' -> ') || 'unknown'
+    const pendingMigrations = detection.migrationPath?.map((m: { description: string }) => m.description).join(' -> ') || 'unknown'
     ui.displayInfo(`Pending migrations: ${pendingMigrations}`)
 
     if (options.dryRun) {

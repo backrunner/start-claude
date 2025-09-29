@@ -1,3 +1,6 @@
+import { dirname, resolve as pathResolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import alias from '@rollup/plugin-alias'
 import commonjs from '@rollup/plugin-commonjs'
 import json from '@rollup/plugin-json'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
@@ -21,6 +24,10 @@ const external = [
 
 const extensions = ['.js', '.ts']
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const migratorDistPath = pathResolve(__dirname, 'src/migrator/dist/index.js')
+
 /** @type {import('rollup').RollupOptions} */
 const config = {
   input: 'src/cli/main.ts',
@@ -40,6 +47,9 @@ const config = {
   ],
   external,
   plugins: [
+    alias({
+      entries: [{ find: '@start-claude/migrator', replacement: migratorDistPath }],
+    }),
     typescript({
       tsconfig: './tsconfig.build.json',
     }),

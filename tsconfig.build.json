@@ -5,7 +5,8 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@start-claude/migrator": ["src/migrator/dist/index"]
     },
     "resolveJsonModule": true,
     "allowUmdGlobalAccess": false,
