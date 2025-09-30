@@ -17,28 +17,56 @@ export class MigrationLoader {
   private static getMigrationsDir(): string {
     // In bundled CLI environment: CLI is in bin/cli.mjs, migrations in bin/migrations/
     // In development: code is in src/migrator/src/core/, migrations in src/migrator/migrations/
+    // In Next.js manager: code is in bin/manager/.next/server/chunks/, migrations in bin/migrations/
 
     const currentDir = getCurrentDir()
+    const attemptedPaths: string[] = []
 
     // First try relative to bundled CLI location (most reliable)
     const bundledPath = join(currentDir, 'migrations', 'definitions')
+    attemptedPaths.push(bundledPath)
     if (existsSync(bundledPath)) {
       return bundledPath
     }
 
     // Then try development environment path
     const devPath = join(currentDir, '../migrations/definitions')
+    attemptedPaths.push(devPath)
     if (existsSync(devPath)) {
       return devPath
     }
 
     // Fallback for other bundled scenarios where migrations might be relative to the script
     const altBundledPath = join(currentDir, '..', 'migrations', 'definitions')
+    attemptedPaths.push(altBundledPath)
     if (existsSync(altBundledPath)) {
       return altBundledPath
     }
 
-    throw new Error(`Migrations directory not found. Tried: ${bundledPath}, ${devPath}, ${altBundledPath}`)
+    // For Next.js manager environment: navigate up from .next/server/chunks/ to bin/
+    // Current dir might be: bin/manager/.next/server/chunks/
+    // We need to go up to bin/ and then to bin/migrations/definitions
+    const nextJsPath1 = join(currentDir, '../../../migrations/definitions')
+    attemptedPaths.push(nextJsPath1)
+    if (existsSync(nextJsPath1)) {
+      return nextJsPath1
+    }
+
+    // Another Next.js scenario: from .next/server/
+    const nextJsPath2 = join(currentDir, '../../migrations/definitions')
+    attemptedPaths.push(nextJsPath2)
+    if (existsSync(nextJsPath2)) {
+      return nextJsPath2
+    }
+
+    // Try from bin/manager/ directory directly
+    const managerPath = join(currentDir, '../../../../../bin/migrations/definitions')
+    attemptedPaths.push(managerPath)
+    if (existsSync(managerPath)) {
+      return managerPath
+    }
+
+    throw new Error(`Migrations directory not found. Tried: ${attemptedPaths.join(', ')}`)
   }
 
   /**
