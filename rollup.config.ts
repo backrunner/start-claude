@@ -6,6 +6,9 @@ import json from '@rollup/plugin-json'
 import { nodeResolve } from '@rollup/plugin-node-resolve'
 import typescript from '@rollup/plugin-typescript'
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
 // Bundle most dependencies except for Node.js builtins and AWS SDK
 const external = [
   'fs/promises',
@@ -23,9 +26,6 @@ const external = [
 ]
 
 const extensions = ['.js', '.ts']
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
 const migratorDistPath = pathResolve(__dirname, 'packages/migrator/dist/index.esm.js')
 
 /** @type {import('rollup').RollupOptions} */
