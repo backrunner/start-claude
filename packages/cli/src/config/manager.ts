@@ -248,13 +248,24 @@ export class ConfigManager {
 
   /**
    * Permanently delete a config (cleanup tombstone)
+   * Prefers UUID matching, falls back to name for legacy configs
    */
   async cleanupDeletedConfig(name: string): Promise<boolean> {
     const configFile = await this.load()
     const initialLength = configFile.configs.length
 
+    // Find the config to cleanup (prefer by name since this is called from CLI)
+    const targetConfig = configFile.configs.find(c =>
+      c.name.toLowerCase() === name.toLowerCase() && c.isDeleted,
+    )
+
+    if (!targetConfig) {
+      return false
+    }
+
+    // Remove by UUID if available, otherwise by name
     configFile.configs = configFile.configs.filter(c =>
-      c.name.toLowerCase() !== name.toLowerCase() || !c.isDeleted,
+      targetConfig.id ? c.id !== targetConfig.id : c.name.toLowerCase() !== name.toLowerCase() || !c.isDeleted,
     )
 
     if (configFile.configs.length < initialLength) {
@@ -266,13 +277,35 @@ export class ConfigManager {
 
   /**
    * Restore a deleted config
+   * Prefers UUID matching, falls back to name for legacy configs
    */
   async restoreConfig(name: string): Promise<boolean> {
     const configFile = await this.load()
 
+    // Find the deleted config by name
     const config = configFile.configs.find(c =>
       c.name.toLowerCase() === name.toLowerCase() && c.isDeleted,
     )
+
+    if (!config) {
+      return false // Not found or not deleted
+    }
+
+    // Restore the config (UUID is preserved automatically)
+    config.isDeleted = false
+    delete config.deletedAt
+
+    await this.save(configFile)
+    return true
+  }
+
+  /**
+   * Restore a deleted config by UUID - preferred method for unique identification
+   */
+  async restoreConfigById(id: string): Promise<boolean> {
+    const configFile = await this.load()
+
+    const config = configFile.configs.find(c => c.id === id && c.isDeleted)
 
     if (!config) {
       return false // Not found or not deleted
@@ -284,6 +317,22 @@ export class ConfigManager {
 
     await this.save(configFile)
     return true
+  }
+
+  /**
+   * Permanently delete a config by UUID (cleanup tombstone)
+   */
+  async cleanupDeletedConfigById(id: string): Promise<boolean> {
+    const configFile = await this.load()
+    const initialLength = configFile.configs.length
+
+    configFile.configs = configFile.configs.filter(c => c.id !== id || !c.isDeleted)
+
+    if (configFile.configs.length < initialLength) {
+      await this.save(configFile)
+      return true
+    }
+    return false
   }
 
   /**
