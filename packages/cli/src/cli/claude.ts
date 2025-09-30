@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process'
 import process from 'node:process'
 import inquirer from 'inquirer'
 import { UILogger } from '../utils/cli/ui'
-import { findExecutable } from '../utils/path-utils'
+import { findExecutable } from '../utils/system/path-utils'
 
 export async function startClaude(config: ClaudeConfig | undefined, args: string[] = [], cliOverrides?: CliOverrides): Promise<number> {
   const env: NodeJS.ProcessEnv = { ...process.env }

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import process from 'node:process'
-import { UILogger } from './cli/ui'
-import { findExecutable } from './path-utils'
+import { UILogger } from '../cli/ui'
+import { findExecutable } from '../system/path-utils'
 
 /**
  * Check if the current command is an MCP command

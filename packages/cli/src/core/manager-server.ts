@@ -7,10 +7,13 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import open from 'open'
 import { UILogger } from '../utils/cli/ui'
+import { checkExistingInstance, createLock, removeLock, startHeartbeat } from '../utils/manager/lock'
+import { findAvailablePort } from '../utils/network/port-finder'
 
 export class ManagerServer {
   private childProcess: ChildProcess | null = null
   private port = 2334
+  private stopHeartbeat: (() => void) | null = null
 
   constructor(port?: number) {
     if (port) {
@@ -20,6 +23,27 @@ export class ManagerServer {
 
   async start(): Promise<void> {
     const ui = new UILogger()
+
+    // Check for existing manager instance
+    const existingInstance = await checkExistingInstance()
+    if (existingInstance) {
+      ui.displayWarning(`Manager is already running on port ${existingInstance.port} (PID: ${existingInstance.pid})`)
+      ui.displayInfo(`Opening existing manager at http://localhost:${existingInstance.port}`)
+      await open(`http://localhost:${existingInstance.port}`)
+      return
+    }
+
+    // Find an available port if the requested port is not available
+    const availablePort = await findAvailablePort(this.port, 10)
+    if (availablePort === null) {
+      throw new Error(`Unable to find an available port starting from ${this.port}. Please try a different port range.`)
+    }
+
+    if (availablePort !== this.port) {
+      ui.displayWarning(`Port ${this.port} is not available, using port ${availablePort} instead`)
+      this.port = availablePort
+    }
+
     // When bundled as ./bin/cli.mjs, manager is in ./bin/manager
     const currentDir = dirname(fileURLToPath(import.meta.url))
     const managerPath = join(currentDir, './manager')
@@ -30,6 +54,12 @@ export class ManagerServer {
     }
 
     ui.displayInfo('Starting Claude Configuration Manager...')
+
+    // Create lock file
+    createLock(this.port)
+
+    // Start heartbeat to keep lock alive
+    this.stopHeartbeat = startHeartbeat()
 
     try {
       // For standalone build, we spawn the server.js file directly
@@ -60,6 +90,13 @@ export class ManagerServer {
       })
 
       this.childProcess.on('exit', (code, signal) => {
+        // Stop heartbeat and remove lock file when process exits
+        if (this.stopHeartbeat) {
+          this.stopHeartbeat()
+          this.stopHeartbeat = null
+        }
+        removeLock()
+
         // Check if this was an intentional shutdown (from ESC key or API call)
         const wasIntentionalShutdown = code === 0 || signal === 'SIGTERM'
 
@@ -133,6 +170,13 @@ export class ManagerServer {
       await open(`http://localhost:${this.port}`)
     }
     catch (error) {
+      // Stop heartbeat and remove lock file if startup failed
+      if (this.stopHeartbeat) {
+        this.stopHeartbeat()
+        this.stopHeartbeat = null
+      }
+      removeLock()
+
       if (this.childProcess) {
         this.childProcess.kill()
         this.childProcess = null
@@ -146,6 +190,13 @@ export class ManagerServer {
     const ui = new UILogger()
     if (this.childProcess) {
       ui.displayInfo('Stopping Configuration Manager...')
+
+      // Stop heartbeat and remove lock file
+      if (this.stopHeartbeat) {
+        this.stopHeartbeat()
+        this.stopHeartbeat = null
+      }
+      removeLock()
 
       // First, try to broadcast shutdown message to WebSocket clients
       try {

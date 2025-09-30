@@ -1,7 +1,7 @@
 import { exec, spawn } from 'node:child_process'
 import process from 'node:process'
 import { version } from '../../../package.json'
-import { isGlobalNodePath } from '../path-utils'
+import { isGlobalNodePath } from '../system/path-utils'
 import { CacheManager } from './cache-manager'
 
 export interface UpdateInfo {
