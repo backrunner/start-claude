@@ -28,10 +28,10 @@ npm install -g start-claude
 pnpm add -g start-claude
 
 # Start Claude Code directly with CLI overrides (no config needed)
-start-claude --api-key sk-your-key --model claude-3-sonnet
+start-claude --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # Use the short command alias
-scc --api-key sk-your-key --model claude-3-sonnet
+scc --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # Windows users: Enable override for better compatibility
 start-claude override
@@ -75,7 +75,7 @@ start-claude --balance         # Start with system default balance settings
 start-claude --balance --verbose  # Enable detailed health check logging
 
 # CLI overrides (no config needed)
-start-claude --api-key sk-key --model claude-3-sonnet
+start-claude --api-key sk-key --model claude-sonnet-4-5-20250929
 start-claude -e DEBUG=1 -e NODE_ENV=prod --verbose
 
 # S3 Sync with Smart Conflict Detection

@@ -369,6 +369,7 @@ function parseConfigFromFile(filePath: string): ClaudeConfig | null {
       vertexRegion37Sonnet: parsed.vertexRegion37Sonnet?.trim() || undefined,
       vertexRegion40Opus: parsed.vertexRegion40Opus?.trim() || undefined,
       vertexRegion40Sonnet: parsed.vertexRegion40Sonnet?.trim() || undefined,
+      vertexRegion45Sonnet: parsed.vertexRegion45Sonnet?.trim() || undefined,
     }
 
     return config

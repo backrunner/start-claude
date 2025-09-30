@@ -78,14 +78,14 @@ describe('cLI argument filtering', () => {
         '--verbose',
         '--debug',
         '--model',
-        'claude-3-sonnet',
+        'claude-sonnet-4-5-20250929',
         'remaining-file.txt',
       ]
       const result = filterProcessArgs('test-config')
       expect(result).toEqual(['remaining-file.txt'])
       expect(result).not.toContain('speedfirst')
       expect(result).not.toContain('test-config')
-      expect(result).not.toContain('claude-3-sonnet')
+      expect(result).not.toContain('claude-sonnet-4-5-20250929')
     })
   })
 

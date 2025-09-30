@@ -287,7 +287,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 id="model"
                 value={formData.model ?? ''}
                 onChange={e => handleChange('model', e.target.value)}
-                placeholder="claude-3-sonnet-20240229"
+                placeholder="claude-sonnet-4-5-20250929"
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">

@@ -191,7 +191,7 @@ start-claude s3 setup
       "profileType": "default",
       "apiKey": "sk-ant-...",
       "baseUrl": "https://api.anthropic.com",
-      "model": "claude-sonnet-4-20250514",
+      "model": "claude-sonnet-4-5-20250929",
       "isDefault": true
     }
   ],

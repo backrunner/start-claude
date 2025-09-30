@@ -301,7 +301,7 @@ Override configuration with environment variables:
 # API Configuration
 export ANTHROPIC_API_KEY="sk-your-key"
 export ANTHROPIC_BASE_URL="https://api.anthropic.com"
-export ANTHROPIC_MODEL="claude-3-sonnet"
+export ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 
 # Proxy Configuration
 export HTTPS_PROXY="https://proxy.company.com:8080"
@@ -344,7 +344,7 @@ export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
 
 ```bash
 # Quick start with CLI overrides (no configuration needed)
-start-claude --api-key sk-your-key --model claude-3-sonnet
+start-claude --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # Create and use configurations
 start-claude add                          # Create config interactively

@@ -6,10 +6,10 @@
 
 ```bash
 # 使用 CLI 覆盖直接启动 Claude Code（无需配置）
-start-claude --api-key sk-your-key --model claude-3-sonnet
+start-claude --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # 使用短命令别名
-scc --api-key sk-your-key --model claude-3-sonnet
+scc --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # 动态设置环境变量
 start-claude -e DEBUG=1 -e NODE_ENV=production --verbose
@@ -94,7 +94,7 @@ start-claude -e DEBUG=1 -e CUSTOM_VAR=value myconfig
 start-claude production --model claude-3-haiku --verbose
 
 # 无配置使用覆盖
-start-claude --api-key sk-key --model claude-3-sonnet --max-turns 5
+start-claude --api-key sk-key --model claude-sonnet-4-5-20250929 --max-turns 5
 ```
 
 ## 优先级顺序（从高到低）

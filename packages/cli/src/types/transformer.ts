@@ -99,4 +99,5 @@ export interface ProxyConfig {
   vertexRegion37Sonnet?: string
   vertexRegion40Opus?: string
   vertexRegion40Sonnet?: string
+  vertexRegion45Sonnet?: string
 }

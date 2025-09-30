@@ -197,7 +197,7 @@ start-claude add
 # Name: production
 # Base URL: https://api.anthropic.com
 # API Key: your-production-key
-# Model: claude-sonnet-4-20250514
+# Model: claude-sonnet-4-5-20250929
 # Permission mode: Default
 # Set as default: Yes
 ```
@@ -211,7 +211,7 @@ start-claude add
 # Name: work-proxy
 # HTTP Proxy: http://proxy.company.com:8080
 # HTTPS Proxy: https://proxy.company.com:8080
-# Model: claude-3-sonnet
+# Model: claude-sonnet-4-5-20250929
 # Permission mode: Default
 # Set as default: No
 ```
@@ -245,7 +245,7 @@ Configurations are stored in `~/.start-claude/config.json`:
       "profileType": "default",
       "apiKey": "sk-ant-...",
       "baseUrl": "https://api.anthropic.com",
-      "model": "claude-sonnet-4-20250514",
+      "model": "claude-sonnet-4-5-20250929",
       "permissionMode": "default",
       "isDefault": true,
       "order": 0,
@@ -257,7 +257,7 @@ Configurations are stored in `~/.start-claude/config.json`:
       "profileType": "official",
       "httpProxy": "http://proxy.company.com:8080",
       "httpsProxy": "https://proxy.company.com:8080",
-      "model": "claude-3-sonnet",
+      "model": "claude-sonnet-4-5-20250929",
       "permissionMode": "default",
       "order": 10,
       "isDefault": false

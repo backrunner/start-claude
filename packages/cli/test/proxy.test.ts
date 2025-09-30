@@ -80,7 +80,7 @@ describe('proxyServer', () => {
         profileType: 'default',
         baseUrl: 'https://api1.example.com',
         apiKey: 'sk-test-key-1',
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
         isDefault: false,
       },
       {
@@ -1146,7 +1146,7 @@ describe('proxyServer', () => {
         id: 'msg-123',
         type: 'message',
         content: [{ type: 'text', text: 'Hello from Anthropic!' }],
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
       })
       const headers = { 'content-type': 'application/json' }
       const mockRes = {

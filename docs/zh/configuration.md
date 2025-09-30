@@ -211,7 +211,7 @@ start-claude add
 # 名称：work-proxy
 # HTTP 代理：http://proxy.company.com:8080
 # HTTPS 代理：https://proxy.company.com:8080
-# 模型：claude-3-sonnet
+# 模型：claude-sonnet-4-5-20250929
 # 权限模式：默认
 # 设为默认：否
 ```
@@ -257,7 +257,7 @@ start-claude edit-config
       "profileType": "official",
       "httpProxy": "http://proxy.company.com:8080",
       "httpsProxy": "https://proxy.company.com:8080",
-      "model": "claude-3-sonnet",
+      "model": "claude-sonnet-4-5-20250929",
       "permissionMode": "default",
       "order": 10,
       "isDefault": false

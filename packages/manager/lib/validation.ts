@@ -51,6 +51,7 @@ export const claudeConfigSchema = z.object({
   vertexRegion37Sonnet: z.string().optional(),
   vertexRegion40Opus: z.string().optional(),
   vertexRegion40Sonnet: z.string().optional(),
+  vertexRegion45Sonnet: z.string().optional(),
 }).refine((data) => {
   // If baseUrl is provided, apiKey should also be provided for balance mode
   if (data.baseUrl && data.baseUrl !== '') {

@@ -120,7 +120,7 @@ start-claude --balance anthropic-official openai-gpt4 azure-gpt4
 **Anthropic 格式**:
 ```json
 {
-  "model": "claude-3-sonnet",
+  "model": "claude-sonnet-4-5-20250929",
   "messages": [
     {"role": "user", "content": "Hello"}
   ],

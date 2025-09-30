@@ -155,7 +155,7 @@ start-claude --balance openai-config anthropic-config
 
 ```json
 {
-  "model": "claude-3-sonnet",
+  "model": "claude-sonnet-4-5-20250929",
   "max_tokens": 1000,
   "messages": [
     { "role": "user", "content": "Hello" }

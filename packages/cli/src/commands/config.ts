@@ -99,6 +99,7 @@ export async function handleSetCommand(name: string, property: string, value: st
     'vertexRegion37Sonnet',
     'vertexRegion40Opus',
     'vertexRegion40Sonnet',
+    'vertexRegion45Sonnet',
     'baseUrl',
     'apiKey',
     'model',

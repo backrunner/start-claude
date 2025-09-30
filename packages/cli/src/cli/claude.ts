@@ -157,6 +157,7 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
     ['vertexRegion37Sonnet', 'VERTEX_REGION_CLAUDE_3_7_SONNET'],
     ['vertexRegion40Opus', 'VERTEX_REGION_CLAUDE_4_0_OPUS'],
     ['vertexRegion40Sonnet', 'VERTEX_REGION_CLAUDE_4_0_SONNET'],
+    ['vertexRegion45Sonnet', 'VERTEX_REGION_CLAUDE_4_5_SONNET'],
   ]
 
   // Numeric configuration

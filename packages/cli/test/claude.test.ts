@@ -42,7 +42,7 @@ describe('claude', () => {
     profileType: 'default',
     baseUrl: 'https://api.test.com',
     apiKey: 'sk-test-key',
-    model: 'claude-3-sonnet',
+    model: 'claude-sonnet-4-5-20250929',
     permissionMode: 'default',
     isDefault: true,
     useBedrock: true,
@@ -91,7 +91,7 @@ describe('claude', () => {
           env: expect.objectContaining({
             ANTHROPIC_BASE_URL: 'https://api.test.com',
             ANTHROPIC_API_KEY: 'sk-test-key',
-            ANTHROPIC_MODEL: 'claude-3-sonnet',
+            ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929',
             CLAUDE_CODE_USE_BEDROCK: '1',
             DISABLE_TELEMETRY: '1',
             BASH_DEFAULT_TIMEOUT_MS: '30000',
@@ -206,7 +206,7 @@ describe('claude', () => {
           env: expect.objectContaining({
             ANTHROPIC_BASE_URL: 'https://api.test.com',
             ANTHROPIC_API_KEY: 'sk-test-key',
-            ANTHROPIC_MODEL: 'claude-3-sonnet',
+            ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929',
           }),
         }),
       )
@@ -716,7 +716,7 @@ describe('claude', () => {
         profileType: 'official',
         baseUrl: 'https://api.test.com',
         apiKey: 'sk-test-key',
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
         httpProxy: 'http://proxy:8080',
         httpsProxy: 'https://proxy:8080',
         isDefault: true,
@@ -739,7 +739,7 @@ describe('claude', () => {
       expect(env!.ANTHROPIC_API_KEY).toBeUndefined()
       expect(env!.ANTHROPIC_BASE_URL).toBeUndefined()
       // Should set model and proxy settings
-      expect(env!.ANTHROPIC_MODEL).toBe('claude-3-sonnet')
+      expect(env!.ANTHROPIC_MODEL).toBe('claude-sonnet-4-5-20250929')
       expect(env!.HTTP_PROXY).toBe('http://proxy:8080')
       expect(env!.HTTPS_PROXY).toBe('https://proxy:8080')
     })
@@ -750,7 +750,7 @@ describe('claude', () => {
         profileType: 'default',
         baseUrl: 'https://api.test.com',
         apiKey: 'sk-test-key',
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
         isDefault: true,
       }
 
@@ -770,7 +770,7 @@ describe('claude', () => {
       // Should set API key and base URL for default profile
       expect(env!.ANTHROPIC_API_KEY).toBe('sk-test-key')
       expect(env!.ANTHROPIC_BASE_URL).toBe('https://api.test.com')
-      expect(env!.ANTHROPIC_MODEL).toBe('claude-3-sonnet')
+      expect(env!.ANTHROPIC_MODEL).toBe('claude-sonnet-4-5-20250929')
     })
 
     it('should set API key and base URL when profileType is undefined (backward compatibility)', async () => {
@@ -779,7 +779,7 @@ describe('claude', () => {
         // profileType is undefined for backward compatibility
         baseUrl: 'https://api.test.com',
         apiKey: 'sk-test-key',
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
         isDefault: true,
       }
 
@@ -799,7 +799,7 @@ describe('claude', () => {
       // Should set API key and base URL when profileType is undefined
       expect(env!.ANTHROPIC_API_KEY).toBe('sk-test-key')
       expect(env!.ANTHROPIC_BASE_URL).toBe('https://api.test.com')
-      expect(env!.ANTHROPIC_MODEL).toBe('claude-3-sonnet')
+      expect(env!.ANTHROPIC_MODEL).toBe('claude-sonnet-4-5-20250929')
     })
 
     it('should merge env map with individual properties taking precedence', async () => {

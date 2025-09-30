@@ -6,10 +6,10 @@
 
 ```bash
 # Start Claude Code directly with CLI overrides (no config needed)
-start-claude --api-key sk-your-key --model claude-3-sonnet
+start-claude --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # Use the short command alias (may not work on Windows - see Windows warning in README)
-scc --api-key sk-your-key --model claude-3-sonnet
+scc --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # Windows users: Enable override for better compatibility
 start-claude override --enable
@@ -98,7 +98,7 @@ start-claude -e DEBUG=1 -e CUSTOM_VAR=value myconfig
 start-claude production --model claude-3-haiku --verbose
 
 # Use overrides without any config
-start-claude --api-key sk-key --model claude-3-sonnet --max-turns 5
+start-claude --api-key sk-key --model claude-sonnet-4-5-20250929 --max-turns 5
 ```
 
 ## Priority Order (highest to lowest)

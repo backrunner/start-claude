@@ -301,7 +301,7 @@ start-claude edit-config      # 在默认编辑器中打开配置文件
 # API 配置
 export ANTHROPIC_API_KEY="sk-your-key"
 export ANTHROPIC_BASE_URL="https://api.anthropic.com"
-export ANTHROPIC_MODEL="claude-3-sonnet"
+export ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 
 # 代理配置
 export HTTPS_PROXY="https://proxy.company.com:8080"
@@ -344,7 +344,7 @@ export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
 
 ```bash
 # 无需配置的 CLI 覆盖快速开始
-start-claude --api-key sk-your-key --model claude-3-sonnet
+start-claude --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # 创建和使用配置
 start-claude add                          # 交互式创建配置

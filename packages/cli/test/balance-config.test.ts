@@ -11,7 +11,7 @@ describe('proxy Mode Configuration', () => {
         profileType: 'default',
         baseUrl: 'https://api.original.com',
         apiKey: 'sk-original-key',
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
         permissionMode: 'acceptEdits',
         isDefault: false,
       }
@@ -26,7 +26,7 @@ describe('proxy Mode Configuration', () => {
       expect(proxyOverrides.baseUrl).toBe('http://localhost:2333')
 
       // Other settings should come from the base config
-      expect(mockConfig.model).toBe('claude-3-sonnet')
+      expect(mockConfig.model).toBe('claude-sonnet-4-5-20250929')
       expect(mockConfig.permissionMode).toBe('acceptEdits')
     })
 

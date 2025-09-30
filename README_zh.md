@@ -26,10 +26,10 @@ npm install -g start-claude
 pnpm add -g start-claude
 
 # 直接使用 CLI 覆盖启动 Claude Code（无需配置）
-start-claude --api-key sk-your-key --model claude-3-sonnet
+start-claude --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # 使用短命令别名
-scc --api-key sk-your-key --model claude-3-sonnet
+scc --api-key sk-your-key --model claude-sonnet-4-5-20250929
 
 # Windows 用户：启用覆盖以获得更好的兼容性
 start-claude override
@@ -59,7 +59,7 @@ start-claude --balance         # 使用系统默认平衡设置启动
 start-claude --balance --verbose  # 启用详细健康检查日志
 
 # CLI 覆盖（无需配置）
-start-claude --api-key sk-key --model claude-3-sonnet
+start-claude --api-key sk-key --model claude-sonnet-4-5-20250929
 start-claude -e DEBUG=1 -e NODE_ENV=prod --verbose
 
 # 带智能冲突检测的 S3 同步

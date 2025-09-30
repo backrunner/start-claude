@@ -89,6 +89,7 @@ export function detectConfigConflicts(
         'vertexRegion37Sonnet',
         'vertexRegion40Opus',
         'vertexRegion40Sonnet',
+        'vertexRegion45Sonnet',
       ]
 
       for (const field of fieldsToCheck) {
@@ -416,7 +417,8 @@ function resolveFieldConflict(
     case 'vertexRegionSonnet':
     case 'vertexRegion37Sonnet':
     case 'vertexRegion40Opus':
-    case 'vertexRegion40Sonnet': {
+    case 'vertexRegion40Sonnet':
+    case 'vertexRegion45Sonnet': {
       // For configuration fields, prefer remote (newer configuration)
       if (options.verbose) {
         resolutionDetails.push(`Using remote ${String(field)}: ${remoteValue} (newer configuration)`)

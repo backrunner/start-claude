@@ -452,7 +452,7 @@ describe('configManager', () => {
         profileType: 'default',
         baseUrl: 'https://api.test.com',
         apiKey: 'sk-test-key',
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
         permissionMode: 'acceptEdits',
         isDefault: true,
         authToken: 'auth-token',
@@ -578,7 +578,7 @@ describe('configManager', () => {
         profileType: 'official',
         httpProxy: 'http://proxy:8080',
         httpsProxy: 'https://proxy:8080',
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
         isDefault: false,
       }
 
@@ -593,7 +593,7 @@ describe('configManager', () => {
         profileType: 'default',
         baseUrl: 'https://api.test.com',
         apiKey: 'sk-test-key',
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
         isDefault: false,
       }
 
@@ -608,7 +608,7 @@ describe('configManager', () => {
         // profileType not specified for backward compatibility
         baseUrl: 'https://api.test.com',
         apiKey: 'sk-test-key',
-        model: 'claude-3-sonnet',
+        model: 'claude-sonnet-4-5-20250929',
         isDefault: false,
       }
 
