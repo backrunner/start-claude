@@ -1,3 +1,4 @@
+import { ConfigFileManager } from '../config/file-operations'
 import { S3SyncManager } from '../storage/s3-sync'
 import { editConfigFileInEditor } from '../utils/cli/editor'
 import { UILogger } from '../utils/cli/ui'
@@ -6,10 +7,9 @@ export async function handleEditConfigCommand(): Promise<void> {
   const ui = new UILogger()
   ui.displayWelcome()
 
-  // Get the config file path
-  const path = await import('node:path')
-  const os = await import('node:os')
-  const configFilePath = path.default.join(os.default.homedir(), '.start-claude', 'config.json')
+  // Get the actual config file path (respects cloud sync settings)
+  const configFileManager = ConfigFileManager.getInstance()
+  const configFilePath = configFileManager.getActualConfigPath()
 
   // Check if config file exists
   const fs = await import('node:fs')

@@ -55,7 +55,7 @@ export class ConfigFileManager {
    * Get the actual config file path (cloud or local)
    * If cloud sync is enabled, return the cloud path
    */
-  private getActualConfigPath(): string {
+  getActualConfigPath(): string {
     try {
       if (fs.existsSync(SYNC_CONFIG_FILE)) {
         const syncConfigContent = fs.readFileSync(SYNC_CONFIG_FILE, 'utf-8')

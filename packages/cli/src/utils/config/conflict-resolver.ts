@@ -26,6 +26,7 @@ export interface ConflictResolutionOptions {
 
 /**
  * Detects conflicts between local and remote configuration files
+ * Uses UUID (id) for matching when available, falls back to name for legacy configs
  */
 export function detectConfigConflicts(
   localConfig: ConfigFile,
@@ -33,14 +34,14 @@ export function detectConfigConflicts(
 ): ConfigConflict[] {
   const conflicts: ConfigConflict[] = []
 
-  // Create maps for easier lookup
-  const localConfigMap = new Map(localConfig.configs.map(c => [c.name.toLowerCase(), c]))
-  const remoteConfigMap = new Map(remoteConfig.configs.map(c => [c.name.toLowerCase(), c]))
+  // Create maps for easier lookup using UUID when available, otherwise name
+  const localConfigMap = new Map(localConfig.configs.map(c => [c.id || c.name.toLowerCase(), c]))
+  const remoteConfigMap = new Map(remoteConfig.configs.map(c => [c.id || c.name.toLowerCase(), c]))
 
   // Check for conflicts in existing configs
-  Array.from(localConfigMap.keys()).forEach((name) => {
-    const localItem = localConfigMap.get(name)!
-    const remoteItem = remoteConfigMap.get(name)
+  Array.from(localConfigMap.keys()).forEach((key) => {
+    const localItem = localConfigMap.get(key)!
+    const remoteItem = remoteConfigMap.get(key)
 
     if (remoteItem) {
       // Compare each field for conflicts
@@ -122,9 +123,9 @@ export function detectConfigConflicts(
   })
 
   // Check for configs that exist only locally or remotely
-  Array.from(localConfigMap.keys()).forEach((name) => {
-    const localItem = localConfigMap.get(name)!
-    if (!remoteConfigMap.has(name)) {
+  Array.from(localConfigMap.keys()).forEach((key) => {
+    const localItem = localConfigMap.get(key)!
+    if (!remoteConfigMap.has(key)) {
       conflicts.push({
         configName: localItem.name,
         field: 'name',
@@ -135,9 +136,9 @@ export function detectConfigConflicts(
     }
   })
 
-  Array.from(remoteConfigMap.keys()).forEach((name) => {
-    const remoteItem = remoteConfigMap.get(name)!
-    if (!localConfigMap.has(name)) {
+  Array.from(remoteConfigMap.keys()).forEach((key) => {
+    const remoteItem = remoteConfigMap.get(key)!
+    if (!localConfigMap.has(key)) {
       conflicts.push({
         configName: remoteItem.name,
         field: 'name',
@@ -208,6 +209,7 @@ export function resolveConfigConflicts(
 
 /**
  * Smart merge strategy using tombstone approach for deletion tracking
+ * Uses UUID (id) for matching when available, falls back to name for legacy configs
  */
 function smartMergeConfigs(
   localConfig: ConfigFile,
@@ -223,18 +225,21 @@ function smartMergeConfigs(
     settings: { ...remoteConfig.settings },
   }
 
-  const localConfigMap = new Map(localConfig.configs.map(c => [c.name.toLowerCase(), c]))
-  const resolvedConfigMap = new Map(resolved.configs.map(c => [c.name.toLowerCase(), c]))
+  // Create maps using UUID when available, otherwise name
+  const localConfigMap = new Map(localConfig.configs.map(c => [c.id || c.name.toLowerCase(), c]))
+  const resolvedConfigMap = new Map(resolved.configs.map(c => [c.id || c.name.toLowerCase(), c]))
 
   // Apply smart resolution rules
   for (const conflict of conflicts) {
-    const configName = conflict.configName.toLowerCase()
+    // Find the config by its ID if available
+    const localItem = Array.from(localConfigMap.values()).find(c => c.name === conflict.configName)
+    const configKey = localItem?.id || conflict.configName.toLowerCase()
 
     switch (conflict.conflictType) {
       case 'existence':
         if (conflict.localValue === 'exists' && conflict.remoteValue === 'missing') {
           // Local config exists but missing remotely
-          const localItem = localConfigMap.get(configName)
+          const localItem = localConfigMap.get(configKey)
           if (localItem && !localItem.isDeleted) {
             // Only add if local config is not deleted (i.e., it's a genuine new config)
             resolved.configs.push(localItem)
@@ -248,10 +253,10 @@ function smartMergeConfigs(
         else if (conflict.localValue === 'missing' && conflict.remoteValue === 'exists') {
           // Remote config exists but missing locally - keep remote (already in resolved)
           // Unless we have a local deletion record indicating this was intentionally deleted
-          const localTombstone = localConfigMap.get(configName)
+          const localTombstone = localConfigMap.get(configKey)
           if (localTombstone?.isDeleted) {
             // We have a local deletion tombstone, so apply the deletion to remote
-            const remoteConfig = resolvedConfigMap.get(configName)
+            const remoteConfig = resolvedConfigMap.get(configKey)
             if (remoteConfig) {
               remoteConfig.isDeleted = true
               remoteConfig.deletedAt = localTombstone.deletedAt
@@ -266,8 +271,8 @@ function smartMergeConfigs(
         break
 
       case 'value': {
-        const resolvedItem = resolvedConfigMap.get(configName)
-        const localItem = localConfigMap.get(configName)
+        const resolvedItem = resolvedConfigMap.get(configKey)
+        const localItem = localConfigMap.get(configKey)
 
         if (resolvedItem && localItem) {
           // Smart field-specific resolution
@@ -287,8 +292,8 @@ function smartMergeConfigs(
 
       case 'order': {
         // For order conflicts, prefer local user's organization
-        const resolvedOrderItem = resolvedConfigMap.get(configName)
-        const localOrderItem = localConfigMap.get(configName)
+        const resolvedOrderItem = resolvedConfigMap.get(configKey)
+        const localOrderItem = localConfigMap.get(configKey)
 
         if (resolvedOrderItem && localOrderItem && localOrderItem.order !== undefined) {
           resolvedOrderItem.order = localOrderItem.order
