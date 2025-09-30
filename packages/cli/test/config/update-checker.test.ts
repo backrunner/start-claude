@@ -1,11 +1,10 @@
 import * as childProcess from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../src/utils/config/update-checker'
+import packageJson from '../../../../package.json'
+import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../../src/utils/config/update-checker'
 
-// Mock the package.json version
-vi.mock('../../../package.json', () => ({
-  version: '0.4.1',
-}))
+// Get the actual version from package.json
+const CURRENT_VERSION = packageJson.version
 
 // Mock child_process
 vi.mock('node:child_process', () => ({
@@ -21,7 +20,7 @@ const mockInstance = {
   clear: vi.fn(),
 }
 
-vi.mock('../src/utils/config/cache-manager', () => ({
+vi.mock('../../src/utils/config/cache-manager', () => ({
   CacheManager: {
     getInstance: vi.fn(() => mockInstance),
   },
@@ -68,7 +67,7 @@ describe('updateChecker', () => {
       const result = await checkForUpdates(false)
 
       expect(result).toEqual({
-        currentVersion: '0.4.1',
+        currentVersion: CURRENT_VERSION,
         latestVersion: '1.0.1',
         hasUpdate: true,
         updateCommand: 'pnpm add -g start-claude@latest',
@@ -86,7 +85,7 @@ describe('updateChecker', () => {
       // Mock successful pnpm command that returns the same version
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
-          callback(null, '0.4.1\n', '')
+          callback(null, `${CURRENT_VERSION}\n`, '')
         }
         return {} as any
       })
@@ -94,8 +93,8 @@ describe('updateChecker', () => {
       const result = await checkForUpdates(true)
 
       expect(result).toEqual({
-        currentVersion: '0.4.1',
-        latestVersion: '0.4.1',
+        currentVersion: CURRENT_VERSION,
+        latestVersion: CURRENT_VERSION,
         hasUpdate: false,
         updateCommand: 'pnpm add -g start-claude@latest',
       })
@@ -129,7 +128,7 @@ describe('updateChecker', () => {
 
       await checkForUpdates(false)
 
-      expect(mockInstance.setUpdateCheckTimestamp).toHaveBeenCalledWith(expect.any(Number), '0.4.1')
+      expect(mockInstance.setUpdateCheckTimestamp).toHaveBeenCalledWith(expect.any(Number), CURRENT_VERSION)
     })
   })
 

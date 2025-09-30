@@ -151,7 +151,28 @@ describe('structuredMigrationProcessor', () => {
         },
       }
 
-      const result = await StructuredMigrationProcessor.execute(v1to2Migration.structured, v1Config)
+      // Provide migrationsDir pointing to the scripts directory
+      const migrationsDir = join(import.meta.dirname, '../migrations/scripts')
+
+      // Provide a unique test directory for the S3 config file creation
+      const testConfigDir = join(testDir, 's3-migration-test')
+      mkdirSync(testConfigDir, { recursive: true })
+
+      // Execute migration with custom config directory via scriptArgs
+      const migration = {
+        ...v1to2Migration.structured,
+        operations: v1to2Migration.structured.operations.map(op => ({
+          ...op,
+          scriptArgs: {
+            ...op.scriptArgs,
+            configDir: testConfigDir,
+          },
+        })),
+      }
+
+      const result = await StructuredMigrationProcessor.execute(migration, v1Config, {
+        migrationsDir,
+      })
 
       expect(result.version).toBe(2)
       expect(result.settings.s3Sync).toBeUndefined()

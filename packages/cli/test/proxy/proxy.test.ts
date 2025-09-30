@@ -1,24 +1,36 @@
-import type { ClaudeConfig } from '../src/config/types'
-import type { ProxyMode } from '../src/types/transformer'
+import type { ClaudeConfig } from '../../src/config/types'
+import type { ProxyMode } from '../../src/types/transformer'
 import { Buffer } from 'node:buffer'
 import http from 'node:http'
 import https from 'node:https'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ProxyServer } from '../src/core/proxy'
-import { ConfigService } from '../src/services/config'
+import { ProxyServer } from '../../src/core/proxy'
+import { ConfigService } from '../../src/services/config'
 
 // Mock the UI functions
-vi.mock('../src/utils/cli/ui', () => ({
-  displayError: vi.fn(),
-  displayGrey: vi.fn(),
-  displaySuccess: vi.fn(),
-  displayWarning: vi.fn(),
-  displayVerbose: vi.fn(),
-}))
+vi.mock('../../src/utils/cli/ui', async (importOriginal) => {
+  const actual = await importOriginal() as any
+  return {
+    ...actual,
+    UILogger: vi.fn().mockImplementation(() => ({
+      displayError: vi.fn(),
+      displayInfo: vi.fn(),
+      displaySuccess: vi.fn(),
+      displayWarning: vi.fn(),
+      displayGrey: vi.fn(),
+      displayVerbose: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      success: vi.fn(),
+      warning: vi.fn(),
+      verbose: vi.fn(),
+    })),
+  }
+})
 
 // Mock services
-vi.mock('../src/services/config')
-vi.mock('../src/services/transformer', () => {
+vi.mock('../../src/services/config')
+vi.mock('../../src/services/transformer', () => {
   const MockTransformerService = vi.fn().mockImplementation(() => ({
     registerTransformer: vi.fn(),
     hasTransformer: vi.fn().mockReturnValue(true),

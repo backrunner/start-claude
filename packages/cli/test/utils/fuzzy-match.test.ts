@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findClosestMatch, findFuzzyConfigMatches, isSimilarEnough } from '../src/utils/cli/fuzzy-match'
+import { findClosestMatch, findFuzzyConfigMatches, isSimilarEnough } from '../../src/utils/cli/fuzzy-match'
 
 describe('fuzzy matching utilities', () => {
   describe('findClosestMatch', () => {

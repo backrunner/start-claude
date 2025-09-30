@@ -1,6 +1,6 @@
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { checkExistingInstance, createLock, forceRemoveLock, getLockFilePath, removeLock, startHeartbeat, updateHeartbeat } from '../src/utils/manager/lock'
+import { checkExistingInstance, createLock, forceRemoveLock, getLockFilePath, removeLock, startHeartbeat, updateHeartbeat } from '../../src/utils/manager/lock'
 
 describe('manager-lock', () => {
   const lockFilePath = getLockFilePath()

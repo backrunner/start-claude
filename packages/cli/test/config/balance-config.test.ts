@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '../src/config/types'
+import type { ClaudeConfig } from '../../src/config/types'
 import { describe, expect, it } from 'vitest'
 
 // Simple test to validate the proxy mode configuration passing

@@ -21,8 +21,8 @@ const mockOs = vi.mocked(os)
 const mockProcess = vi.mocked(process)
 
 describe('overrideManager', () => {
-  let OverrideManager: typeof import('../src/cli/override').OverrideManager
-  let overrideManager: import('../src/cli/override').OverrideManager
+  let OverrideManager: typeof import('../../src/cli/override').OverrideManager
+  let overrideManager: import('../../src/cli/override').OverrideManager
   let expectedZshPath: string
 
   beforeEach(async () => {
@@ -41,7 +41,7 @@ describe('overrideManager', () => {
     mockFs.chmodSync.mockImplementation(() => undefined)
 
     // Import OverrideManager after mocks are set up
-    const overrideModule = await import('../src/cli/override')
+    const overrideModule = await import('../../src/cli/override')
     OverrideManager = overrideModule.OverrideManager
     overrideManager = new OverrideManager()
   })

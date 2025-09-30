@@ -1,11 +1,11 @@
-import type { ClaudeConfig } from '../src/config/types'
+import type { ClaudeConfig } from '../../src/config/types'
 import fs from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the configuration version constant
-vi.mock('../src/config/types', async () => {
-  const actual = await vi.importActual('../src/config/types')
+vi.mock('../../src/config/types', async () => {
+  const actual = await vi.importActual('../../src/config/types')
   return {
     ...actual,
     CURRENT_CONFIG_VERSION: 1, // Use a stable test version
@@ -22,11 +22,25 @@ vi.mock('node:os', () => ({
 }))
 
 // Mock the UI functions
-vi.mock('../src/utils/cli/ui', () => ({
-  displayInfo: vi.fn(),
-  displaySuccess: vi.fn(),
-  displayWarning: vi.fn(),
-}))
+vi.mock('../../src/utils/cli/ui', async (importOriginal) => {
+  const actual = await importOriginal() as any
+  return {
+    ...actual,
+    UILogger: vi.fn().mockImplementation(() => ({
+      displayError: vi.fn(),
+      displayInfo: vi.fn(),
+      displaySuccess: vi.fn(),
+      displayWarning: vi.fn(),
+      displayGrey: vi.fn(),
+      displayVerbose: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      success: vi.fn(),
+      warning: vi.fn(),
+      verbose: vi.fn(),
+    })),
+  }
+})
 
 const mockFs = vi.mocked(fs)
 
@@ -49,7 +63,7 @@ describe('configManager', () => {
     mockFs.appendFileSync.mockImplementation(() => undefined)
 
     // Import ConfigManager after mocks are set up
-    const configModule = await import('../src/config/manager')
+    const configModule = await import('../../src/config/manager')
     ConfigManager = configModule.ConfigManager
     configManager = new ConfigManager()
 
@@ -62,10 +76,10 @@ describe('configManager', () => {
   })
 
   describe('load', () => {
-    it('should create default config when config file does not exist', () => {
+    it('should create default config when config file does not exist', async () => {
       mockFs.existsSync.mockReturnValue(false)
 
-      const config = configManager.load()
+      const config = await configManager.load()
 
       expect(config).toEqual({
         version: TEST_CONFIG_VERSION,
@@ -76,7 +90,7 @@ describe('configManager', () => {
       })
     })
 
-    it('should load existing config file', () => {
+    it('should load existing config file', async () => {
       const mockConfig = {
         version: TEST_CONFIG_VERSION,
         configs: [
@@ -88,17 +102,17 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfig))
 
-      const config = configManager.load()
+      const config = await configManager.load()
 
       expect(config).toEqual(mockConfig)
     })
 
-    it('should handle corrupted config file', () => {
+    it('should handle corrupted config file', async () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue('invalid json')
       mockFs.copyFileSync.mockImplementation(() => undefined)
 
-      const config = configManager.load()
+      const config = await configManager.load()
 
       expect(config).toEqual({
         version: TEST_CONFIG_VERSION,
@@ -110,7 +124,7 @@ describe('configManager', () => {
       expect(mockFs.copyFileSync).toHaveBeenCalled() // Backup created
     })
 
-    it('should migrate legacy config file without version', () => {
+    it('should migrate legacy config file without version', async () => {
       const legacyConfig = {
         configs: [
           { name: 'test', baseUrl: 'https://api.test.com', isDefault: true },
@@ -131,7 +145,7 @@ describe('configManager', () => {
       mockFs.readFileSync.mockReturnValue(JSON.stringify(legacyConfig))
       mockFs.appendFileSync.mockImplementation(() => undefined)
 
-      const config = configManager.load()
+      const config = await configManager.load()
 
       expect(config.version).toBe(TEST_CONFIG_VERSION)
       expect(config.configs).toEqual([
@@ -141,13 +155,13 @@ describe('configManager', () => {
       expect(config.settings.s3Sync).toEqual(legacyConfig.settings.s3Sync)
     })
 
-    it('should ensure configs and settings exist in loaded config', () => {
+    it('should ensure configs and settings exist in loaded config', async () => {
       const incompleteConfig = { version: 1 }
 
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(incompleteConfig))
 
-      const config = configManager.load()
+      const config = await configManager.load()
 
       expect(config.version).toBe(TEST_CONFIG_VERSION)
       expect(config.configs).toEqual([])
@@ -190,7 +204,7 @@ describe('configManager', () => {
   })
 
   describe('getConfig', () => {
-    it('should return configuration by name', () => {
+    it('should return configuration by name', async () => {
       const testConfig = { name: 'test', baseUrl: 'https://api.test.com', isDefault: false, enabled: true }
       const mockConfigData = {
         version: TEST_CONFIG_VERSION,
@@ -201,12 +215,12 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.getConfig('test')
+      const result = await configManager.getConfig('test')
 
       expect(result).toEqual(testConfig)
     })
 
-    it('should return undefined for non-existent configuration', () => {
+    it('should return undefined for non-existent configuration', async () => {
       const mockConfigData = {
         configs: [],
         settings: { overrideClaudeCommand: false },
@@ -215,14 +229,14 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.getConfig('non-existent')
+      const result = await configManager.getConfig('non-existent')
 
       expect(result).toBeUndefined()
     })
   })
 
   describe('getDefaultConfig', () => {
-    it('should return default configuration', () => {
+    it('should return default configuration', async () => {
       const defaultConfig = { name: 'default', isDefault: true, enabled: true }
       const mockConfigData = {
         version: TEST_CONFIG_VERSION,
@@ -237,12 +251,12 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.getDefaultConfig()
+      const result = await configManager.getDefaultConfig()
 
       expect(result).toEqual(defaultConfig)
     })
 
-    it('should return undefined when no default configuration exists', () => {
+    it('should return undefined when no default configuration exists', async () => {
       const mockConfigData = {
         version: TEST_CONFIG_VERSION,
         configs: [
@@ -255,7 +269,7 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.getDefaultConfig()
+      const result = await configManager.getDefaultConfig()
 
       expect(result).toBeUndefined()
     })
@@ -330,7 +344,7 @@ describe('configManager', () => {
   })
 
   describe('listConfigs', () => {
-    it('should return all configurations', () => {
+    it('should return all configurations', async () => {
       const configs = [
         { name: 'test1', isDefault: false, enabled: true },
         { name: 'test2', isDefault: true, enabled: true },
@@ -344,7 +358,7 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.listConfigs()
+      const result = await configManager.listConfigs()
 
       expect(result).toEqual(configs)
     })
@@ -367,7 +381,7 @@ describe('configManager', () => {
   })
 
   describe('getSettings', () => {
-    it('should return current settings', () => {
+    it('should return current settings', async () => {
       const settings = { overrideClaudeCommand: true }
       const mockConfigData = {
         configs: [],
@@ -377,7 +391,7 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.getSettings()
+      const result = await configManager.getSettings()
 
       expect(result).toEqual(settings)
     })
@@ -410,7 +424,7 @@ describe('configManager', () => {
   })
 
   describe('getConfigFile', () => {
-    it('should return complete config file', () => {
+    it('should return complete config file', async () => {
       const mockConfigData = {
         version: TEST_CONFIG_VERSION,
         configs: [{ name: 'test', isDefault: true, enabled: true }],
@@ -430,7 +444,7 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.getConfigFile()
+      const result = await configManager.getConfigFile()
 
       expect(result).toEqual(mockConfigData)
     })
@@ -529,11 +543,11 @@ describe('configManager', () => {
       }).rejects.toThrow('Permission denied')
     })
 
-    it('should handle missing config directory', () => {
+    it('should handle missing config directory', async () => {
       mockFs.existsSync.mockReturnValue(false)
       mockFs.mkdirSync.mockImplementation(() => undefined)
 
-      configManager.load()
+      await configManager.load()
 
       expect(mockFs.mkdirSync).toHaveBeenCalledWith(
         expect.stringContaining('.start-claude'),
@@ -617,7 +631,7 @@ describe('configManager', () => {
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
 
-    it('should retrieve configuration with profileType correctly', () => {
+    it('should retrieve configuration with profileType correctly', async () => {
       const configWithProfileType = {
         name: 'profile-test',
         profileType: 'official',
@@ -634,13 +648,13 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.getConfig('profile-test')
+      const result = await configManager.getConfig('profile-test')
 
       expect(result).toEqual(configWithProfileType)
       expect(result?.profileType).toBe('official')
     })
 
-    it('should handle mixed profileType configurations in list', () => {
+    it('should handle mixed profileType configurations in list', async () => {
       const configs = [
         { name: 'default-config', profileType: 'default', baseUrl: 'https://api.test.com', isDefault: false, enabled: true },
         { name: 'official-config', profileType: 'official', httpProxy: 'http://proxy:8080', isDefault: false, enabled: true },
@@ -655,7 +669,7 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
 
-      const result = configManager.listConfigs()
+      const result = await configManager.listConfigs()
 
       expect(result).toEqual(configs)
       expect(result[0].profileType).toBe('default')
@@ -678,7 +692,7 @@ describe('configManager', () => {
       }))
     })
 
-    it('should detect when config version is higher than CLI version', () => {
+    it('should detect when config version is higher than CLI version', async () => {
       const futureConfig = {
         version: 5, // Higher than TEST_CONFIG_VERSION (1)
         configs: [{ name: 'test-config', isDefault: true, enabled: true }],
@@ -688,14 +702,14 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
 
-      const result = configManager.load()
+      const result = await configManager.load()
 
       // Should still return the config but flag it as needing update
       expect(result.version).toBe(5)
       expect(result.configs).toHaveLength(1)
     })
 
-    it('should set needsImmediateUpdate flag when config version is higher', () => {
+    it('should set needsImmediateUpdate flag when config version is higher', async () => {
       const futureConfig = {
         version: 3,
         configs: [],
@@ -706,13 +720,13 @@ describe('configManager', () => {
       mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
 
       // Load config should trigger outdated CLI detection
-      configManager.load()
+      await configManager.load()
 
       // Check that the flag is set
       expect(configManager.needsImmediateUpdate()).toBe(true)
     })
 
-    it('should not set needsImmediateUpdate flag for current version', () => {
+    it('should not set needsImmediateUpdate flag for current version', async () => {
       const currentConfig = {
         version: TEST_CONFIG_VERSION,
         configs: [],
@@ -722,12 +736,12 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(currentConfig))
 
-      configManager.load()
+      await configManager.load()
 
       expect(configManager.needsImmediateUpdate()).toBe(false)
     })
 
-    it('should not set needsImmediateUpdate flag for older version', () => {
+    it('should not set needsImmediateUpdate flag for older version', async () => {
       const olderConfig = {
         version: TEST_CONFIG_VERSION - 1,
         configs: [],
@@ -737,12 +751,12 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(olderConfig))
 
-      configManager.load()
+      await configManager.load()
 
       expect(configManager.needsImmediateUpdate()).toBe(false)
     })
 
-    it('should handle multiple loads with future version correctly', () => {
+    it('should handle multiple loads with future version correctly', async () => {
       const futureConfig = {
         version: 10,
         configs: [],
@@ -753,11 +767,11 @@ describe('configManager', () => {
       mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
 
       // First load
-      configManager.load()
+      await configManager.load()
       expect(configManager.needsImmediateUpdate()).toBe(true)
 
       // Second load should maintain the flag
-      configManager.load()
+      await configManager.load()
       expect(configManager.needsImmediateUpdate()).toBe(true)
     })
 
@@ -771,11 +785,11 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
 
-      configManager.load()
+      await configManager.load()
       expect(configManager.needsImmediateUpdate()).toBe(true)
 
       // Create new instance (simulating restart)
-      const { ConfigManager: NewConfigManager } = await import('../src/config/manager')
+      const { ConfigManager: NewConfigManager } = await import('../../src/config/manager')
       const newConfigManager = NewConfigManager.getInstance()
 
       // Since ConfigFileManager is a singleton, manually reset for testing (simulating a process restart)
@@ -785,11 +799,11 @@ describe('configManager', () => {
       expect(newConfigManager.needsImmediateUpdate()).toBe(false)
 
       // Loading same future config should set flag again
-      newConfigManager.load()
+      await newConfigManager.load()
       expect(newConfigManager.needsImmediateUpdate()).toBe(true)
     })
 
-    it('should handle edge case with version 0', () => {
+    it('should handle edge case with version 0', async () => {
       const zeroVersionConfig = {
         version: 0,
         configs: [],
@@ -799,13 +813,13 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(zeroVersionConfig))
 
-      configManager.load()
+      await configManager.load()
 
       // Version 0 is less than TEST_CONFIG_VERSION (1), should not trigger outdated CLI
       expect(configManager.needsImmediateUpdate()).toBe(false)
     })
 
-    it('should handle large version numbers correctly', () => {
+    it('should handle large version numbers correctly', async () => {
       const hugeVersionConfig = {
         version: Number.MAX_SAFE_INTEGER,
         configs: [],
@@ -815,12 +829,12 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(hugeVersionConfig))
 
-      configManager.load()
+      await configManager.load()
 
       expect(configManager.needsImmediateUpdate()).toBe(true)
     })
 
-    it('should work correctly with migration scenario', () => {
+    it('should work correctly with migration scenario', async () => {
       // First, test with legacy config (no version)
       const legacyConfig = {
         configs: [{ name: 'legacy', isDefault: true }],
@@ -830,7 +844,7 @@ describe('configManager', () => {
       mockFs.existsSync.mockReturnValue(true)
       mockFs.readFileSync.mockReturnValue(JSON.stringify(legacyConfig))
 
-      let result = configManager.load()
+      let result = await configManager.load()
 
       // Legacy config should be migrated, no outdated CLI flag
       expect(configManager.needsImmediateUpdate()).toBe(false)
@@ -845,7 +859,7 @@ describe('configManager', () => {
 
       mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
 
-      result = configManager.load()
+      result = await configManager.load()
       expect(configManager.needsImmediateUpdate()).toBe(true)
       expect(result.version).toBe(TEST_CONFIG_VERSION + 5)
     })
@@ -861,7 +875,7 @@ describe('configManager', () => {
       mockFs.readFileSync.mockReturnValue(JSON.stringify(futureConfig))
 
       // Load future config
-      configManager.load()
+      await configManager.load()
       expect(configManager.needsImmediateUpdate()).toBe(true)
 
       // Perform various operations - flag should remain
@@ -871,10 +885,10 @@ describe('configManager', () => {
       await configManager.updateSettings({ overrideClaudeCommand: true })
       expect(configManager.needsImmediateUpdate()).toBe(true)
 
-      configManager.listConfigs()
+      await configManager.listConfigs()
       expect(configManager.needsImmediateUpdate()).toBe(true)
 
-      configManager.getConfig('test')
+      await configManager.getConfig('test')
       expect(configManager.needsImmediateUpdate()).toBe(true)
     })
   })

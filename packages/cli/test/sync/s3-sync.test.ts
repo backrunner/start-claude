@@ -1,4 +1,4 @@
-import type { ConfigFile } from '../src/config/types'
+import type { ConfigFile } from '../../src/config/types'
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -54,17 +54,26 @@ vi.mock('@aws-sdk/client-s3', () => ({
 }))
 
 // Mock the dependencies
-vi.mock('../src/config/manager', () => ({
+vi.mock('../../src/config/manager', () => ({
   ConfigManager: {
     getInstance: vi.fn(() => mockConfigManagerInstance),
   },
 }))
 
-vi.mock('../src/utils/cli/ui', () => ({
-  displayError: vi.fn(),
-  displayInfo: vi.fn(),
-  displaySuccess: vi.fn(),
-  displayWarning: vi.fn(),
+vi.mock('../../src/utils/cli/ui', () => ({
+  UILogger: class MockUILogger {
+    displayError = vi.fn()
+    displayInfo = vi.fn()
+    displaySuccess = vi.fn()
+    displayWarning = vi.fn()
+    displayGrey = vi.fn()
+    displayVerbose = vi.fn()
+    error = vi.fn()
+    info = vi.fn()
+    success = vi.fn()
+    warning = vi.fn()
+    verbose = vi.fn()
+  },
 }))
 
 const mockS3Client = vi.mocked(S3Client)
@@ -89,7 +98,7 @@ describe('s3SyncManager', () => {
 
   beforeEach(async () => {
     // Import S3SyncManager after mocks are set up
-    const s3SyncModule = await import('../src/storage/s3-sync')
+    const s3SyncModule = await import('../../src/storage/s3-sync')
     S3SyncManager = s3SyncModule.S3SyncManager
     s3SyncManager = new S3SyncManager()
   })

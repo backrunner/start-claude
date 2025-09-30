@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { filterProcessArgs, parseBalanceStrategy } from '../src/cli/common'
+import { filterProcessArgs, parseBalanceStrategy } from '../../src/cli/common'
 
 describe('cLI argument filtering', () => {
   const originalArgv = process.argv

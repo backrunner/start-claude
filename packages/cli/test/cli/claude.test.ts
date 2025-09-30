@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '../src/config/types'
+import type { ClaudeConfig } from '../../src/config/types'
 import { spawn } from 'node:child_process'
 import { accessSync } from 'node:fs'
 import path from 'node:path'
@@ -19,11 +19,25 @@ vi.mock('inquirer', () => ({
     prompt: vi.fn(),
   },
 }))
-vi.mock('../src/utils/cli/ui', () => ({
-  displayError: vi.fn(),
-  displayInfo: vi.fn(),
-  displaySuccess: vi.fn(),
-}))
+vi.mock('../../src/utils/cli/ui', async (importOriginal) => {
+  const actual = await importOriginal() as any
+  return {
+    ...actual,
+    UILogger: vi.fn().mockImplementation(() => ({
+      displayError: vi.fn(),
+      displayInfo: vi.fn(),
+      displaySuccess: vi.fn(),
+      displayWarning: vi.fn(),
+      displayGrey: vi.fn(),
+      displayVerbose: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      success: vi.fn(),
+      warning: vi.fn(),
+      verbose: vi.fn(),
+    })),
+  }
+})
 
 const mockSpawn = vi.mocked(spawn)
 const mockAccessSync = vi.mocked(accessSync)
@@ -61,7 +75,7 @@ describe('claude', () => {
     mockSpawn.mockReturnValue(mockClaudeProcess as any)
     mockAccessSync.mockImplementation(() => undefined) // File exists
 
-    const claudeModule = await import('../src/cli/claude')
+    const claudeModule = await import('../../src/cli/claude')
     startClaude = claudeModule.startClaude
   })
 

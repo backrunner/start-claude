@@ -10,7 +10,7 @@ vi.mock('node:child_process', async (importOriginal) => {
 })
 
 // Mock the findExecutable utility
-vi.mock('../src/utils/path-utils', () => ({
+vi.mock('../../src/utils/path-utils', () => ({
   findExecutable: vi.fn(),
 }))
 

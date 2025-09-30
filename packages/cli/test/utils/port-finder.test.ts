@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as net from 'node:net'
-import { findAvailablePort, isPortAvailable } from '../src/utils/network/port-finder'
+import { findAvailablePort, isPortAvailable } from '../../src/utils/network/port-finder'
 
 describe('port-finder', () => {
   describe('isPortAvailable', () => {

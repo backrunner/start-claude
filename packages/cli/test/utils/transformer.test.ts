@@ -1,15 +1,15 @@
-import type { ConfigService } from '../src/services/config'
-import type { Transformer } from '../src/types/transformer'
+import type { ConfigService } from '../../src/services/config'
+import type { Transformer } from '../../src/types/transformer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { TransformerService } from '../src/services/transformer'
+import { TransformerService } from '../../src/services/transformer'
 
 // Mock the UI utilities
-vi.mock('../src/utils/ui', () => ({
+vi.mock('../../src/utils/ui', () => ({
   displayVerbose: vi.fn(),
 }))
 
 // Mock the transformers
-vi.mock('../src/transformers/openai', () => ({
+vi.mock('../../src/transformers/openai', () => ({
   OpenaiTransformer: class MockOpenaiTransformer {
     static TransformerName = 'openai'
     domain = 'api.openai.com'
@@ -24,7 +24,7 @@ vi.mock('../src/transformers/openai', () => ({
   },
 }))
 
-vi.mock('../src/transformers/openrouter', () => ({
+vi.mock('../../src/transformers/openrouter', () => ({
   OpenrouterTransformer: class MockOpenrouterTransformer {
     static TransformerName = 'openrouter'
     domain = 'openrouter.ai'

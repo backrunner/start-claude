@@ -1,11 +1,9 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readlinkSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import process from 'node:process'
 import inquirer from 'inquirer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { UILogger } from '../utils/cli/ui'
-import { CloudConfigSyncer } from '../utils/cloud-storage/config-syncer'
 import { getAvailableCloudServices, getCloudStorageStatus } from '../utils/cloud-storage/detector'
 
 export interface SyncConfig {
@@ -194,38 +192,32 @@ export class SyncManager {
         this.ui.displayInfo(`📁 Created directory: ${cloudConfigDir}`)
       }
 
-      // Move existing config to cloud folder
-      if (existsSync(this.configFile)) {
-        if (existsSync(cloudConfigFile)) {
-          const { overwrite } = await inquirer.prompt([{
-            type: 'confirm',
-            name: 'overwrite',
-            message: 'Config file already exists in cloud folder. Overwrite with local config?',
-            default: false,
-          }])
+      // Handle different scenarios
+      const localExists = existsSync(this.configFile)
+      const remoteExists = existsSync(cloudConfigFile)
 
-          if (!overwrite) {
-            this.ui.displayInfo('📥 Using existing cloud config file')
-          }
-          else {
-            copyFileSync(this.configFile, cloudConfigFile)
-            this.ui.displayInfo('📤 Copied local config to cloud folder')
-          }
-        }
-        else {
-          copyFileSync(this.configFile, cloudConfigFile)
-          this.ui.displayInfo('📤 Moved config to cloud folder')
-        }
-      }
-      else {
-        // Create empty config in cloud folder
+      if (!localExists && !remoteExists) {
+        // Scenario: No config anywhere - create new
         const emptyConfig = { version: 1, configs: [] }
         writeFileSync(cloudConfigFile, JSON.stringify(emptyConfig, null, 2))
         this.ui.displayInfo('📄 Created new config in cloud folder')
       }
-
-      // Create symlink for main config
-      await this.createConfigLink(cloudConfigFile)
+      else if (localExists && !remoteExists) {
+        // Scenario 1: Local has config, remote doesn't - move to cloud
+        await this.moveConfigToCloud(this.configFile, cloudConfigFile)
+      }
+      else if (!localExists && remoteExists) {
+        // Scenario 2: Remote has config, local doesn't - use remote directly
+        this.ui.displaySuccess('📥 Found existing configuration in cloud')
+        this.ui.displayInfo('Will use cloud configuration')
+      }
+      else {
+        // Scenario 3: Both exist - resolve conflict
+        const resolved = await this.resolveConfigConflict(this.configFile, cloudConfigFile)
+        if (!resolved) {
+          return false // User cancelled
+        }
+      }
 
       // Also sync S3 config file if it exists
       await this.syncAllConfigFilesToCloud(serviceInfo.path)
@@ -245,7 +237,7 @@ export class SyncManager {
 
       this.ui.displaySuccess(`✅ Successfully configured ${provider} sync!`)
       this.ui.displayInfo(`📂 Config file: ${cloudConfigFile}`)
-      this.ui.displayInfo(`🔗 Linked to: ${this.configFile}`)
+      this.ui.displayInfo(`🔗 Config is now synced via ${provider}`)
 
       return true
     }
@@ -296,38 +288,28 @@ export class SyncManager {
         this.ui.displayInfo(`📁 Created directory: ${customConfigDir}`)
       }
 
-      // Move existing config to custom folder
-      if (existsSync(this.configFile)) {
-        if (existsSync(customConfigFile)) {
-          const { overwrite } = await inquirer.prompt([{
-            type: 'confirm',
-            name: 'overwrite',
-            message: 'Config file already exists in custom folder. Overwrite with local config?',
-            default: false,
-          }])
+      // Handle different scenarios (same as cloud sync)
+      const localExists = existsSync(this.configFile)
+      const remoteExists = existsSync(customConfigFile)
 
-          if (!overwrite) {
-            this.ui.displayInfo('📥 Using existing custom config file')
-          }
-          else {
-            copyFileSync(this.configFile, customConfigFile)
-            this.ui.displayInfo('📤 Copied local config to custom folder')
-          }
-        }
-        else {
-          copyFileSync(this.configFile, customConfigFile)
-          this.ui.displayInfo('📤 Moved config to custom folder')
-        }
-      }
-      else {
-        // Create empty config in custom folder
+      if (!localExists && !remoteExists) {
         const emptyConfig = { version: 1, configs: [] }
         writeFileSync(customConfigFile, JSON.stringify(emptyConfig, null, 2))
         this.ui.displayInfo('📄 Created new config in custom folder')
       }
-
-      // Create symlink
-      await this.createConfigLink(customConfigFile)
+      else if (localExists && !remoteExists) {
+        await this.moveConfigToCloud(this.configFile, customConfigFile)
+      }
+      else if (!localExists && remoteExists) {
+        this.ui.displaySuccess('📥 Found existing configuration in custom folder')
+        this.ui.displayInfo('Will use custom folder configuration')
+      }
+      else {
+        const resolved = await this.resolveConfigConflict(this.configFile, customConfigFile)
+        if (!resolved) {
+          return false
+        }
+      }
 
       // Save sync configuration
       const syncConfig: SyncConfig = {
@@ -344,7 +326,7 @@ export class SyncManager {
 
       this.ui.displaySuccess('✅ Successfully configured custom folder sync!')
       this.ui.displayInfo(`📂 Config file: ${customConfigFile}`)
-      this.ui.displayInfo(`🔗 Linked to: ${this.configFile}`)
+      this.ui.displayInfo(`🔗 Config is now synced via custom folder`)
 
       return true
     }
@@ -388,80 +370,310 @@ export class SyncManager {
   }
 
   /**
-   * Create symlink from local config to cloud config
+   * Move local config to cloud (with backup)
    */
-  private async createConfigLink(targetPath: string): Promise<void> {
+  private async moveConfigToCloud(localPath: string, cloudPath: string): Promise<void> {
     try {
-      // Remove existing file/link
-      let backupPath: string | undefined
-      if (existsSync(this.configFile)) {
-        const stats = statSync(this.configFile)
-        if (stats.isSymbolicLink()) {
-          unlinkSync(this.configFile)
-          this.ui.displayInfo('🗑️  Removed existing symlink')
-        }
-        else {
-          // Backup existing file
-          backupPath = `${this.configFile}.backup.${Date.now()}`
-          copyFileSync(this.configFile, backupPath)
-          unlinkSync(this.configFile)
-          this.ui.displayInfo(`💾 Backed up existing config to: ${backupPath}`)
-        }
+      // Create backup of local config
+      const backupPath = `${localPath}.backup.${Date.now()}`
+      copyFileSync(localPath, backupPath)
+      this.ui.displayInfo(`💾 Created backup: ${backupPath}`)
+
+      // Move to cloud (copy then verify)
+      copyFileSync(localPath, cloudPath)
+      this.ui.displaySuccess(`📤 Moved configuration to cloud storage`)
+
+      // Verify cloud file was written successfully
+      if (!existsSync(cloudPath)) {
+        throw new Error('Failed to verify cloud config file')
       }
 
-      // Create symlink
-      try {
-        if (process.platform === 'win32') {
-          // On Windows, create junction for directories or symlink for files
-          symlinkSync(targetPath, this.configFile, 'file')
-        }
-        else {
-          // On Unix systems, create symbolic link
-          symlinkSync(targetPath, this.configFile)
-        }
-      }
-      catch (linkErr) {
-        // Roll back to backup if available
-        if (backupPath) {
-          try {
-            copyFileSync(backupPath, this.configFile)
-            this.ui.displayWarning('⚠️  Symlink creation failed; restored original config from backup')
-          }
-          catch {}
-        }
-        throw linkErr
-      }
-
-      this.ui.displayInfo('🔗 Created symlink to cloud config')
+      this.ui.displayInfo(`✅ Configuration is now stored in cloud`)
+      this.ui.displayInfo(`💾 Local backup available at: ${backupPath}`)
     }
     catch (error) {
-      throw new Error(`Failed to create config link: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      throw new Error(`Failed to move config to cloud: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   /**
-   * Sync all configuration files to cloud storage using generalized approach
+   * Resolve config conflict when both local and remote configs exist
+   */
+  private async resolveConfigConflict(localPath: string, remotePath: string): Promise<boolean> {
+    try {
+      this.ui.displayWarning('⚠️  Configuration files exist in both locations')
+
+      // Read both configs
+      const localContent = readFileSync(localPath, 'utf-8')
+      const remoteContent = readFileSync(remotePath, 'utf-8')
+      const localConfig = JSON.parse(localContent)
+      const remoteConfig = JSON.parse(remoteContent)
+
+      // Get file modification times
+      const localStat = statSync(localPath)
+      const remoteStat = statSync(remotePath)
+      const localMtime = localStat.mtime.getTime()
+      const remoteMtime = remoteStat.mtime.getTime()
+
+      // Show basic info
+      this.ui.displayInfo(`\n📊 Configuration comparison:`)
+      this.ui.displayInfo(`  Local configs: ${localConfig.configs?.length || 0}`)
+      this.ui.displayInfo(`  Remote configs: ${remoteConfig.configs?.length || 0}`)
+      this.ui.displayInfo(`  Local modified: ${localStat.mtime.toISOString()}`)
+      this.ui.displayInfo(`  Remote modified: ${remoteStat.mtime.toISOString()}`)
+
+      const { resolution } = await inquirer.prompt([{
+        type: 'list',
+        name: 'resolution',
+        message: 'How would you like to resolve this conflict?',
+        choices: [
+          {
+            name: '📥 Use remote configuration (cloud version)',
+            value: 'remote',
+          },
+          {
+            name: '📤 Use local configuration (overwrite cloud)',
+            value: 'local',
+          },
+          {
+            name: '🔄 Smart merge (beta - combine both configurations)',
+            value: 'merge',
+          },
+          {
+            name: '❌ Cancel setup',
+            value: 'cancel',
+          },
+        ],
+      }])
+
+      if (resolution === 'cancel') {
+        this.ui.displayInfo('Setup cancelled')
+        return false
+      }
+
+      // Create backup before any changes
+      const backupPath = `${localPath}.backup.${Date.now()}`
+      copyFileSync(localPath, backupPath)
+      this.ui.displayInfo(`💾 Created backup: ${backupPath}`)
+
+      if (resolution === 'remote') {
+        // Use remote config - just document it (config will be read from cloud automatically)
+        this.ui.displaySuccess('📥 Using remote configuration from cloud')
+        return true
+      }
+      else if (resolution === 'local') {
+        // Use local config - overwrite remote
+        copyFileSync(localPath, remotePath)
+        this.ui.displaySuccess('📤 Local configuration copied to cloud (remote overwritten)')
+        return true
+      }
+      else if (resolution === 'merge') {
+        // Smart merge using existing conflict resolver with file modification times
+        return await this.smartMergeConfigs(localConfig, remoteConfig, localPath, remotePath, backupPath, localMtime, remoteMtime)
+      }
+
+      return false
+    }
+    catch (error) {
+      this.ui.displayError(`Failed to resolve conflict: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      return false
+    }
+  }
+
+  /**
+   * Merge configs by UUID with time-based conflict resolution
+   */
+  private mergeConfigsByUuid(
+    localConfigs: any[],
+    remoteConfigs: any[],
+    localMtime: number,
+    remoteMtime: number,
+  ): any[] {
+    // Create maps by UUID for fast lookup
+    const localMap = new Map<string, any>()
+    const remoteMap = new Map<string, any>()
+    const noIdConfigs: any[] = []
+
+    // Index local configs by UUID
+    localConfigs.forEach((config) => {
+      if (config.id) {
+        localMap.set(config.id, config)
+      }
+      else {
+        // Configs without ID are treated as unique
+        noIdConfigs.push({ ...config, source: 'local' })
+      }
+    })
+
+    // Index remote configs by UUID
+    remoteConfigs.forEach((config) => {
+      if (config.id) {
+        remoteMap.set(config.id, config)
+      }
+      else {
+        // Configs without ID are treated as unique
+        noIdConfigs.push({ ...config, source: 'remote' })
+      }
+    })
+
+    const mergedConfigs: any[] = []
+
+    // Process all unique UUIDs
+    const allUuids = new Set([...localMap.keys(), ...remoteMap.keys()])
+
+    allUuids.forEach((uuid) => {
+      const localConfig = localMap.get(uuid)
+      const remoteConfig = remoteMap.get(uuid)
+
+      if (localConfig && remoteConfig) {
+        // Both have same UUID - use file modification time to decide
+        if (localMtime > remoteMtime) {
+          // Local is newer
+          mergedConfigs.push({ ...localConfig, _mergeReason: 'local-newer' })
+          this.ui.displayInfo(`  • Config "${localConfig.name}" (${uuid.substring(0, 8)}): using local (newer)`)
+        }
+        else if (remoteMtime > localMtime) {
+          // Remote is newer
+          mergedConfigs.push({ ...remoteConfig, _mergeReason: 'remote-newer' })
+          this.ui.displayInfo(`  • Config "${remoteConfig.name}" (${uuid.substring(0, 8)}): using remote (newer)`)
+        }
+        else {
+          // Same time - prefer remote (cloud version is source of truth)
+          mergedConfigs.push({ ...remoteConfig, _mergeReason: 'remote-same-time' })
+          this.ui.displayInfo(`  • Config "${remoteConfig.name}" (${uuid.substring(0, 8)}): using remote (same time)`)
+        }
+      }
+      else if (localConfig) {
+        // Only in local
+        mergedConfigs.push({ ...localConfig, _mergeReason: 'local-only' })
+        this.ui.displayInfo(`  • Config "${localConfig.name}" (${uuid.substring(0, 8)}): from local only`)
+      }
+      else if (remoteConfig) {
+        // Only in remote
+        mergedConfigs.push({ ...remoteConfig, _mergeReason: 'remote-only' })
+        this.ui.displayInfo(`  • Config "${remoteConfig.name}" (${uuid.substring(0, 8)}): from remote only`)
+      }
+    })
+
+    // Add configs without IDs (treated as unique)
+    noIdConfigs.forEach((config) => {
+      const { source, ...configWithoutSource } = config
+      mergedConfigs.push({ ...configWithoutSource, _mergeReason: `${source}-no-id` })
+      this.ui.displayInfo(`  • Config "${config.name}" (no ID): from ${source}`)
+    })
+
+    // Clean up merge reason metadata before returning
+    return mergedConfigs.map(({ _mergeReason, ...config }) => config)
+  }
+
+  /**
+   * Smart merge two configurations using UUID-aware merging
+   */
+  private async smartMergeConfigs(
+    localConfig: any,
+    remoteConfig: any,
+    localPath: string,
+    remotePath: string,
+    backupPath: string,
+    localMtime: number,
+    remoteMtime: number,
+  ): Promise<boolean> {
+    try {
+      this.ui.displayInfo('🔄 Performing UUID-aware smart merge...')
+
+      // Step 1: Merge configs based on UUID
+      const mergedConfigs = this.mergeConfigsByUuid(
+        localConfig.configs || [],
+        remoteConfig.configs || [],
+        localMtime,
+        remoteMtime,
+      )
+
+      // Step 2: Use conflict resolver for additional validation
+      const { resolveConfigConflicts } = await import('../utils/config/conflict-resolver')
+
+      const mergedConfigFile = {
+        ...remoteConfig,
+        configs: mergedConfigs,
+        version: Math.max(localConfig.version || 1, remoteConfig.version || 1),
+      }
+
+      // Run through conflict resolver for final validation
+      const resolution = resolveConfigConflicts(localConfig, mergedConfigFile, {
+        autoResolve: true,
+        preferLocal: false,
+      })
+
+      if (resolution.hasConflicts) {
+        this.ui.displayInfo(`\n📋 Merge details:`)
+        this.ui.displayInfo(`  Conflicts found: ${resolution.conflicts.length}`)
+        this.ui.displayInfo(`  Resolution strategy: ${resolution.resolutionStrategy}`)
+
+        // Show resolution details
+        if (resolution.resolutionDetails.length > 0) {
+          this.ui.displayInfo(`\n🔍 Resolution details:`)
+          resolution.resolutionDetails.slice(0, 5).forEach((detail) => {
+            this.ui.displayInfo(`  • ${detail}`)
+          })
+          if (resolution.resolutionDetails.length > 5) {
+            this.ui.displayInfo(`  ... and ${resolution.resolutionDetails.length - 5} more`)
+          }
+        }
+      }
+
+      // Confirm merge
+      const { confirmMerge } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'confirmMerge',
+        message: 'Apply the merged configuration?',
+        default: true,
+      }])
+
+      if (!confirmMerge) {
+        this.ui.displayInfo('❌ Merge cancelled')
+        return false
+      }
+
+      // Write merged config to cloud
+      const mergedContent = JSON.stringify(resolution.resolvedConfig, null, 2)
+      writeFileSync(remotePath, mergedContent)
+
+      this.ui.displaySuccess('✅ Configurations merged successfully!')
+      this.ui.displayInfo(`📊 Merged result: ${resolution.resolvedConfig.configs?.length || 0} configurations`)
+      this.ui.displayInfo(`💾 Original local backup: ${backupPath}`)
+
+      return true
+    }
+    catch (error) {
+      this.ui.displayError(`Smart merge failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      this.ui.displayInfo('You can manually resolve the conflict by choosing "Use remote" or "Use local"')
+      return false
+    }
+  }
+
+  /**
+   * Sync all configuration files to cloud storage
+   * Moves additional config files (like s3-config.json) to cloud with backup
    */
   private async syncAllConfigFilesToCloud(cloudPath: string): Promise<void> {
     try {
-      // Get all standard config files (main config, S3 config, etc.)
-      const configFiles = CloudConfigSyncer.getStandardConfigFiles()
+      const cloudConfigDir = join(cloudPath, '.start-claude')
 
-      // Filter to only sync files that exist and aren't the main config (already handled)
-      const additionalConfigs = configFiles.filter(config =>
-        config.name !== 'main-config' && existsSync(config.localPath),
-      )
+      // Sync S3 config if it exists
+      const localS3Config = join(this.configDir, 's3-config.json')
+      const cloudS3Config = join(cloudConfigDir, 's3-config.json')
 
-      if (additionalConfigs.length === 0) {
-        this.ui.displayInfo('ℹ️  No additional configuration files found to sync')
-        return
+      if (existsSync(localS3Config)) {
+        // Create backup
+        const backupPath = `${localS3Config}.backup.${Date.now()}`
+        copyFileSync(localS3Config, backupPath)
+
+        // Move to cloud
+        copyFileSync(localS3Config, cloudS3Config)
+        this.ui.displayInfo(`📤 Synced S3 config to cloud (backup: ${backupPath})`)
       }
 
-      await CloudConfigSyncer.syncConfigFilesToCloud(additionalConfigs, {
-        cloudPath,
-        backupOnReplace: true,
-        verbose: true,
-      })
+      // Future: Add other config files here
     }
     catch (error) {
       this.ui.displayWarning(`⚠️  Failed to sync additional config files: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -495,50 +707,48 @@ export class SyncManager {
 
       this.ui.displayInfo('🔄 Disabling sync...')
 
-      // If config is symlinked, replace with actual file
-      if (existsSync(this.configFile)) {
-        if (this.isSymlinkCompatible(this.configFile)) {
-          const targetPath = readlinkSync(this.configFile)
-
-          // Copy target file to local location
-          if (existsSync(targetPath)) {
-            unlinkSync(this.configFile)
-            copyFileSync(targetPath, this.configFile)
-            this.ui.displayInfo('📥 Restored config from cloud location')
-          }
-          else {
-            this.ui.displayWarning('⚠️  Cloud config file not found, removing broken symlink')
-            unlinkSync(this.configFile)
-
-            // Create an empty config if no local config exists
-            const emptyConfig = { version: 1, configs: [] }
-            writeFileSync(this.configFile, JSON.stringify(emptyConfig, null, 2))
-            this.ui.displayInfo('📄 Created new local config file')
-          }
-        }
-      }
-
-      // Also restore any additional config symlinks we created (e.g., s3-config.json)
+      // Copy cloud config back to local if it exists
       try {
-        const additional = CloudConfigSyncer.getStandardConfigFiles().filter(f => f.name !== 'main-config')
-        for (const file of additional) {
-          try {
-            if (existsSync(file.localPath) && this.isSymlinkCompatible(file.localPath)) {
-              const target = readlinkSync(file.localPath)
-              unlinkSync(file.localPath)
-              if (existsSync(target)) {
-                copyFileSync(target, file.localPath)
-                this.ui.displayInfo(`📥 Restored ${file.description} from cloud location`)
-              }
-              else {
-                this.ui.displayWarning(`⚠️  Cloud ${file.description} not found, removed broken symlink`)
-              }
+        // Get cloud config path from sync config
+        const cloudPath = syncConfig.cloudPath || syncConfig.customPath
+        if (cloudPath) {
+          const cloudConfigFile = join(cloudPath, '.start-claude', 'config.json')
+
+          if (existsSync(cloudConfigFile)) {
+            // Backup existing local config if any
+            if (existsSync(this.configFile)) {
+              const backupPath = `${this.configFile}.backup.${Date.now()}`
+              copyFileSync(this.configFile, backupPath)
+              this.ui.displayInfo(`💾 Backed up local config to: ${backupPath}`)
+            }
+
+            // Copy cloud config to local
+            copyFileSync(cloudConfigFile, this.configFile)
+            this.ui.displayInfo('📥 Copied cloud config to local location')
+
+            // Also copy additional config files
+            const cloudS3Config = join(cloudPath, '.start-claude', 's3-config.json')
+            const localS3Config = join(this.configDir, 's3-config.json')
+            if (existsSync(cloudS3Config)) {
+              copyFileSync(cloudS3Config, localS3Config)
+              this.ui.displayInfo('📥 Copied S3 config to local location')
             }
           }
-          catch {}
+          else {
+            this.ui.displayWarning('⚠️  Cloud config file not found')
+
+            // Create an empty config if no local config exists
+            if (!existsSync(this.configFile)) {
+              const emptyConfig = { version: 1, configs: [] }
+              writeFileSync(this.configFile, JSON.stringify(emptyConfig, null, 2))
+              this.ui.displayInfo('📄 Created new local config file')
+            }
+          }
         }
       }
-      catch {}
+      catch (error) {
+        this.ui.displayWarning(`⚠️  Error copying config from cloud: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
 
       // Remove sync configuration
       if (existsSync(this.syncConfigFile)) {
@@ -553,33 +763,6 @@ export class SyncManager {
     }
     catch (error) {
       this.ui.displayError(`❌ Failed to disable sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      return false
-    }
-  }
-
-  /**
-   * Check if a file is a symlink with Windows compatibility
-   */
-  private isSymlinkCompatible(filePath: string): boolean {
-    try {
-      // On Windows, check if we can read the symlink target
-      if (process.platform === 'win32') {
-        try {
-          readlinkSync(filePath)
-          return true
-        }
-        catch {
-          // If readlinkSync fails, it's not a symlink
-          return false
-        }
-      }
-      else {
-        // On Unix systems, use standard isSymbolicLink check
-        const stats = statSync(filePath)
-        return stats.isSymbolicLink()
-      }
-    }
-    catch {
       return false
     }
   }
@@ -608,54 +791,33 @@ export class SyncManager {
     const syncProvider = syncConfig.provider
 
     // Check config file status
-    if (!existsSync(this.configFile)) {
-      issues.push('Config file does not exist')
-    }
-    else {
-      if (syncProvider !== 's3') {
-        // For cloud/custom sync, config should be a symlink
-        if (!this.isSymlinkCompatible(this.configFile)) {
-          issues.push('Config file is not a symlink')
+    if (syncProvider !== 's3') {
+      // For cloud/custom sync, verify cloud config exists
+      if (syncProvider === 'icloud' || syncProvider === 'onedrive') {
+        cloudPath = syncConfig.cloudPath
+      }
+      else if (syncProvider === 'custom') {
+        cloudPath = syncConfig.customPath
+      }
+
+      if (cloudPath) {
+        const cloudConfigFile = join(cloudPath, '.start-claude', 'config.json')
+        if (!existsSync(cloudConfigFile)) {
+          issues.push('Cloud config file does not exist')
         }
         else {
-          try {
-            const targetPath = readlinkSync(this.configFile)
-            if (!existsSync(targetPath)) {
-              issues.push('Symlink target does not exist')
-            }
-            else {
-              // Determine cloud path based on provider
-              if (syncProvider === 'icloud' || syncProvider === 'onedrive') {
-                cloudPath = syncConfig.cloudPath
-              }
-              else if (syncProvider === 'custom') {
-                cloudPath = syncConfig.customPath
-              }
-
-              if (cloudPath && targetPath.includes(cloudPath)) {
-                isValid = true
-              }
-              else {
-                issues.push('Symlink target is not in expected cloud location')
-              }
-            }
-          }
-          catch (error) {
-            issues.push(`Failed to read symlink: ${error instanceof Error ? error.message : 'Unknown error'}`)
-          }
+          isValid = true
         }
       }
       else {
-        // For S3 sync, config should be a regular file
-        if (this.isSymlinkCompatible(this.configFile)) {
-          issues.push('Config file should not be a symlink for S3 sync')
-        }
-        else {
-          isValid = await this.s3SyncManager.isS3Configured()
-          if (!isValid) {
-            issues.push('S3 is not properly configured')
-          }
-        }
+        issues.push('Cloud path is not configured')
+      }
+    }
+    else {
+      // For S3 sync, check S3 configuration
+      isValid = await this.s3SyncManager.isS3Configured()
+      if (!isValid) {
+        issues.push('S3 is not properly configured')
       }
     }
 
@@ -764,10 +926,7 @@ export class SyncManager {
     try {
       this.ui.displayInfo(`🔍 Found existing configuration in ${provider} - Setting up automatic sync...`)
 
-      // Create symlink to the existing cloud config
-      await this.createConfigLink(configPath)
-
-      // Save sync configuration
+      // Save sync configuration (config will be auto-read from cloud via ConfigFileManager)
       const syncConfig: SyncConfig = {
         enabled: true,
         provider,

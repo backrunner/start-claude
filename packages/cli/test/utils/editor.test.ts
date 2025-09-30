@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '../src/config/types'
+import type { ClaudeConfig } from '../../src/config/types'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -51,7 +51,7 @@ describe('editor', () => {
 
   // Basic test to ensure module loads
   it('should import editor module successfully', async () => {
-    const editorModule = await import('../src/utils/cli/editor')
+    const editorModule = await import('../../src/utils/cli/editor')
     expect(editorModule.createConfigInEditor).toBeDefined()
     expect(editorModule.editConfigInEditor).toBeDefined()
   })

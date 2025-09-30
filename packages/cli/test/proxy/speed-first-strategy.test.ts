@@ -1,8 +1,8 @@
-import type { ClaudeConfig } from '../src/config/types'
+import type { ClaudeConfig } from '../../src/config/types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LoadBalancerStrategy, SpeedTestStrategy } from '../src/config/types'
-import { ProxyServer } from '../src/core/proxy'
-import { SpeedTestManager } from '../src/utils/network/speed-test'
+import { LoadBalancerStrategy, SpeedTestStrategy } from '../../src/config/types'
+import { ProxyServer } from '../../src/core/proxy'
+import { SpeedTestManager } from '../../src/utils/network/speed-test'
 
 // Mock configs for testing
 const mockConfigs: ClaudeConfig[] = [

@@ -7,6 +7,7 @@ import { CURRENT_S3_CONFIG_VERSION } from './types'
 
 const CONFIG_DIR = path.join(os.homedir(), '.start-claude')
 const S3_CONFIG_FILE = path.join(CONFIG_DIR, 's3-config.json')
+const SYNC_CONFIG_FILE = path.join(CONFIG_DIR, 'sync.json')
 
 /**
  * S3 configuration interface for external use
@@ -48,10 +49,41 @@ export class S3ConfigFileManager {
   }
 
   /**
-   * Check if S3 config file exists
+   * Get the actual S3 config file path (cloud or local)
+   * If cloud sync is enabled, return the cloud path
+   */
+  private getActualS3ConfigPath(): string {
+    try {
+      if (fs.existsSync(SYNC_CONFIG_FILE)) {
+        const syncConfigContent = fs.readFileSync(SYNC_CONFIG_FILE, 'utf-8')
+        const syncConfig = JSON.parse(syncConfigContent)
+
+        // Only use cloud path for iCloud, OneDrive, or custom sync (not S3)
+        if (syncConfig.enabled && syncConfig.provider !== 's3') {
+          const cloudPath = syncConfig.cloudPath || syncConfig.customPath
+          if (cloudPath) {
+            const cloudS3ConfigPath = path.join(cloudPath, '.start-claude', 's3-config.json')
+            // Verify cloud S3 config exists
+            if (fs.existsSync(cloudS3ConfigPath)) {
+              return cloudS3ConfigPath
+            }
+          }
+        }
+      }
+    }
+    catch {
+      // If any error reading sync config, fall back to local
+    }
+
+    return S3_CONFIG_FILE
+  }
+
+  /**
+   * Check if S3 config file exists (checks both local and cloud)
    */
   exists(): boolean {
-    return fs.existsSync(S3_CONFIG_FILE)
+    const actualPath = this.getActualS3ConfigPath()
+    return fs.existsSync(actualPath)
   }
 
   /**
@@ -63,6 +95,7 @@ export class S3ConfigFileManager {
 
   /**
    * Load S3 configuration
+   * Automatically reads from cloud storage if cloud sync is enabled
    */
   load(): S3ConfigFile | null {
     if (!this.exists()) {
@@ -70,7 +103,8 @@ export class S3ConfigFileManager {
     }
 
     try {
-      const content = fs.readFileSync(S3_CONFIG_FILE, 'utf-8')
+      const actualPath = this.getActualS3ConfigPath()
+      const content = fs.readFileSync(actualPath, 'utf-8')
       const config = JSON.parse(content) as S3ConfigFile
 
       // Validate version (future-proofing for S3 config migrations)
@@ -90,6 +124,7 @@ export class S3ConfigFileManager {
 
   /**
    * Save S3 configuration
+   * Automatically writes to cloud storage if cloud sync is enabled
    */
   save(s3Config: S3Config): void {
     this.ensureConfigDir()
@@ -103,7 +138,15 @@ export class S3ConfigFileManager {
       },
     }
 
-    fs.writeFileSync(S3_CONFIG_FILE, JSON.stringify(configFile, null, 2))
+    const actualPath = this.getActualS3ConfigPath()
+
+    // Ensure the directory exists (for cloud paths)
+    const actualDir = path.dirname(actualPath)
+    if (!fs.existsSync(actualDir)) {
+      fs.mkdirSync(actualDir, { recursive: true })
+    }
+
+    fs.writeFileSync(actualPath, JSON.stringify(configFile, null, 2))
   }
 
   /**
