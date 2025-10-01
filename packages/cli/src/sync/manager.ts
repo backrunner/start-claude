@@ -663,7 +663,7 @@ export class SyncManager {
 
   /**
    * Sync all configuration files to cloud storage
-   * Moves additional config files (like s3-config.json) to cloud with backup
+   * Moves additional config files (like s3-config.json and migration-flags.json) to cloud with backup
    */
   private async syncAllConfigFilesToCloud(cloudPath: string): Promise<void> {
     try {
@@ -681,6 +681,20 @@ export class SyncManager {
         // Move to cloud
         copyFileSync(localS3Config, cloudS3Config)
         this.ui.displayInfo(`📤 Synced S3 config to cloud (backup: ${backupPath})`)
+      }
+
+      // Sync migration flags if they exist
+      const localMigrationFlags = join(this.configDir, 'migration-flags.json')
+      const cloudMigrationFlags = join(cloudConfigDir, 'migration-flags.json')
+
+      if (existsSync(localMigrationFlags)) {
+        // Create backup
+        const backupPath = `${localMigrationFlags}.backup.${Date.now()}`
+        copyFileSync(localMigrationFlags, backupPath)
+
+        // Move to cloud
+        copyFileSync(localMigrationFlags, cloudMigrationFlags)
+        this.ui.displayInfo(`📤 Synced migration flags to cloud (backup: ${backupPath})`)
       }
 
       // Future: Add other config files here
