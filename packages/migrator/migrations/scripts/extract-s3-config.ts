@@ -2,7 +2,7 @@
  * Migration script for extracting S3 configuration to separate file
  * This handles the complex logic that was previously hardcoded in file-operations.ts
  */
-import fs from 'node:fs'
+import * as fs from 'node:fs'
 
 interface ConfigWithS3 {
   version: number
@@ -48,6 +48,13 @@ function validateMigrationNeeded(config: ConfigWithS3, s3ConfigPath: string): { 
 
       // Verify the existing file has valid structure
       if (existingConfig.s3Config && existingConfig.metadata) {
+        // Additional check: ensure s3Config is not nested
+        const s3Config = existingConfig.s3Config as any
+        if (s3Config.s3Config) {
+          // Detected nested structure - migration needed to fix it
+          console.warn('⚠️  Detected nested s3Config structure, will repair')
+          return { needed: true, reason: 'S3 config file has nested structure that needs repair' }
+        }
         return { needed: false, reason: 'S3 config file already exists and is valid' }
       }
     }
@@ -96,10 +103,38 @@ export default async function migrateS3Config(config: ConfigWithS3, args?: { con
 
     console.log(`🔄 Extracting S3 configuration: ${validation.reason}`)
 
+    // Get S3 config from settings or repair from existing file
+    let s3ConfigData = config.settings.s3Sync!
+
+    // Check if we're repairing a nested structure from existing file
+    if (validation.reason.includes('nested structure')) {
+      const existingContent = fs.readFileSync(s3ConfigPath, 'utf8')
+      const existingConfig = JSON.parse(existingContent) as any
+
+      // Unwrap nested structure
+      if (existingConfig.s3Config?.s3Config) {
+        console.log('🔧 Unwrapping nested s3Config structure')
+        s3ConfigData = existingConfig.s3Config.s3Config
+      }
+    }
+
+    // Additional safety check: if s3ConfigData itself has nested structure, unwrap it
+    if ((s3ConfigData as any).s3Config) {
+      console.log('🔧 Detected nested structure in config.settings.s3Sync, unwrapping')
+      s3ConfigData = (s3ConfigData as any).s3Config
+    }
+
+    // Validate the unwrapped config has required fields
+    const unwrappedRequiredFields = ['bucket', 'region', 'accessKeyId', 'secretAccessKey', 'key']
+    const unwrappedMissingFields = unwrappedRequiredFields.filter(field => !s3ConfigData[field as keyof typeof s3ConfigData])
+    if (unwrappedMissingFields.length > 0) {
+      throw new Error(`S3 config is missing required fields after unwrapping: ${unwrappedMissingFields.join(', ')}`)
+    }
+
     // Create the S3 config file structure
     const s3ConfigFile: S3ConfigFile = {
       version: 1,
-      s3Config: config.settings.s3Sync!,
+      s3Config: s3ConfigData,
       metadata: {
         createdAt: new Date().toISOString(),
         lastModified: new Date().toISOString(),
@@ -120,12 +155,19 @@ export default async function migrateS3Config(config: ConfigWithS3, args?: { con
       throw new Error('S3 config file was not created successfully')
     }
 
-    // Verify the file content
+    // Verify the file content has correct structure
     const verificationContent = fs.readFileSync(s3ConfigPath, 'utf8')
     const verificationConfig = JSON.parse(verificationContent) as S3ConfigFile
 
     if (!verificationConfig.s3Config || !verificationConfig.metadata) {
       throw new Error('S3 config file content is invalid after creation')
+    }
+
+    // Verify s3Config has required fields
+    const verificationRequiredFields = ['bucket', 'region', 'accessKeyId', 'secretAccessKey', 'key']
+    const verificationMissingFields = verificationRequiredFields.filter(field => !verificationConfig.s3Config![field as keyof typeof verificationConfig.s3Config])
+    if (verificationMissingFields.length > 0) {
+      throw new Error(`S3 config file is missing required fields: ${verificationMissingFields.join(', ')}`)
     }
 
     console.log(`✅ S3 configuration extracted to separate file: ${s3ConfigPath}`)

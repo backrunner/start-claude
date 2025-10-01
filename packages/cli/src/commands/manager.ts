@@ -12,9 +12,16 @@ export async function handleManagerCommand(options: { port?: string, verbose?: b
   // Display verbose mode status if enabled
   ui.displayVerbose('Verbose mode enabled for manager startup')
 
-  // Initialize S3 sync for config manager
+  // Initialize config manager and ensure migrations run
   const { ConfigManager } = await import('../config/manager')
   const configManager = ConfigManager.getInstance()
+
+  // Load config to trigger migrations before starting manager
+  ui.displayVerbose('🔄 Checking for pending migrations...')
+  await configManager.load()
+  ui.displayVerbose('✅ Migration check completed')
+
+  // Initialize S3 sync for config manager
   await configManager.initializeS3Sync()
 
   // Check for remote config updates before starting manager

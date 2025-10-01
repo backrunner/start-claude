@@ -19,7 +19,7 @@ interface ConfigFormProps {
 }
 
 export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps): ReactNode {
-  const [formData, setFormData] = useState<ClaudeConfig>({
+  const [formData, setFormData] = useState<ClaudeConfig>(config || {
     name: '',
     profileType: 'default',
     baseUrl: '',

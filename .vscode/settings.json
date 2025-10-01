@@ -47,7 +47,7 @@
     "editor.defaultFormatter": "dbaeumer.vscode-eslint"
   },
   "[jsonc]": {
-    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "cSpell.words": [
     "statusline"

@@ -150,16 +150,26 @@ export class SyncManager {
     })
 
     // Check if S3 is already configured
-    const s3Status = await this.s3SyncManager.getS3Status()
-    if (s3Status.includes('Not configured')) {
-      options.push({
-        name: '🗄️  S3 Storage - Configure S3 sync',
-        value: 's3',
-      })
+    try {
+      const s3Status = await this.s3SyncManager.getS3Status()
+      if (s3Status.includes('Not configured')) {
+        options.push({
+          name: '🗄️  S3 Storage - Configure S3 sync',
+          value: 's3',
+        })
+      }
+      else {
+        options.push({
+          name: `🗄️  S3 Storage - ${s3Status}`,
+          value: 's3',
+        })
+      }
     }
-    else {
+    catch (error) {
+      // S3 config exists but is invalid - treat as not configured
+      this.ui.displayVerbose(`S3 config error: ${error instanceof Error ? error.message : 'Unknown error'}`)
       options.push({
-        name: `🗄️  S3 Storage - ${s3Status}`,
+        name: '🗄️  S3 Storage - Configure S3 sync (invalid config detected)',
         value: 's3',
       })
     }
@@ -726,12 +736,40 @@ export class SyncManager {
             copyFileSync(cloudConfigFile, this.configFile)
             this.ui.displayInfo('📥 Copied cloud config to local location')
 
-            // Also copy additional config files
+            // Also copy additional config files if they exist and are valid
             const cloudS3Config = join(cloudPath, '.start-claude', 's3-config.json')
             const localS3Config = join(this.configDir, 's3-config.json')
             if (existsSync(cloudS3Config)) {
-              copyFileSync(cloudS3Config, localS3Config)
-              this.ui.displayInfo('📥 Copied S3 config to local location')
+              try {
+                // Validate S3 config before copying
+                const s3ConfigContent = readFileSync(cloudS3Config, 'utf-8')
+                const s3Config = JSON.parse(s3ConfigContent)
+
+                // Check if it has required fields
+                if (s3Config.bucket && s3Config.region && s3Config.accessKeyId && s3Config.secretAccessKey && s3Config.key) {
+                  copyFileSync(cloudS3Config, localS3Config)
+                  this.ui.displayInfo('📥 Copied S3 config to local location')
+                }
+                else {
+                  this.ui.displayWarning('⚠️  Cloud S3 config is incomplete, skipping copy')
+                }
+              }
+              catch (error) {
+                this.ui.displayWarning(`⚠️  Failed to validate/copy S3 config: ${error instanceof Error ? error.message : 'Unknown error'}`)
+              }
+            }
+
+            // Also copy migration flags if they exist
+            const cloudMigrationFlags = join(cloudPath, '.start-claude', 'migration-flags.json')
+            const localMigrationFlags = join(this.configDir, 'migration-flags.json')
+            if (existsSync(cloudMigrationFlags)) {
+              try {
+                copyFileSync(cloudMigrationFlags, localMigrationFlags)
+                this.ui.displayInfo('📥 Copied migration flags to local location')
+              }
+              catch (error) {
+                this.ui.displayWarning(`⚠️  Failed to copy migration flags: ${error instanceof Error ? error.message : 'Unknown error'}`)
+              }
             }
           }
           else {
@@ -755,8 +793,11 @@ export class SyncManager {
         unlinkSync(this.syncConfigFile)
       }
 
-      // Restore S3 auto-download if S3 is configured
-      await this.updateS3Settings(false)
+      // Check if S3 is configured and re-enable auto-sync
+      if (await this.s3SyncManager.isS3Configured()) {
+        this.ui.displayInfo('🔄 Re-enabling S3 auto-sync...')
+        await this.updateS3Settings(false)
+      }
 
       this.ui.displaySuccess('✅ Sync disabled successfully')
       return true

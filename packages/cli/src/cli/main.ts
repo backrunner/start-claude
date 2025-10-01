@@ -76,6 +76,23 @@ async function handleMcpSync(options: { verbose?: boolean } = {}): Promise<void>
   }
 }
 
+/**
+ * Ensure migrations are run before any CLI operations
+ * This runs idempotently - migrations that have already been applied will be skipped
+ */
+async function ensureMigrationsRun(): Promise<void> {
+  try {
+    // Simply loading the config will trigger migrations if needed
+    // The ConfigFileManager.load() method handles all migration logic
+    await configManager.load()
+  }
+  catch (error) {
+    const ui = new UILogger()
+    ui.displayError(`Failed to run migrations: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    // Don't exit - let the command handler deal with config errors
+  }
+}
+
 program
   .name(name)
   .version(version, '-v, --version', 'Display version number')
@@ -565,5 +582,12 @@ syncCmd
 
 // Only parse with Commander.js if not an MCP command
 if (!isMcpCommand) {
-  program.parse()
+  // Ensure migrations run before parsing commands
+  ensureMigrationsRun().then(() => {
+    program.parse()
+  }).catch((error) => {
+    const ui = new UILogger()
+    ui.displayError(`Fatal error during initialization: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    process.exit(1)
+  })
 }

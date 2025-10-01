@@ -7,8 +7,22 @@ export async function handleEditConfigCommand(): Promise<void> {
   const ui = new UILogger()
   ui.displayWelcome()
 
-  // Get the actual config file path (respects cloud sync settings)
+  // Initialize config manager and run migrations first
   const configFileManager = ConfigFileManager.getInstance()
+
+  // Load config to trigger migrations before editing
+  ui.displayInfo('🔄 Checking for pending migrations...')
+  try {
+    await configFileManager.load()
+    ui.displayInfo('✅ Migration check completed')
+  }
+  catch (error) {
+    ui.displayError(`Failed to load configuration: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    ui.displayInfo('You may need to fix the configuration file manually.')
+    // Don't return - still allow editing to fix broken config
+  }
+
+  // Get the actual config file path (respects cloud sync settings)
   const configFilePath = configFileManager.getActualConfigPath()
 
   // Check if config file exists

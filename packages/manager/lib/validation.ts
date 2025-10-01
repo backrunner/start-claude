@@ -3,6 +3,7 @@ import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
 
 // Claude configuration validation schema
 export const claudeConfigSchema = z.object({
+  id: z.string().optional(),
   name: z.string().min(1, 'Configuration name is required').max(100, 'Name too long'),
   profileType: z.enum(['default', 'official']).optional(),
   baseUrl: z.string().url('Invalid base URL').optional().or(z.literal('')),

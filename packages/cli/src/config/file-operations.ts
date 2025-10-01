@@ -1,4 +1,5 @@
 import type { ConfigFile, LegacyConfigFile, MigrationInfo, SystemSettings } from './types'
+import { randomUUID } from 'node:crypto'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -138,7 +139,16 @@ export class ConfigFileManager {
       }
 
       // Validate and fill in missing fields
-      return this.validateAndNormalize(config)
+      const normalized = this.validateAndNormalize(config)
+
+      // Check if any configs were missing UUIDs and save if so
+      const hadMissingUUIDs = config.configs.some(cfg => !cfg.id)
+      if (hadMissingUUIDs) {
+        // Save the normalized config with UUIDs
+        this.save(normalized)
+      }
+
+      return normalized
     }
     catch (error) {
       const logger = new UILogger()
@@ -171,22 +181,88 @@ export class ConfigFileManager {
       backupDirectory: path.join(CONFIG_DIR, 'backups'),
     })
 
-    const detection = migrator.detectMigrationNeeded(CONFIG_FILE, { useFlagSystem: true })
+    // Use actual config path (respects cloud sync)
+    const actualConfigPath = this.getActualConfigPath()
+
+    // Check if config file exists before attempting migration
+    if (!fs.existsSync(actualConfigPath)) {
+      const ui = new UILogger()
+      ui.displayWarning(`Config file not found at ${actualConfigPath}, skipping migrations`)
+      throw new Error(`Config file not found: ${actualConfigPath}`)
+    }
+
+    const detection = migrator.detectMigrationNeeded(actualConfigPath, { useFlagSystem: true })
     if (detection.needsMigration) {
       const ui = new UILogger()
       ui.displayInfo(`Migrating configuration from version ${detection.currentVersion} to ${detection.targetVersion}...`)
 
       // Execute migration - all file creation logic is now handled by migration scripts/schema
-      const result = await migrator.migrate(CONFIG_FILE, { backup: true, verbose: false, useFlagSystem: true })
+      const result = await migrator.migrate(actualConfigPath, { backup: true, verbose: false, useFlagSystem: true })
 
       if (result.success) {
         ui.displaySuccess(`Configuration migrated successfully to version ${detection.targetVersion}`)
         if (result.migrationsSkipped.length > 0) {
           ui.displayInfo(`Skipped ${result.migrationsSkipped.length} previously completed migrations`)
         }
+
+        // Sync migration flags to cloud if cloud sync is enabled
+        await this.syncMigrationFlagsToCloud()
+      }
+      else {
+        // Migration failed - report error and throw
+        const errorMsg = result.error || 'Unknown migration error'
+        ui.displayError(`Migration failed: ${errorMsg}`)
+        throw new Error(`Migration failed: ${errorMsg}`)
       }
     }
     // Re-read and normalize handled by caller
+  }
+
+  /**
+   * Sync migration flags to cloud directory if cloud sync is enabled
+   */
+  private async syncMigrationFlagsToCloud(): Promise<void> {
+    try {
+      // Check if using cloud sync (not S3)
+      if (!fs.existsSync(SYNC_CONFIG_FILE)) {
+        return
+      }
+
+      const syncConfigContent = fs.readFileSync(SYNC_CONFIG_FILE, 'utf-8')
+      const syncConfig = JSON.parse(syncConfigContent)
+
+      // Only sync for iCloud, OneDrive, or custom sync (not S3)
+      if (!syncConfig.enabled || syncConfig.provider === 's3') {
+        return
+      }
+
+      const cloudPath = syncConfig.cloudPath || syncConfig.customPath
+      if (!cloudPath) {
+        return
+      }
+
+      // Source: local migration flags file
+      const localFlagsPath = path.join(CONFIG_DIR, 'migration-flags.json')
+      if (!fs.existsSync(localFlagsPath)) {
+        return
+      }
+
+      // Destination: cloud migration flags file
+      const cloudConfigDir = path.join(cloudPath, '.start-claude')
+      if (!fs.existsSync(cloudConfigDir)) {
+        fs.mkdirSync(cloudConfigDir, { recursive: true })
+      }
+
+      const cloudFlagsPath = path.join(cloudConfigDir, 'migration-flags.json')
+
+      // Copy migration flags to cloud
+      fs.copyFileSync(localFlagsPath, cloudFlagsPath)
+    }
+    catch (error) {
+      // Don't throw - migration flag sync is not critical
+      const ui = new UILogger()
+      ui.displayVerbose(`Failed to sync migration flags to cloud: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   /**
@@ -326,9 +402,10 @@ export class ConfigFileManager {
       config.settings = { overrideClaudeCommand: false }
     }
 
-    // Normalize each config
+    // Normalize each config and ensure it has a UUID
     config.configs = config.configs.map(cfg => ({
       ...cfg,
+      id: cfg.id || randomUUID(), // Ensure every config has a UUID
       enabled: cfg.enabled ?? true, // Default to enabled
     }))
 

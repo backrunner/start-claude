@@ -64,8 +64,32 @@ export class MigrationFlagManager {
 
   /**
    * Load migration flags from file
+   * Also checks cloud directory if cloud sync is enabled
    */
   private loadFlags(): MigrationFlagsFile {
+    // Try loading from cloud first if available
+    const cloudFlags = this.loadFlagsFromCloud()
+    if (cloudFlags) {
+      // Merge with local flags and save back to local
+      const localFlags = this.loadFlagsFromLocal()
+      const mergedFlags = this.mergeFlagsFiles(localFlags, cloudFlags)
+
+      // Save merged flags locally
+      if (mergedFlags.flags.length > localFlags.flags.length) {
+        this.saveFlags(mergedFlags)
+      }
+
+      return mergedFlags
+    }
+
+    // Fall back to local flags
+    return this.loadFlagsFromLocal()
+  }
+
+  /**
+   * Load migration flags from local directory
+   */
+  private loadFlagsFromLocal(): MigrationFlagsFile {
     if (!existsSync(this.flagsFilePath)) {
       return {
         version: 1,
@@ -100,16 +124,121 @@ export class MigrationFlagManager {
   }
 
   /**
+   * Load migration flags from cloud directory if cloud sync is enabled
+   */
+  private loadFlagsFromCloud(): MigrationFlagsFile | null {
+    try {
+      const syncConfigPath = join(this.configDir, 'sync.json')
+      if (!existsSync(syncConfigPath)) {
+        return null
+      }
+
+      const syncConfig = JSON.parse(readFileSync(syncConfigPath, 'utf-8'))
+
+      // Only load from cloud for iCloud, OneDrive, or custom sync (not S3)
+      if (!syncConfig.enabled || syncConfig.provider === 's3') {
+        return null
+      }
+
+      const cloudPath = syncConfig.cloudPath || syncConfig.customPath
+      if (!cloudPath) {
+        return null
+      }
+
+      const cloudFlagsPath = join(cloudPath, '.start-claude', 'migration-flags.json')
+      if (!existsSync(cloudFlagsPath)) {
+        return null
+      }
+
+      const content = readFileSync(cloudFlagsPath, 'utf8')
+      const flagsFile = JSON.parse(content) as MigrationFlagsFile
+
+      // Ensure the file has the expected structure
+      if (!flagsFile.flags || !Array.isArray(flagsFile.flags)) {
+        return null
+      }
+
+      return flagsFile
+    }
+    catch (error) {
+      console.error(`Error loading migration flags from cloud: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      return null
+    }
+  }
+
+  /**
+   * Merge two flags files, keeping the union of all flags
+   */
+  private mergeFlagsFiles(local: MigrationFlagsFile, cloud: MigrationFlagsFile): MigrationFlagsFile {
+    const allFlags = [...local.flags, ...cloud.flags]
+
+    // Deduplicate by migrationId, keeping the earliest completion
+    const flagMap = new Map<string, MigrationFlag>()
+    for (const flag of allFlags) {
+      const existing = flagMap.get(flag.migrationId)
+      if (!existing || new Date(flag.completedAt) < new Date(existing.completedAt)) {
+        flagMap.set(flag.migrationId, flag)
+      }
+    }
+
+    return {
+      version: Math.max(local.version, cloud.version),
+      flags: Array.from(flagMap.values()),
+      lastUpdated: new Date().toISOString(),
+    }
+  }
+
+  /**
    * Save migration flags to file
+   * Also syncs to cloud if cloud sync is enabled
    */
   private saveFlags(flagsFile: MigrationFlagsFile): void {
     try {
       flagsFile.lastUpdated = new Date().toISOString()
       writeFileSync(this.flagsFilePath, JSON.stringify(flagsFile, null, 2), 'utf8')
+
+      // Also save to cloud if available
+      this.saveFlagsToCloud(flagsFile)
     }
     catch (error) {
       console.error(`Error saving migration flags: ${error instanceof Error ? error.message : 'Unknown error'}`)
       throw new Error(`Failed to save migration flags: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * Save migration flags to cloud directory if cloud sync is enabled
+   */
+  private saveFlagsToCloud(flagsFile: MigrationFlagsFile): void {
+    try {
+      const syncConfigPath = join(this.configDir, 'sync.json')
+      if (!existsSync(syncConfigPath)) {
+        return
+      }
+
+      const syncConfig = JSON.parse(readFileSync(syncConfigPath, 'utf-8'))
+
+      // Only save to cloud for iCloud, OneDrive, or custom sync (not S3)
+      if (!syncConfig.enabled || syncConfig.provider === 's3') {
+        return
+      }
+
+      const cloudPath = syncConfig.cloudPath || syncConfig.customPath
+      if (!cloudPath) {
+        return
+      }
+
+      const cloudConfigDir = join(cloudPath, '.start-claude')
+      if (!existsSync(cloudConfigDir)) {
+        mkdirSync(cloudConfigDir, { recursive: true })
+      }
+
+      const cloudFlagsPath = join(cloudConfigDir, 'migration-flags.json')
+      writeFileSync(cloudFlagsPath, JSON.stringify(flagsFile, null, 2), 'utf8')
+    }
+    catch (error) {
+      // Don't throw - cloud sync is not critical
+      console.error(`Failed to sync migration flags to cloud: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
