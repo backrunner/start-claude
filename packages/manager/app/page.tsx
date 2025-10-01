@@ -95,6 +95,14 @@ export default function HomePage(): ReactNode {
     // Add ESC key listener
     const handleKeyDown = async (event: KeyboardEvent): Promise<void> => {
       if (event.key === 'Escape') {
+        // Check if any modal/dialog is currently open
+        const isModalOpen = document.querySelector('[role="dialog"]') !== null
+
+        if (isModalOpen) {
+          // Let the modal handle the ESC key, don't trigger shutdown
+          return
+        }
+
         console.log('ESC key pressed, initiating shutdown...')
         await shutdownCoordinator.callShutdownIfLastTab()
 
