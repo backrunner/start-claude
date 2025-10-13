@@ -101,7 +101,7 @@ program
 program
   .option('--config <name>', 'Use specific configuration')
   .option('--list', 'List all configurations')
-  .option('--balance [strategy]', 'Start a proxy server with load balancing on port 2333. Strategies: fallback (priority-based), polling (round-robin), speedfirst (fastest response)')
+  .option('--balance [strategy]', '[DEPRECATED: use "start-claude proxy" instead] Start a proxy server with load balancing on port 2333. Strategies: fallback (priority-based), polling (round-robin), speedfirst (fastest response)')
   .option('--health-check', 'Perform health check on the endpoint without starting proxy server')
   .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
   .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
@@ -196,6 +196,13 @@ program
     let shouldUseProxy = balanceConfig.enabled
     const cliStrategy = balanceConfig.strategy
     let systemSettings: unknown = null
+
+    // Display deprecation warning if using --balance option
+    if (options.balance !== undefined && options.balance !== false) {
+      ui.warning('⚠️  WARNING: The --balance option is deprecated.')
+      ui.warning('   Please use "start-claude proxy [config-names...] --strategy <strategy>" instead.')
+      ui.warning('   This option will be removed in the next minor version.\n')
+    }
 
     // Display strategy info if CLI strategy was provided
     if (cliStrategy && typeof options.balance === 'string') {
@@ -579,6 +586,17 @@ syncCmd
   .command('disable')
   .description('Disable cloud sync and restore local config')
   .action(async () => (await import('../commands/sync')).disableSyncCommand())
+
+// Proxy command for starting proxy server with specific configs
+program
+  .command('proxy [config-names...]')
+  .description('Start proxy server with specified configuration(s)')
+  .option('--strategy <strategy>', 'Load balancer strategy: fallback, polling, or speedfirst')
+  .option('--all', 'Start proxy server with all configurations')
+  .option('--verbose', 'Enable verbose output')
+  .option('--debug', 'Enable debug mode')
+  .option('--proxy <url>', 'Set HTTPS proxy for requests')
+  .action(async (configNames, options) => (await import('../commands/proxy')).handleProxyCommand(configNames, options))
 
 // Only parse with Commander.js if not an MCP command
 if (!isMcpCommand) {
