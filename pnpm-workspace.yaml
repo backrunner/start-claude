@@ -3,6 +3,8 @@ packages:
 
 onlyBuiltDependencies:
   - '@parcel/watcher'
+  - '@vscode/vsce-sign'
   - esbuild
+  - keytar
   - sharp
   - unrs-resolver
