@@ -2,7 +2,7 @@
   "publisher": "BackRunner",
   "name": "start-claude-plugin",
   "displayName": "Start Claude",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "VSCode extension for Start Claude Manager",
   "license": "MIT",

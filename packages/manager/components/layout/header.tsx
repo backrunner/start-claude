@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { ShutdownCoordinator } from '@/lib/shutdown-coordinator'
-import { Plus, RefreshCw, Settings, Sparkles } from 'lucide-react'
+import { Plus, RefreshCw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface HeaderProps {
@@ -14,52 +14,44 @@ interface HeaderProps {
 
 export function Header({ isVSCode, shutdownCoordinator, onAddConfig, onOpenSettings }: HeaderProps): ReactNode {
   return (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-4">
-      <div className="flex items-center gap-2 sm:gap-4">
-        {!isVSCode && (
-          <div className="flex h-8 w-8 sm:h-12 sm:w-12 items-center justify-center rounded-xl bg-primary/10">
-            <Sparkles className="h-4 w-4 sm:h-6 sm:w-6 text-primary" />
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl sm:text-3xl font-bold text-foreground">
-            Start Claude Manager
-          </h1>
-          {isVSCode && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (shutdownCoordinator) {
-                  shutdownCoordinator.markAsReload()
-                }
-                window.location.reload()
-              }}
-              className="hover:bg-muted/50 p-2 h-8 w-8"
-              title="Reload page"
-            >
-              <RefreshCw className="h-3 w-3" />
-            </Button>
-          )}
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex items-center gap-4">
+        <div>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Start Claude</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage your configurations</p>
         </div>
+        {isVSCode && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              if (shutdownCoordinator) {
+                shutdownCoordinator.markAsReload()
+              }
+              window.location.reload()
+            }}
+            className="rounded-full"
+            title="Reload page"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+      <div className="flex items-center gap-2 w-full sm:w-auto">
         <Button
           variant="outline"
           onClick={onOpenSettings}
-          className="hover:bg-muted/50 text-xs sm:text-sm flex-1 sm:flex-none"
-          size="sm"
+          className="flex-1 sm:flex-none"
         >
-          <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+          <Settings className="h-4 w-4 mr-2" />
           Settings
         </Button>
         <Button
           onClick={onAddConfig}
-          className="bg-primary hover:bg-primary/90 text-xs sm:text-sm flex-1 sm:flex-none"
-          size="sm"
+          className="flex-1 sm:flex-none"
         >
-          <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+          <Plus className="h-4 w-4 mr-2" />
           Add Config
         </Button>
       </div>

@@ -60,8 +60,6 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     }),
   )
 
-  // No need for useEffect to fetch configs since we get them via SSR and WebSocket updates
-
   const handleSaveConfig = async (config: ClaudeConfig): Promise<void> => {
     await saveConfig(config, !!editingConfig)
     setIsFormOpen(false)
@@ -81,7 +79,6 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     setDeleteConfig(null)
   }
 
-  // Filter configs by search term only
   const filteredConfigs = configs.filter(config =>
     config.name.toLowerCase().includes(searchTerm.toLowerCase())
     || (config.baseUrl && config.baseUrl.toLowerCase().includes(searchTerm.toLowerCase())),
@@ -100,7 +97,6 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
         order: index + 1,
       }))
 
-      // Update all configs array with new orders, preserving disabled configs
       const allConfigsUpdated = configs.map((config) => {
         const updatedConfig = updatedFilteredConfigs.find(c => c.name === config.name)
         return updatedConfig || config
@@ -130,43 +126,34 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     void updateConfigs(updatedConfigs, `Configuration "${configName}" has been set as the default.`)
   }
 
-  // Remove loading state logic since SSR provides data immediately
-
   return (
     <VSCodeProvider isVSCode={isVSCode}>
       <div className="min-h-screen bg-background">
-        <div className="container mx-auto p-3 max-w-none sm:max-w-7xl sm:p-6">
-          {/* Header Section */}
-          <div className="mb-4 sm:mb-8">
-            <Header
-              isVSCode={isVSCode}
-              shutdownCoordinator={shutdownCoordinator}
-              onAddConfig={() => {
-                setEditingConfig(null)
-                setIsFormOpen(true)
-              }}
-              onOpenSettings={() => setIsSystemSettingsOpen(true)}
-            />
+        <div className="container mx-auto px-4 py-6 sm:py-8 max-w-6xl">
+          <Header
+            isVSCode={isVSCode}
+            shutdownCoordinator={shutdownCoordinator}
+            onAddConfig={() => {
+              setEditingConfig(null)
+              setIsFormOpen(true)
+            }}
+            onOpenSettings={() => setIsSystemSettingsOpen(true)}
+          />
 
-            {/* Error Alert */}
-            {error && (
-              <Alert variant="destructive" className="mb-4 sm:mb-6">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-          </div>
+          {error && (
+            <Alert variant="destructive" className="mt-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-          {/* Main Content */}
-          <div className="space-y-4 sm:space-y-6">
-            {/* Search Bar */}
+          <div className="mt-8 space-y-6">
             <SearchBar
               searchTerm={searchTerm}
               onSearchChange={setSearchTerm}
               isVSCode={isVSCode}
             />
 
-            {/* Configuration List */}
             {filteredConfigs.length === 0 && searchTerm
               ? (
                   <EmptyState
