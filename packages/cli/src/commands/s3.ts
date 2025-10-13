@@ -2,7 +2,9 @@ import inquirer from 'inquirer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { UILogger } from '../utils/cli/ui'
 
-export async function handleS3SetupCommand(options: { verbose?: boolean } = {}): Promise<void> {
+export async function handleS3SetupCommand(
+  options: { verbose?: boolean } = {},
+): Promise<void> {
   const ui = new UILogger(options.verbose)
   ui.displayWelcome()
 
@@ -35,7 +37,8 @@ export async function handleS3SetupCommand(options: { verbose?: boolean } = {}):
       type: 'input',
       name: 'bucket',
       message: 'Bucket name:',
-      validate: (input: string) => input.trim() ? true : 'Bucket name is required',
+      validate: (input: string) =>
+        input.trim() ? true : 'Bucket name is required',
     },
     {
       type: 'input',
@@ -48,7 +51,7 @@ export async function handleS3SetupCommand(options: { verbose?: boolean } = {}):
         return 'AWS Region:'
       },
       default: 'us-east-1',
-      validate: (input: string) => input.trim() ? true : 'Region is required',
+      validate: (input: string) => (input.trim() ? true : 'Region is required'),
     },
     {
       type: 'input',
@@ -60,7 +63,8 @@ export async function handleS3SetupCommand(options: { verbose?: boolean } = {}):
           return 'Application Key ID:'
         return 'AWS Access Key ID:'
       },
-      validate: (input: string) => input.trim() ? true : 'Access Key ID is required',
+      validate: (input: string) =>
+        input.trim() ? true : 'Access Key ID is required',
     },
     {
       type: 'password',
@@ -73,7 +77,8 @@ export async function handleS3SetupCommand(options: { verbose?: boolean } = {}):
         return 'AWS Secret Access Key:'
       },
       mask: '*',
-      validate: (input: string) => input.trim() ? true : 'Secret Access Key is required',
+      validate: (input: string) =>
+        input.trim() ? true : 'Secret Access Key is required',
     },
     {
       type: 'input',
@@ -93,7 +98,11 @@ export async function handleS3SetupCommand(options: { verbose?: boolean } = {}):
         return ''
       },
       validate: (input: string, answers?: Partial<S3SetupAnswers>) => {
-        if ((answers?.serviceType === 'custom' || answers?.serviceType === 'r2') && !input.trim()) {
+        if (
+          (answers?.serviceType === 'custom'
+            || answers?.serviceType === 'r2')
+          && !input.trim()
+        ) {
           return 'Endpoint URL is required'
         }
         return true
@@ -104,7 +113,8 @@ export async function handleS3SetupCommand(options: { verbose?: boolean } = {}):
       name: 'key',
       message: 'File path in bucket:',
       default: 'start-claude-config.json',
-      validate: (input: string) => input.trim() ? true : 'File path is required',
+      validate: (input: string) =>
+        input.trim() ? true : 'File path is required',
     },
   ])
 
@@ -120,49 +130,68 @@ export async function handleS3SetupCommand(options: { verbose?: boolean } = {}):
   await s3SyncManager.setupS3Sync(s3Config, { verbose: options.verbose })
 }
 
-export async function handleS3SyncCommand(options: { verbose?: boolean } = {}): Promise<void> {
+export async function handleS3SyncCommand(
+  options: { verbose?: boolean } = {},
+): Promise<void> {
   const ui = new UILogger(options.verbose)
   ui.displayWelcome()
 
   const s3SyncManager = S3SyncManager.getInstance()
   if (!(await s3SyncManager.isS3Configured())) {
-    ui.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+    ui.displayError(
+      'S3 sync is not configured. Run "start-claude s3 setup" first.',
+    )
     return
   }
 
   await s3SyncManager.syncConfigs({ verbose: options.verbose })
 }
 
-export async function handleS3UploadCommand(options: { force?: boolean, verbose?: boolean } = {}): Promise<void> {
+export async function handleS3UploadCommand(
+  options: { force?: boolean, verbose?: boolean } = {},
+): Promise<void> {
   const ui = new UILogger(options.verbose)
   ui.displayWelcome()
 
   const s3SyncManager = S3SyncManager.getInstance()
   if (!(await s3SyncManager.isS3Configured())) {
-    ui.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+    ui.displayError(
+      'S3 sync is not configured. Run "start-claude s3 setup" first.',
+    )
     return
   }
 
   // Let S3SyncManager handle timestamp checking and warnings
-  await s3SyncManager.uploadConfigs(options.force || false, { verbose: options.verbose })
+  await s3SyncManager.uploadConfigs(options.force || false, {
+    verbose: options.verbose,
+  })
 }
 
-export async function handleS3DownloadCommand(options: { force?: boolean, verbose?: boolean } = {}): Promise<void> {
+export async function handleS3DownloadCommand(
+  options: { force?: boolean, verbose?: boolean } = {},
+): Promise<void> {
   const ui = new UILogger(options.verbose)
   ui.displayWelcome()
 
   const s3SyncManager = S3SyncManager.getInstance()
 
   if (!(await s3SyncManager.isS3Configured())) {
-    ui.displayError('S3 sync is not configured. Run "start-claude s3-setup" first.')
+    ui.displayError(
+      'S3 sync is not configured. Run "start-claude s3 setup" first.',
+    )
     return
   }
 
   // Always let S3SyncManager handle timestamp checking and warnings
-  await s3SyncManager.downloadConfigs(options.force || false, { silent: false, verbose: options.verbose })
+  await s3SyncManager.downloadConfigs(options.force || false, {
+    silent: false,
+    verbose: options.verbose,
+  })
 }
 
-export async function handleS3StatusCommand(options: { verbose?: boolean } = {}): Promise<void> {
+export async function handleS3StatusCommand(
+  options: { verbose?: boolean } = {},
+): Promise<void> {
   const ui = new UILogger(options.verbose)
   ui.displayWelcome()
   const s3SyncManager = S3SyncManager.getInstance()

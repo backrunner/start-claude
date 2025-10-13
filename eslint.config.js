@@ -31,6 +31,9 @@ export default antfu({
     '**/*.min.js',
     '**/*-min.js',
     '**/*.bundle.js',
+    'src/plugin/out/',
+    'src/plugin/**/*.vsix',
+    '**/.next/',
   ],
   isInEditor: true,
   rules: {

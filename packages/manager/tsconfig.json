@@ -9,8 +9,7 @@
     "paths": {
       "@/*": ["./*"],
       "@/config/types": ["../cli/src/config/types"],
-      "@/config/manager": ["../cli/src/config/manager"],
-      "@/transformers": ["../cli/src/transformers"]
+      "@/config/manager": ["../cli/src/config/manager"]
     },
     "resolveJsonModule": true,
     "allowJs": true,

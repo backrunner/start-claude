@@ -15,12 +15,20 @@ export interface TransformerContext {
   [key: string]: any
 }
 
+export interface NormalizeResult {
+  body: Record<string, any>
+  config: {
+    url: URL
+    headers: Record<string, string>
+  }
+}
+
 export interface Transformer {
   // Convert LLMChatRequest to intermediate format (Claude → Unified)
   normalizeRequest?: (
     request: LLMChatRequest,
     provider: LLMProvider
-  ) => Promise<Record<string, any>>
+  ) => Promise<NormalizeResult>
 
   // Convert intermediate format to provider-specific format (Unified → Provider)
   formatRequest?: (request: Record<string, any>) => Promise<Record<string, any>>

@@ -30,9 +30,12 @@
   "scripts": {
     "build": "node --experimental-strip-types scripts/clean.ts && turbo build && pnpm run postbuild",
     "build:manager": "turbo build --filter=@start-claude/manager",
+    "build:plugin": "turbo build --filter=@start-claude/plugin",
     "postbuild": "node --experimental-strip-types scripts/postbuild.ts",
     "dev": "turbo dev --filter=@start-claude/manager",
     "dev:manager": "turbo dev --filter=@start-claude/manager",
+    "dev:plugin": "turbo dev --filter=@start-claude/plugin",
+    "watch:plugin": "turbo dev --filter=@start-claude/plugin",
     "lint": "turbo lint",
     "lint:fix": "turbo lint --",
     "lint:inspect": "pnpm dlx @eslint/config-inspector",

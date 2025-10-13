@@ -1,7 +1,6 @@
+import type { ClaudeConfig } from '@start-claude/cli/src/config/types'
 import type { NextRequest } from 'next/server'
-import type { ClaudeConfig } from '@/config/types'
 import { ConfigManager } from '@start-claude/cli/src/config/manager'
-import { S3ConfigFileManager } from '@start-claude/cli/src/config/s3-config'
 import { NextResponse } from 'next/server'
 import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
 
@@ -10,50 +9,15 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 const configManager = ConfigManager.getInstance()
-const s3ConfigManager = S3ConfigFileManager.getInstance()
 
 async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
-    return await configManager.listConfigs()
+    const configFile = await configManager.load()
+    return configFile.configs || []
   }
   catch (error) {
     console.error('Error reading configs:', error)
-    return Promise.resolve([])
-  }
-}
-
-async function getSettings(): Promise<any> {
-  try {
-    const configFile = await configManager.load()
-    const settings = configFile.settings || { overrideClaudeCommand: false }
-
-    // Load S3 config from s3-config.json
-    const s3ConfigFile = s3ConfigManager.load()
-    const s3Sync = s3ConfigFile?.s3Config || null
-
-    return {
-      ...settings,
-      s3Sync,
-    }
-  }
-  catch (error) {
-    console.error('Error reading settings:', error)
-    return {
-      overrideClaudeCommand: false,
-      s3Sync: null,
-    }
-  }
-}
-
-export async function GET(): Promise<NextResponse> {
-  try {
-    const configs = await getConfigs()
-    const settings = await getSettings()
-    return NextResponse.json({ configs, settings })
-  }
-  catch (error) {
-    console.error('GET /api/configs error:', error)
-    return NextResponse.json({ error: 'Failed to fetch configs' }, { status: 500 })
+    return []
   }
 }
 
@@ -76,56 +40,48 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Configuration name is required' }, { status: 400 })
     }
 
-    // Use ConfigManager.addConfig() which handles both create and update
-    // It will match by id first, then by name if id is not present
+    // Use ConfigManager.addConfig() to ensure proper S3 sync
     const configs = await getConfigs()
+    const existingIndex = configs.findIndex(c => c.name === config.name)
 
-    // If config has an id, it's an update - preserve the existing config's data
-    let configToSave = config
-    if (config.id) {
-      const existingConfig = configs.find((c: ClaudeConfig) => c.id === config.id)
-      if (existingConfig) {
-        // Merge existing config with updates, preserving the id and other fields
-        configToSave = {
-          ...existingConfig,
-          ...config,
-          id: existingConfig.id, // Ensure id is preserved
-        }
+    if (existingIndex >= 0) {
+      // Validate the updated config before saving
+      const updatedConfigResult = claudeConfigSchema.safeParse({
+        ...configs[existingIndex],
+        ...config,
+      })
+
+      if (!updatedConfigResult.success) {
+        return NextResponse.json({
+          error: 'Invalid configuration data',
+          details: updatedConfigResult.error.issues,
+        }, { status: 400 })
       }
+
+      // Use ConfigManager.addConfig() which triggers S3 sync
+      await configManager.addConfig(updatedConfigResult.data)
     }
     else {
-      // No id provided - check if this is an update by name (legacy behavior)
-      const existingByName = configs.find((c: ClaudeConfig) => c.name === config.name)
-      if (existingByName) {
-        // Merge with existing config, preserving its id
-        configToSave = {
-          ...existingByName,
-          ...config,
-          id: existingByName.id,
-        }
-      }
-      else {
-        // New config - assign order
-        const maxOrder = configs.length === 0 ? 0 : Math.max(...configs.map((c: ClaudeConfig) => c.order ?? 0))
-        configToSave = {
-          ...config,
-          order: config.order ?? (maxOrder + 1),
-          enabled: config.enabled ?? true,
-        }
-      }
-    }
+      // Calculate the next order value as max existing order + 1
+      const maxOrder = configs.length === 0 ? 0 : Math.max(...configs.map(c => c.order ?? 0))
 
-    // Validate the final config
-    const configValidation = claudeConfigSchema.safeParse(configToSave)
-    if (!configValidation.success) {
-      return NextResponse.json({
-        error: 'Invalid configuration data',
-        details: configValidation.error.issues,
-      }, { status: 400 })
-    }
+      // Validate new config
+      const newConfigResult = claudeConfigSchema.safeParse({
+        ...config,
+        order: config.order ?? (maxOrder + 1),
+        enabled: config.enabled ?? true,
+      })
 
-    // Use ConfigManager.addConfig() which triggers S3 sync
-    await configManager.addConfig(configValidation.data)
+      if (!newConfigResult.success) {
+        return NextResponse.json({
+          error: 'Invalid configuration data',
+          details: newConfigResult.error.issues,
+        }, { status: 400 })
+      }
+
+      // Use ConfigManager.addConfig() which triggers S3 sync
+      await configManager.addConfig(newConfigResult.data)
+    }
 
     const updatedConfigs = await getConfigs()
     return NextResponse.json({ success: true, configs: updatedConfigs })
@@ -166,9 +122,9 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       validatedConfigs.push(configValidation.data)
     }
 
-    // Use ConfigManager.saveConfigFile() to ensure proper S3 sync
+    // Use ConfigManager.save() to ensure proper S3 sync
     const configFile = await configManager.load()
-    await configManager.saveConfigFile({
+    await configManager.save({
       ...configFile,
       configs: validatedConfigs,
     })
@@ -211,7 +167,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
 
     // Save reordered configs using ConfigManager
     const configFile = await configManager.load()
-    await configManager.saveConfigFile({
+    await configManager.save({
       ...configFile,
       configs: reorderedConfigs,
     })

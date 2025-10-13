@@ -1,5 +1,5 @@
 import type { LLMChatRequest, LLMProvider } from '../types/llm'
-import type { Transformer, TransformerOptions } from '../types/transformer'
+import type { NormalizeResult, Transformer, TransformerOptions } from '../types/transformer'
 import { createTransformerUrl } from '../utils/network/transformer-url'
 import { buildOpenAIRequestBody, convertAnthropicToOpenAI } from '../utils/transformer/anthropic-to-openai'
 
@@ -14,7 +14,7 @@ export class OpenaiTransformer implements Transformer {
   async normalizeRequest(
     request: LLMChatRequest,
     provider: LLMProvider,
-  ): Promise<Record<string, any>> {
+  ): Promise<NormalizeResult> {
     return {
       body: await convertAnthropicToOpenAI(request),
       config: {

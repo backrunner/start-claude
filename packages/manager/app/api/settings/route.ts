@@ -56,9 +56,6 @@ async function getSettings(): Promise<any> {
         console.log('[Settings API] - Region:', s3Sync?.region)
         console.log('[Settings API] - Key:', s3Sync?.key)
       }
-      else {
-        console.log('[Settings API] S3 config file is null')
-      }
     }
     catch (loadError) {
       console.error('[Settings API] Error loading S3 config:', loadError)
@@ -66,22 +63,16 @@ async function getSettings(): Promise<any> {
 
     const result = {
       ...settings,
-      // Use null instead of undefined so JSON.stringify includes it in response
-      s3Sync: s3Sync || null,
+      s3Sync: s3Sync || undefined,
     }
 
-    console.log('[Settings API] Final result s3Sync:', result.s3Sync !== null ? 'present' : 'null')
-    if (result.s3Sync) {
-      console.log('[Settings API] s3Sync object keys:', Object.keys(result.s3Sync))
-    }
-
+    console.log('[Settings API] Final result s3Sync:', result.s3Sync !== undefined ? 'present' : 'undefined')
     return result
   }
   catch (error) {
-    console.error('[Settings API] Error reading settings:', error)
+    console.error('Error reading settings:', error)
     return {
       overrideClaudeCommand: false,
-      s3Sync: null, // Include s3Sync with null value
       balanceMode: {
         enableByDefault: false,
         strategy: LoadBalancerStrategy.Fallback,
@@ -99,6 +90,7 @@ async function getSettings(): Promise<any> {
           speedTestStrategy: SpeedTestStrategy.ResponseTime,
         },
       },
+      s3Sync: undefined,
     }
   }
 }

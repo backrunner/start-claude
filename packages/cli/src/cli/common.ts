@@ -39,7 +39,9 @@ export interface ProgramOptions {
 /**
  * Parse and validate the load balancer strategy from CLI options
  */
-export function parseBalanceStrategy(balanceOption: boolean | string | undefined): { enabled: boolean, strategy?: LoadBalancerStrategy } {
+export function parseBalanceStrategy(
+  balanceOption: boolean | string | undefined,
+): { enabled: boolean, strategy?: LoadBalancerStrategy } {
   if (balanceOption === false || balanceOption === undefined) {
     return { enabled: false }
   }
@@ -82,7 +84,10 @@ export interface CliOverrides {
 /**
  * Build Claude command arguments from program options and config
  */
-export function buildClaudeArgs(options: ProgramOptions, config?: ClaudeConfig): string[] {
+export function buildClaudeArgs(
+  options: ProgramOptions,
+  config?: ClaudeConfig,
+): string[] {
   const claudeArgs: string[] = []
 
   // Add new flags
@@ -352,6 +357,7 @@ export async function resolveConfig(
   hasAlreadySynced = false, // New parameter to avoid double sync
 ): Promise<ClaudeConfig | undefined> {
   let config: ClaudeConfig | undefined
+
   const configName = options.config || configArg
 
   if (configName !== undefined) {
@@ -420,7 +426,10 @@ export async function resolveConfig(
     }
     else {
       // Check for newer remote configs even when we have local configs
-      const updatedConfig = await handleS3UpdateCheck(configManager, s3SyncManager)
+      const updatedConfig = await handleS3UpdateCheck(
+        configManager,
+        s3SyncManager,
+      )
       if (updatedConfig) {
         config = updatedConfig
       }
@@ -447,7 +456,10 @@ export async function resolveConfig(
   }
   else {
     // Even when we have a default config, check if there's a newer version on S3
-    const updatedConfig = await handleS3UpdateCheck(configManager, s3SyncManager)
+    const updatedConfig = await handleS3UpdateCheck(
+      configManager,
+      s3SyncManager,
+    )
     if (updatedConfig) {
       config = updatedConfig
     }
@@ -459,7 +471,9 @@ export async function resolveConfig(
 /**
  * Create a new configuration interactively
  */
-async function createNewConfig(configManager: ConfigManager): Promise<ClaudeConfig> {
+async function createNewConfig(
+  configManager: ConfigManager,
+): Promise<ClaudeConfig> {
   const ui = new UILogger()
   ui.warning('No configurations found. Let\'s create your first one!')
 
@@ -471,7 +485,10 @@ async function createNewConfig(configManager: ConfigManager): Promise<ClaudeConf
       message: 'Profile type:',
       choices: [
         { name: 'Default (custom API settings)', value: 'default' },
-        { name: 'Official (use official Claude login with proxy support)', value: 'official' },
+        {
+          name: 'Official (use official Claude login with proxy support)',
+          value: 'official',
+        },
       ],
       default: 'default',
     },
@@ -482,7 +499,7 @@ async function createNewConfig(configManager: ConfigManager): Promise<ClaudeConf
       type: 'input',
       name: 'name',
       message: 'Configuration name:',
-      validate: (input: string) => input.trim() ? true : 'Name is required',
+      validate: (input: string) => (input.trim() ? true : 'Name is required'),
     },
   ]
 
@@ -551,10 +568,22 @@ async function createNewConfig(configManager: ConfigManager): Promise<ClaudeConf
   const newConfig: ClaudeConfig = {
     name: answers.name.trim(),
     profileType: profileTypeAnswer.profileType,
-    baseUrl: profileTypeAnswer.profileType === 'default' ? (answers.baseUrl?.trim() || undefined) : undefined,
-    apiKey: profileTypeAnswer.profileType === 'default' ? (answers.apiKey?.trim() || undefined) : undefined,
-    httpProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpProxy?.trim() || undefined) : undefined,
-    httpsProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpsProxy?.trim() || undefined) : undefined,
+    baseUrl:
+      profileTypeAnswer.profileType === 'default'
+        ? answers.baseUrl?.trim() || undefined
+        : undefined,
+    apiKey:
+      profileTypeAnswer.profileType === 'default'
+        ? answers.apiKey?.trim() || undefined
+        : undefined,
+    httpProxy:
+      profileTypeAnswer.profileType === 'official'
+        ? answers.httpProxy?.trim() || undefined
+        : undefined,
+    httpsProxy:
+      profileTypeAnswer.profileType === 'official'
+        ? answers.httpsProxy?.trim() || undefined
+        : undefined,
     model: answers.model?.trim() || undefined,
     permissionMode: answers.permissionMode || undefined,
     isDefault: answers.isDefault,
@@ -590,24 +619,41 @@ export async function resolveBaseConfig(
       ui.error(`Configuration "${configName}" not found`)
       process.exit(1)
     }
-    if (!balanceableConfigs.find(c => c.name.toLowerCase() === baseConfig?.name.toLowerCase())) {
-      const hasTransformer = 'transformerEnabled' in baseConfig && TransformerService.isTransformerEnabled(baseConfig.transformerEnabled)
-      const missingCompleteApiCredentials = !baseConfig.baseUrl || !baseConfig.apiKey || !baseConfig.model
+    if (
+      !balanceableConfigs.find(
+        c => c.name.toLowerCase() === baseConfig?.name.toLowerCase(),
+      )
+    ) {
+      const hasTransformer
+        = 'transformerEnabled' in baseConfig
+          && TransformerService.isTransformerEnabled(baseConfig.transformerEnabled)
+      const missingCompleteApiCredentials
+        = !baseConfig.baseUrl || !baseConfig.apiKey || !baseConfig.model
 
       if (hasTransformer && missingCompleteApiCredentials) {
         const ui = new UILogger()
-        ui.warning(`Configuration "${baseConfig.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) for API calls`)
+        ui.warning(
+          `Configuration "${baseConfig.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) for API calls`,
+        )
         ui.info('Using it for settings and transformer processing only')
       }
       else if (missingCompleteApiCredentials) {
         const ui = new UILogger()
-        ui.warning(`Configuration "${baseConfig.name}" is not included in load balancing (missing baseUrl, apiKey, or model)`)
-        ui.info('Using it for other settings only, load balancing will use available endpoints')
+        ui.warning(
+          `Configuration "${baseConfig.name}" is not included in load balancing (missing baseUrl, apiKey, or model)`,
+        )
+        ui.info(
+          'Using it for other settings only, load balancing will use available endpoints',
+        )
       }
       else {
         const ui = new UILogger()
-        ui.warning(`Configuration "${baseConfig.name}" is not included in load balancing`)
-        ui.info('Using it for other settings only, load balancing will use available endpoints')
+        ui.warning(
+          `Configuration "${baseConfig.name}" is not included in load balancing`,
+        )
+        ui.info(
+          'Using it for other settings only, load balancing will use available endpoints',
+        )
       }
     }
   }

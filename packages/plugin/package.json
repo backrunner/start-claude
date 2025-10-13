@@ -1,0 +1,75 @@
+{
+  "publisher": "BackRunner",
+  "name": "start-claude-plugin",
+  "displayName": "Start Claude",
+  "version": "0.5.0",
+  "private": true,
+  "description": "VSCode extension for Start Claude Manager",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/backrunner/start-claude/tree/main/packages/plugin"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "activationEvents": [
+    "onCommand:startClaude.showManager",
+    "onView:startClaudeManager"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "startClaude.showManager",
+        "title": "Show Manager",
+        "category": "Start Claude"
+      }
+    ],
+    "views": {
+      "startClaude": [
+        {
+          "id": "startClaudeManager",
+          "name": "Start Claude Manager",
+          "type": "webview",
+          "when": "true"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "startClaude",
+          "title": "Start Claude",
+          "icon": "$(gear)"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "clean": "rimraf out",
+    "esbuild": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "build": "pnpm run clean && pnpm run esbuild --minify && vsce package --no-dependencies",
+    "dev": "pnpm run esbuild -- --sourcemap --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --config ../../eslint.config.js",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish"
+  },
+  "dependencies": {
+    "@types/ws": "^8.18.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.10",
+    "@types/vscode": "^1.74.0",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.2",
+    "eslint": "^9.33.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.2"
+  }
+}

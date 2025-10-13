@@ -163,9 +163,5 @@ bin
 # Package manager lock files
 .pnpm-debug.log*
 
-
+.DS_Store
 .turbo
-.nx/cache
-.nx/workspace-data
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
