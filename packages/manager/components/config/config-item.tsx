@@ -11,7 +11,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { VSCodeStartButton } from '@/components/vscode/vscode-start-button'
-import { useVSCode } from '@/context/vscode-context'
 
 interface ConfigItemProps {
   config: ClaudeConfig
@@ -30,8 +29,6 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
     transition,
     isDragging,
   } = useSortable({ id: config.name })
-
-  const { isVSCode } = useVSCode()
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -53,21 +50,17 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
     <div ref={setNodeRef} style={style} className={isDragging ? 'opacity-50' : ''}>
       <Card className={`transition-all duration-200 hover:shadow-md ${config.enabled ?? false ? 'border-primary/20' : 'border-muted'}`}>
         <CardContent className="p-3 sm:p-6 relative">
-          {/* Drag Handle - conditional positioning based on VSCode context */}
-          <div
-            {...attributes}
-            {...listeners}
-            className={`cursor-grab hover:cursor-grabbing p-1 sm:p-2 rounded-lg hover:bg-muted transition-colors ${
-              isVSCode
-                ? 'absolute top-2 right-2' // Right top corner in VSCode sidebar
-                : 'absolute left-2 top-1/2 transform -translate-y-1/2 sm:relative sm:top-auto sm:left-auto sm:transform-none sm:order-none self-center sm:self-auto' // Left middle in normal view
-            }`}
-          >
-            <GripVertical className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-          </div>
-
           {/* Mobile/VSCode Layout */}
-          <div className={`flex flex-col gap-2 sm:hidden ${isVSCode ? 'pr-8' : 'pl-8'}`}>
+          <div className="flex flex-col gap-2 sm:hidden pr-8">
+            {/* Drag Handle - mobile/VSCode, top-right corner */}
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-grab hover:cursor-grabbing p-1 rounded-lg hover:bg-muted transition-colors absolute top-2 right-2"
+            >
+              <GripVertical className="h-3 w-3 text-muted-foreground" />
+            </div>
+
             {/* Title with Order and config name */}
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-300 font-semibold text-xs border border-zinc-200 dark:border-zinc-700 flex-shrink-0">
@@ -203,7 +196,16 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
           </div>
 
           {/* Desktop Layout (standard screens) */}
-          <div className="hidden sm:flex sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
+          <div className="hidden sm:flex sm:flex-row items-start sm:items-center gap-2 sm:gap-4 pl-5">
+            {/* Drag Handle - desktop only, positioned with padding from border */}
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-grab hover:cursor-grabbing p-2 rounded-lg hover:bg-muted transition-colors absolute left-2 top-1/2 transform -translate-y-1/2"
+            >
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </div>
+
             {/* Main Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between">
