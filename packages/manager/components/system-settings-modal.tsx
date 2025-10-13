@@ -140,7 +140,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           region: 'us-east-1',
           accessKeyId: '',
           secretAccessKey: '',
-          key: 'configs.json',
+          key: 'start-claude.json',
           endpointUrl: '',
           remoteConfigCheckIntervalMinutes: 60,
         },
@@ -434,15 +434,18 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                       </div>
 
                       <div>
-                        <Label htmlFor="key" className="font-medium">File Path</Label>
+                        <Label htmlFor="key" className="font-medium">S3 Object Key</Label>
                         <Input
                           id="key"
                           type="text"
                           className="mt-1"
                           value={settings.s3Sync.key}
                           onChange={e => handleS3Change('key', e.target.value)}
-                          placeholder="configs.json"
+                          placeholder="start-claude.json"
                         />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          The path within your S3 bucket where config will be stored
+                        </p>
                       </div>
 
                       <div>

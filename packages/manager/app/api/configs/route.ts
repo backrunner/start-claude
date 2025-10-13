@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import type { ClaudeConfig } from '@/config/types'
 import { ConfigManager } from '@start-claude/cli/src/config/manager'
+import { S3ConfigFileManager } from '@start-claude/cli/src/config/s3-config'
 import { NextResponse } from 'next/server'
 import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
 
@@ -9,6 +10,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 const configManager = ConfigManager.getInstance()
+const s3ConfigManager = S3ConfigFileManager.getInstance()
 
 async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
@@ -23,11 +25,23 @@ async function getConfigs(): Promise<ClaudeConfig[]> {
 async function getSettings(): Promise<any> {
   try {
     const configFile = await configManager.load()
-    return configFile.settings || { overrideClaudeCommand: false }
+    const settings = configFile.settings || { overrideClaudeCommand: false }
+
+    // Load S3 config from s3-config.json
+    const s3ConfigFile = s3ConfigManager.load()
+    const s3Sync = s3ConfigFile?.s3Config || null
+
+    return {
+      ...settings,
+      s3Sync,
+    }
   }
   catch (error) {
     console.error('Error reading settings:', error)
-    return { overrideClaudeCommand: false }
+    return {
+      overrideClaudeCommand: false,
+      s3Sync: null,
+    }
   }
 }
 

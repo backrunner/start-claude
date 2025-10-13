@@ -36,7 +36,7 @@ export async function handleManagerCommand(options: { port?: string, verbose?: b
   }
 
   const port = options.port ? Number.parseInt(options.port) : 2334
-  const managerServer = new ManagerServer(port)
+  const managerServer = new ManagerServer(port, options.debug)
 
   try {
     await managerServer.start()

@@ -14,11 +14,13 @@ export class ManagerServer {
   private childProcess: ChildProcess | null = null
   private port = 2334
   private stopHeartbeat: (() => void) | null = null
+  private debug = false
 
-  constructor(port?: number) {
+  constructor(port?: number, debug?: boolean) {
     if (port) {
       this.port = port
     }
+    this.debug = debug || false
   }
 
   async start(): Promise<void> {
@@ -63,6 +65,11 @@ export class ManagerServer {
 
     try {
       // For standalone build, we spawn the server.js file directly
+      // In debug mode, pipe all output to CLI stdout
+      const stdio: ['ignore', 'ignore' | 'pipe', 'pipe'] = this.debug
+        ? ['ignore', 'pipe', 'pipe'] // Debug: show stdout and stderr
+        : ['ignore', 'ignore', 'pipe'] // Normal: only capture stderr for errors
+
       this.childProcess = spawn('node', ['./server.js'], {
         cwd: managerPath,
         env: {
@@ -70,16 +77,30 @@ export class ManagerServer {
           PORT: this.port.toString(),
           HOSTNAME: 'localhost',
         },
-        stdio: ['ignore', 'ignore', 'pipe'], // Suppress stdout, capture stderr for errors
+        stdio,
       })
 
-      // Handle stderr for actual errors (but suppress normal Next.js output)
+      // In debug mode, pipe stdout to CLI stdout
+      if (this.debug && this.childProcess.stdout) {
+        ui.displayVerbose('Debug mode: Manager server output will be shown below')
+        this.childProcess.stdout.on('data', (data) => {
+          process.stdout.write(data)
+        })
+      }
+
+      // Handle stderr
       if (this.childProcess.stderr) {
         this.childProcess.stderr.on('data', (data) => {
           const output = data.toString().trim()
-          // Only show actual errors, not Next.js info/warnings
-          if (output.includes('Error') || output.includes('EADDRINUSE') || output.includes('Cannot')) {
-            console.error('Manager error:', output)
+          if (this.debug) {
+            // In debug mode, show all stderr output
+            process.stderr.write(data)
+          }
+          else {
+            // Only show actual errors, not Next.js info/warnings
+            if (output.includes('Error') || output.includes('EADDRINUSE') || output.includes('Cannot')) {
+              console.error('Manager error:', output)
+            }
           }
         })
       }
