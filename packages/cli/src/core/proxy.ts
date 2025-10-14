@@ -1063,7 +1063,25 @@ export class ProxyServer {
     const statusCode = proxyRes.statusCode
     const errorMessage = `HTTP ${statusCode}`
 
-    // Mark endpoint as unhealthy for all error status codes
+    // Special case: Only mark endpoint unhealthy for main /v1/messages endpoint errors
+    // Other endpoints (like /v1/messages/count_tokens) should be passed through without marking unhealthy
+    const pathWithoutQuery = req.url?.split('?')[0].replace(/\/+$/, '') // Remove query params and trailing slashes
+    const isMainMessagesEndpoint = pathWithoutQuery === '/v1/messages'
+
+    if (!isMainMessagesEndpoint) {
+      // Non-main messages endpoint error, pass through without marking unhealthy
+      if (this.debug) {
+        fileLogger.info('NON_MAIN_ENDPOINT_ERROR', 'Non-main endpoint error from upstream (not marking endpoint unhealthy)', {
+          endpointName: endpoint.config.name,
+          requestUrl: req.url,
+          pathWithoutQuery,
+          statusCode,
+        })
+      }
+      return false // Continue normal processing (pass through the error)
+    }
+
+    // Mark endpoint as unhealthy only for main /v1/messages endpoint errors
     this.markEndpointUnhealthy(endpoint, errorMessage)
 
     // For certain error codes, try to retry with a different endpoint
