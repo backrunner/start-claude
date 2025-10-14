@@ -134,15 +134,20 @@ export class SpeedTestManager {
       // Ultra-minimal payload for response time testing
       const testBody = JSON.stringify({
         model: endpoint.model || 'claude-3-5-haiku-20241022',
+        max_tokens: 512,
         messages: [
           {
             role: 'user',
-            content: 'foo',
+            content: 'hi',
           },
         ],
-        messageCount: 1,
-        temperature: 1,
-        max_tokens: 32000,
+        system: [
+          {
+            type: 'text',
+            text: 'Analyze if this message indicates a new conversation topic. If it does, extract a 2-3 word title that captures the new topic. Format your response as a JSON object with two fields: \'isNewTopic\' (boolean) and \'title\' (string, or null if isNewTopic is false). Only include these fields, no other text.',
+          },
+        ],
+        temperature: 0,
         stream: true,
       })
 
