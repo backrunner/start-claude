@@ -175,7 +175,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
         <div className="flex-1 overflow-y-auto py-6 px-1">
           <div className="grid grid-cols-1 gap-6 pr-3">
 
-            {/* Balance Mode Settings - Full Width */}
+            {/* Proxy Server Settings - Full Width */}
             <Card className="transition-all hover:shadow-md">
               <CardHeader className="pb-4">
                 <div className="flex items-center gap-3">
@@ -183,8 +183,8 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                     <Zap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
-                    <CardTitle className="text-lg">Load Balancer</CardTitle>
-                    <CardDescription>Distribute requests across multiple endpoints</CardDescription>
+                    <CardTitle className="text-lg">Proxy Server</CardTitle>
+                    <CardDescription>Configure proxy server and load balancing behavior</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -193,7 +193,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                   <div className="flex-1">
                     <Label htmlFor="enableByDefault" className="font-medium">Enable by Default</Label>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Start in balance mode automatically
+                      Automatically start proxy server for multi-endpoint configurations
                     </p>
                   </div>
                   <Switch
@@ -203,12 +203,12 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                   />
                 </div>
 
-                {/* Load Balancer Strategy */}
+                {/* Load Balancing Strategy */}
                 <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
                   <div className="flex-1">
-                    <Label htmlFor="loadBalancerStrategy" className="font-medium">Load Balancer Strategy</Label>
+                    <Label htmlFor="loadBalancerStrategy" className="font-medium">Load Balancing Strategy</Label>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Choose how requests are distributed across endpoints
+                      Determines how requests are distributed across multiple endpoints
                     </p>
                   </div>
                   <Select
@@ -231,11 +231,11 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                   <div className="space-y-3 p-3 rounded-lg border bg-muted/50">
                     <div className="flex items-center gap-2 mb-2">
                       <Timer className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                      <Label className="font-medium">Speed First Settings</Label>
+                      <Label className="font-medium">Speed First Configuration</Label>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="speedFirstWindow" className="text-sm font-medium">Time Window</Label>
+                        <Label htmlFor="speedFirstWindow" className="text-sm font-medium">Response Time Window</Label>
                         <div className="flex items-center gap-2 mt-1">
                           <Input
                             id="speedFirstWindow"
@@ -249,11 +249,11 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                           <span className="text-sm text-muted-foreground">minutes</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Time window for calculating average response times
+                          Time window for averaging response times (1-60 minutes)
                         </p>
                       </div>
                       <div>
-                        <Label htmlFor="speedFirstSamples" className="text-sm font-medium">Min Samples</Label>
+                        <Label htmlFor="speedFirstSamples" className="text-sm font-medium">Minimum Samples</Label>
                         <Input
                           id="speedFirstSamples"
                           type="number"
@@ -264,7 +264,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                           onChange={e => handleSpeedFirstChange('minSamples', Number(e.target.value))}
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Minimum samples before using speed-based routing
+                          Required samples before speed-based routing activates (1-20)
                         </p>
                       </div>
                     </div>
@@ -284,11 +284,11 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                           <span className="text-sm text-muted-foreground">seconds</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          How often to test endpoint speeds (30-3600 seconds)
+                          Frequency of periodic endpoint speed tests (30-3600 seconds)
                         </p>
                       </div>
                       <div>
-                        <Label htmlFor="speedTestStrategy" className="text-sm font-medium">Speed Test Strategy</Label>
+                        <Label htmlFor="speedTestStrategy" className="text-sm font-medium">Speed Test Method</Label>
                         <Select
                           value={settings.balanceMode?.speedFirst?.speedTestStrategy || SpeedTestStrategy.ResponseTime}
                           onValueChange={(value: SpeedTestStrategy) => handleSpeedFirstChange('speedTestStrategy', value)}
@@ -303,7 +303,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Method used to measure endpoint speed
+                          Technique used to measure endpoint latency and speed
                         </p>
                       </div>
                     </div>
@@ -314,7 +314,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Activity className="h-4 w-4 text-green-600 dark:text-green-400" />
-                      <Label htmlFor="healthCheckEnabled" className="font-medium">Health Checks</Label>
+                      <Label htmlFor="healthCheckEnabled" className="font-medium">Endpoint Health Checks</Label>
                       <Badge variant="secondary" className="text-xs">
                         {settings.balanceMode?.healthCheck?.enabled !== false ? 'Enabled' : 'Disabled'}
                       </Badge>
@@ -331,7 +331,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                       <div>
                         <Label htmlFor="healthCheckInterval" className="text-sm font-medium flex items-center gap-2">
                           <Timer className="h-3 w-3" />
-                          Check Interval
+                          Health Check Interval
                         </Label>
                         <div className="flex items-center gap-2 mt-1">
                           <Input
@@ -345,7 +345,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                           />
                           <span className="text-sm text-muted-foreground">seconds</span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">Range: 10-300 seconds</p>
+                        <p className="text-xs text-muted-foreground mt-1">Frequency of periodic endpoint health verification (10-300 seconds)</p>
                       </div>
                     </div>
                   )}
@@ -353,7 +353,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                   <div>
                     <Label htmlFor="banDuration" className="text-sm font-medium flex items-center gap-2">
                       <AlertCircle className="h-3 w-3" />
-                      Ban Duration
+                      Failed Endpoint Ban Duration
                     </Label>
                     <div className="flex items-center gap-2 mt-1">
                       <Input
@@ -368,7 +368,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                       <span className="text-sm text-muted-foreground">seconds</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      How long to ban failed endpoints (60-3600 seconds)
+                      Time to exclude failed endpoints before retry (60-3600 seconds)
                     </p>
                   </div>
                 </div>
