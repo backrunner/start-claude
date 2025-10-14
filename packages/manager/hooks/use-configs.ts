@@ -14,6 +14,7 @@ interface UseConfigsReturn {
   deleteConfig: (configName: string) => Promise<void>
   saveSettings: (newSettings: SystemSettings) => Promise<void>
   updateConfigsAndSettings: (newConfigs: ClaudeConfig[], newSettings: SystemSettings) => void
+  refetchConfigs: () => Promise<void>
 }
 
 export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: SystemSettings): UseConfigsReturn {
@@ -23,9 +24,37 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
   const [error, setError] = useState<string | null>(null)
 
   // Function to update configs and settings (for WebSocket updates)
+  // WebSocket updates should always take precedence over optimistic updates
   const updateConfigsAndSettings = (newConfigs: ClaudeConfig[], newSettings: SystemSettings): void => {
+    console.log('[useConfigs] Applying WebSocket update')
     setConfigs(newConfigs)
     setSettings(newSettings)
+  }
+
+  // Function to refetch configs from the server
+  const refetchConfigs = async (): Promise<void> => {
+    try {
+      const response = await fetch('/api/configs', {
+        method: 'GET',
+        cache: 'no-cache',
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch configs')
+      }
+
+      const data = await response.json()
+      setConfigs(data.configs)
+      if (data.settings) {
+        setSettings(data.settings)
+      }
+    }
+    catch (error) {
+      console.error('Error refetching configs:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch configurations'
+      setError(errorMessage)
+    }
   }
 
   const saveConfig = async (config: ClaudeConfig, isEditing: boolean): Promise<void> => {
@@ -41,7 +70,13 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
         throw new Error(errorData.error || 'Failed to save config')
       }
 
-      // No need to refetch - WebSocket will update configs automatically
+      const data = await response.json()
+
+      // Update configs with the response data immediately
+      setConfigs(data.configs)
+      if (data.settings) {
+        setSettings(data.settings)
+      }
 
       toast({
         title: 'Configuration saved',
@@ -76,7 +111,13 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
         throw new Error(errorData.error || 'Failed to update configs')
       }
 
-      setConfigs(updatedConfigs)
+      const data = await response.json()
+
+      // Update configs with the response data immediately
+      setConfigs(data.configs)
+      if (data.settings) {
+        setSettings(data.settings)
+      }
 
       toast({
         title: 'Configurations updated',
@@ -109,7 +150,13 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
         throw new Error(errorData.error || 'Failed to delete config')
       }
 
-      // No need to refetch - WebSocket will update configs automatically
+      const data = await response.json()
+
+      // Update configs with the response data immediately
+      setConfigs(data.configs)
+      if (data.settings) {
+        setSettings(data.settings)
+      }
 
       toast({
         title: 'Configuration deleted',
@@ -177,5 +224,6 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
     deleteConfig,
     saveSettings,
     updateConfigsAndSettings, // Export for WebSocket updates
+    refetchConfigs,
   }
 }

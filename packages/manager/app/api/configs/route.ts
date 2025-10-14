@@ -1,7 +1,9 @@
-import type { ClaudeConfig } from '@start-claude/cli/src/config/types'
+import type { ClaudeConfig, SystemSettings } from '@start-claude/cli/src/config/types'
 import type { NextRequest } from 'next/server'
 import { ConfigManager } from '@start-claude/cli/src/config/manager'
+import { S3ConfigFileManager } from '@start-claude/cli/src/config/s3-config'
 import { NextResponse } from 'next/server'
+import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
 import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
 
 // Force dynamic rendering
@@ -9,6 +11,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 const configManager = ConfigManager.getInstance()
+const s3ConfigManager = S3ConfigFileManager.getInstance()
 
 async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
@@ -18,6 +21,87 @@ async function getConfigs(): Promise<ClaudeConfig[]> {
   catch (error) {
     console.error('Error reading configs:', error)
     return []
+  }
+}
+
+async function getSettings(): Promise<SystemSettings> {
+  try {
+    const configFile = await configManager.load()
+    const settings = configFile.settings || { overrideClaudeCommand: false }
+
+    // Ensure balanceMode structure exists with defaults
+    if (!settings.balanceMode) {
+      settings.balanceMode = {
+        enableByDefault: false,
+        strategy: LoadBalancerStrategy.Fallback,
+        healthCheck: {
+          enabled: true,
+          intervalMs: 30000,
+        },
+        failedEndpoint: {
+          banDurationSeconds: 300,
+        },
+        speedFirst: {
+          responseTimeWindowMs: 300000,
+          minSamples: 2,
+          speedTestIntervalSeconds: 300,
+          speedTestStrategy: SpeedTestStrategy.ResponseTime,
+        },
+      }
+    }
+
+    // Load S3 config from s3-config.json
+    let s3Sync
+    try {
+      const s3ConfigFile = s3ConfigManager.load()
+      if (s3ConfigFile) {
+        s3Sync = s3ConfigFile.s3Config
+      }
+    }
+    catch (loadError) {
+      console.error('Error loading S3 config:', loadError)
+    }
+
+    return {
+      ...settings,
+      s3Sync: s3Sync || undefined,
+    }
+  }
+  catch (error) {
+    console.error('Error reading settings:', error)
+    return {
+      overrideClaudeCommand: false,
+      balanceMode: {
+        enableByDefault: false,
+        strategy: LoadBalancerStrategy.Fallback,
+        healthCheck: {
+          enabled: true,
+          intervalMs: 30000,
+        },
+        failedEndpoint: {
+          banDurationSeconds: 300,
+        },
+        speedFirst: {
+          responseTimeWindowMs: 300000,
+          minSamples: 2,
+          speedTestIntervalSeconds: 300,
+          speedTestStrategy: SpeedTestStrategy.ResponseTime,
+        },
+      },
+      s3Sync: undefined,
+    }
+  }
+}
+
+export async function GET(): Promise<NextResponse> {
+  try {
+    const configs = await getConfigs()
+    const settings = await getSettings()
+    return NextResponse.json({ success: true, configs, settings })
+  }
+  catch (error) {
+    console.error('GET /api/configs error:', error)
+    return NextResponse.json({ error: 'Failed to fetch configs' }, { status: 500 })
   }
 }
 
@@ -84,7 +168,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const updatedConfigs = await getConfigs()
-    return NextResponse.json({ success: true, configs: updatedConfigs })
+    const settings = await getSettings()
+    return NextResponse.json({ success: true, configs: updatedConfigs, settings })
   }
   catch (error) {
     console.error('POST /api/configs error:', error)
@@ -129,7 +214,8 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
       configs: validatedConfigs,
     })
 
-    return NextResponse.json({ success: true, configs: validatedConfigs })
+    const settings = await getSettings()
+    return NextResponse.json({ success: true, configs: validatedConfigs, settings })
   }
   catch (error) {
     console.error('PUT /api/configs error:', error)
@@ -172,7 +258,8 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       configs: reorderedConfigs,
     })
 
-    return NextResponse.json({ success: true, configs: reorderedConfigs })
+    const settings = await getSettings()
+    return NextResponse.json({ success: true, configs: reorderedConfigs, settings })
   }
   catch (error) {
     console.error('DELETE /api/configs error:', error)
