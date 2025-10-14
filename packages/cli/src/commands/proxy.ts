@@ -271,7 +271,6 @@ export async function handleProxyCommand(
       ui.error('No configurations found')
       process.exit(1)
     }
-    ui.info(`Starting proxy with all ${configs.length} configuration${configs.length > 1 ? 's' : ''}`)
   }
   else {
     // Use specified config(s)
@@ -283,7 +282,6 @@ export async function handleProxyCommand(
       }
       configs.push(config)
     }
-    ui.info(`Starting proxy with ${configs.length} configuration${configs.length > 1 ? 's' : ''}: ${configs.map(c => c.name).join(', ')}`)
   }
 
   // Convert options to ProgramOptions format for handleProxyMode

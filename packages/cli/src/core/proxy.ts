@@ -14,6 +14,7 @@ import { TransformerService } from '../services/transformer'
 import { UILogger } from '../utils/cli/ui'
 import { fileLogger } from '../utils/logging/file-logger'
 import { SpeedTestManager } from '../utils/network/speed-test'
+import { calculateTokenCount } from '../utils/token-counter'
 import { convertOpenAIResponseToAnthropic, convertOpenAIStreamToAnthropic, isOpenAIFormat } from '../utils/transformer/openai-to-anthropic'
 
 interface ResponseTiming {
@@ -475,6 +476,91 @@ export class ProxyServer {
     }
   }
 
+  /**
+   * Handle the count_tokens endpoint
+   * This endpoint calculates token count for messages locally without calling upstream
+   */
+  private async handleCountTokensRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    try {
+      // Collect request body
+      const chunks: Buffer[] = []
+      req.on('data', (chunk: Buffer) => chunks.push(chunk))
+
+      req.on('end', () => {
+        void (async () => {
+          try {
+            const body = Buffer.concat(chunks)
+            const requestBody = JSON.parse(body.toString())
+
+            // Extract messages, system, and tools from request
+            const { messages, system, tools } = requestBody
+
+            if (!messages || !Array.isArray(messages)) {
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                error: {
+                  message: 'Invalid request: messages array required',
+                  type: 'invalid_request',
+                },
+              }))
+              return
+            }
+
+            // Calculate token count
+            const tokenCount = calculateTokenCount(messages, system, tools)
+
+            // Log the token count request if debug is enabled
+            if (this.debug) {
+              fileLogger.info('COUNT_TOKENS', 'Token count calculated locally', {
+                messageCount: messages.length,
+                hasSystem: !!system,
+                hasTools: !!tools,
+                toolCount: tools?.length || 0,
+                inputTokens: tokenCount,
+              })
+            }
+
+            // Return response in Anthropic format
+            res.writeHead(200, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            })
+            res.end(JSON.stringify({
+              input_tokens: tokenCount,
+            }))
+          }
+          catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+            if (this.debug) {
+              fileLogger.error('COUNT_TOKENS_ERROR', 'Failed to calculate token count', {
+                error: errorMessage,
+              })
+            }
+
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              error: {
+                message: `Token count calculation failed: ${errorMessage}`,
+                type: 'internal_error',
+              },
+            }))
+          }
+        })()
+      })
+    }
+    catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        error: {
+          message: errorMessage,
+          type: 'internal_error',
+        },
+      }))
+    }
+  }
+
   async switchConfigs(configs: ClaudeConfig[]): Promise<{
     success: boolean
     message: string
@@ -660,6 +746,16 @@ export class ProxyServer {
       if (req.url === '/__switch' && req.method === 'POST') {
         await this.handleSwitchRequest(req, res)
         return
+      }
+
+      // Handle count_tokens endpoint - only intercept when transformer is enabled
+      if (req.url?.includes('/v1/messages/count_tokens') && req.method === 'POST') {
+        // Only handle locally if transformer mode is enabled
+        // Otherwise, pass through to the upstream server
+        if (this.enableTransform) {
+          await this.handleCountTokensRequest(req, res)
+          return
+        }
       }
 
       // Handle requests - either through load balancer or transformer-only mode
@@ -1271,22 +1367,29 @@ export class ProxyServer {
             }
           }
 
-          // Apply universal response formatting for non-streaming responses only
-          const formattedFinalResponseBody = await this.formatUniversalResponse(
-            finalResponseBody,
-            proxyRes.statusCode || 200,
-            finalResponseHeaders,
-            res,
-          )
+          // Only apply formatUniversalResponse for transformer mode
+          // For non-transformer mode, pass through transparently
+          let formattedFinalResponseBody = finalResponseBody
 
-          // formatUniversalResponse always returns a formatted body for non-streaming responses
-          if (formattedFinalResponseBody === null) {
-            // This shouldn't happen since we removed streaming handling from formatUniversalResponse
-            fileLogger.error('RESPONSE_FORMAT_ERROR', 'Unexpected null response from formatUniversalResponse', {
-              statusCode: proxyRes.statusCode || 200,
-              bodySize: finalResponseBody.length,
-            })
-            return
+          if (context.isTransformer) {
+            // Apply universal response formatting for transformer responses only
+            const formatted = await this.formatUniversalResponse(
+              finalResponseBody,
+              proxyRes.statusCode || 200,
+              finalResponseHeaders,
+              res,
+            )
+
+            if (formatted === null) {
+              // This shouldn't happen since we removed streaming handling from formatUniversalResponse
+              fileLogger.error('RESPONSE_FORMAT_ERROR', 'Unexpected null response from formatUniversalResponse', {
+                statusCode: proxyRes.statusCode || 200,
+                bodySize: finalResponseBody.length,
+              })
+              return
+            }
+
+            formattedFinalResponseBody = formatted
           }
 
           // Log response if debug enabled
@@ -1334,7 +1437,7 @@ export class ProxyServer {
             return
           }
 
-          // Send headers and response
+          // Send headers and response transparently
           if (!res.headersSent) {
             res.writeHead(proxyRes.statusCode || 200, finalResponseHeaders)
           }
@@ -1349,6 +1452,16 @@ export class ProxyServer {
             })
           }
 
+          // For non-transformer mode, pass through the raw response on error
+          if (!context.isTransformer) {
+            if (!res.headersSent) {
+              res.writeHead(proxyRes.statusCode || 200, headers)
+            }
+            res.end(rawResponseBody)
+            return
+          }
+
+          // For transformer mode, try to format the error
           const formattedFallbackResponse = await this.formatUniversalResponse(
             rawResponseBody,
             proxyRes.statusCode || 200,
