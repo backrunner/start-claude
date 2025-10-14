@@ -169,6 +169,12 @@ export function buildClaudeArgs(
  */
 export function filterProcessArgs(configArg?: string): string[] {
   return process.argv.slice(2).filter((arg) => {
+    // Skip start-claude command names that launch Claude Code
+    // Only include commands that actually start Claude Code (e.g., 'proxy')
+    const skipCommands = [
+      'proxy',
+    ]
+
     // Skip flags we handle internally
     const skipFlags = [
       '--config',
@@ -198,7 +204,13 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--proxy',
       '--api-key',
       '--base-url',
+      '--strategy',
+      '--all',
     ]
+
+    // Skip command names
+    if (skipCommands.includes(arg))
+      return false
 
     // Skip the config argument if it was provided
     if (configArg && arg === configArg)
@@ -231,6 +243,7 @@ export function filterProcessArgs(configArg?: string): string[] {
       '--proxy',
       '--api-key',
       '--base-url',
+      '--strategy',
     ]
     if (prevArg && flagsWithValues.includes(prevArg))
       return false
