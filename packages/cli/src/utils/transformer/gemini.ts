@@ -186,7 +186,7 @@ export function buildRequestBody(
               return {
                 inlineData: {
                   mime_type: content.media_type,
-                  data: content.image_url.url,
+                  data: content.image_url.url?.split(',')?.pop() || content.image_url.url,
                 },
               }
             }

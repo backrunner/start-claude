@@ -133,7 +133,7 @@ export async function convertAnthropicToOpenAI(
         else if (msg.role === 'assistant') {
           const assistantMessage: OpenAIMessage = {
             role: 'assistant',
-            content: null,
+            content: '',
           }
 
           // Handle text content

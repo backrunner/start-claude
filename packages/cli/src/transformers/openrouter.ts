@@ -42,7 +42,7 @@ export class OpenrouterTransformer implements Transformer {
             }
             if (item.type === 'image_url') {
               if (!item.image_url.url.startsWith('http')) {
-                item.image_url.url = `data:${item.media_type};base64,${item.image_url.url}`
+                item.image_url.url = `${item.image_url.url}`
               }
               delete item.media_type
             }
