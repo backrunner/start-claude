@@ -1972,50 +1972,55 @@ export class ProxyServer {
     let hasShownQuietMessage = false
     const healthyEndpoints: EndpointStatus[] = []
 
-    // Perform health checks on all endpoints
-    for (let i = 0; i < this.endpoints.length; i++) {
-      const endpoint = this.endpoints[i]
-      const configName = endpoint.config.name || endpoint.config.baseUrl
+    // For Speed First strategy with multiple endpoints, skip individual health checks
+    // and use the speed test round instead (which also validates endpoint health)
+    const shouldSkipHealthChecks = this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst && this.endpoints.length > 1
 
-      try {
-        if (i === 0 && !hasShownQuietMessage) {
-          this.ui.displayGrey('🔍 Testing endpoints...')
-          hasShownQuietMessage = true
+    if (!shouldSkipHealthChecks) {
+      // Perform health checks on all endpoints for non-Speed First strategies
+      for (let i = 0; i < this.endpoints.length; i++) {
+        const endpoint = this.endpoints[i]
+        const configName = endpoint.config.name || endpoint.config.baseUrl
+
+        try {
+          if (i === 0 && !hasShownQuietMessage) {
+            this.ui.displayGrey('🔍 Testing endpoints...')
+            hasShownQuietMessage = true
+          }
+          await this.healthCheck(endpoint, true)
+          healthyEndpoints.push(endpoint)
         }
-        await this.healthCheck(endpoint, true)
-        healthyEndpoints.push(endpoint)
+        catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-        // For Speed First strategy, test all endpoints to collect timing data
-        // For other strategies, can return early after first successful endpoint
-        if (i === 0 && this.loadBalancerStrategy !== LoadBalancerStrategy.SpeedFirst) {
-          // Don't return early - we want to test all endpoints for speed output
-        }
-      }
-      catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          // Parse HTTP status code from error message if available
+          const statusMatch = errorMessage.match(/status (\d+)/)
+          const statusCode = statusMatch ? statusMatch[1] : null
 
-        // Parse HTTP status code from error message if available
-        const statusMatch = errorMessage.match(/status (\d+)/)
-        const statusCode = statusMatch ? statusMatch[1] : null
+          if (statusCode) {
+            this.ui.error(`❌ ${configName} - HTTP ${statusCode}: ${this.getStatusMessage(statusCode)}`)
+          }
+          else {
+            this.ui.error(`❌ ${configName} - ${errorMessage}`)
+          }
 
-        if (statusCode) {
-          this.ui.error(`❌ ${configName} - HTTP ${statusCode}: ${this.getStatusMessage(statusCode)}`)
-        }
-        else {
-          this.ui.error(`❌ ${configName} - ${errorMessage}`)
-        }
+          this.markEndpointUnhealthy(endpoint, errorMessage)
 
-        this.markEndpointUnhealthy(endpoint, errorMessage)
-
-        // If first endpoint failed, try the next one
-        if (i === 0) {
-          this.ui.warning('First endpoint failed, trying alternatives...')
+          // If first endpoint failed, try the next one
+          if (i === 0) {
+            this.ui.warning('First endpoint failed, trying alternatives...')
+          }
         }
       }
     }
+    else {
+      // For Speed First with multiple endpoints, assume all endpoints are healthy initially
+      // The speed test will determine actual health and timing
+      healthyEndpoints.push(...this.endpoints)
+    }
 
-    // Only run speed tests for Speed First strategy
-    if (healthyEndpoints.length > 0 && this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst) {
+    // Only run speed tests for Speed First strategy with multiple endpoints
+    if (healthyEndpoints.length > 1 && this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst) {
       this.ui.displayGrey('⚡ Running speed tests on all endpoints...')
 
       // Create a speed test manager for initial speed testing
