@@ -142,7 +142,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
           </div>
 
           {/* Desktop Layout */}
-          <div className="hidden sm:flex items-center gap-6 pl-8">
+          <div className="hidden sm:flex items-center gap-4 pl-8">
             <div
               {...attributes}
               {...listeners}

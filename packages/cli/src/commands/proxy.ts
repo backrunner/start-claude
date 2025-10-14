@@ -1,4 +1,6 @@
 import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
+import { Buffer } from 'node:buffer'
+import * as http from 'node:http'
 import process from 'node:process'
 
 import { parseBalanceStrategy } from '../cli/common'
@@ -71,6 +73,165 @@ export function filterProxyArgs(): string[] {
 
     // Otherwise keep it (though this shouldn't happen in normal usage)
     return true
+  })
+}
+
+/**
+ * Handle the proxy switch subcommand
+ */
+export async function handleProxySwitchCommand(
+  configNames: string[],
+  options: Omit<ProxyCommandOptions, 'all'>,
+  port = 2333,
+): Promise<void> {
+  const ui = new UILogger(options.verbose)
+  const configManager = ConfigManager.getInstance()
+
+  if (configNames.length === 0) {
+    ui.error('No configurations specified for switch')
+    ui.info('Usage: start-claude proxy switch <config1> [config2] ...')
+    process.exit(1)
+  }
+
+  ui.displayWelcome()
+
+  // Get the specified configs
+  const configs: ClaudeConfig[] = []
+  for (const configName of configNames) {
+    const config = await configManager.getConfig(configName)
+    if (!config) {
+      ui.error(`Configuration "${configName}" not found`)
+      process.exit(1)
+    }
+    configs.push(config)
+  }
+
+  ui.info(`🔄 Switching proxy to ${configs.length} configuration${configs.length > 1 ? 's' : ''}: ${configs.map(c => c.name).join(', ')}`)
+
+  // Send switch request to the running proxy server
+  try {
+    ui.info('🔍 Testing new endpoints...')
+    const result = await sendSwitchRequest(port, configs)
+
+    if (result.success) {
+      // Display endpoint health check results
+      if (result.endpointDetails && result.endpointDetails.length > 0) {
+        for (const detail of result.endpointDetails) {
+          if (detail.healthy) {
+            ui.success(`✅ ${detail.name} - healthy`)
+          }
+          else {
+            ui.error(`❌ ${detail.name} - ${detail.error || 'failed'}`)
+          }
+        }
+      }
+
+      // Display speed test results if available
+      if (result.speedTestResults && result.speedTestResults.length > 0) {
+        ui.info('')
+        ui.success('📊 Speed test results:')
+        result.speedTestResults.forEach((test, index) => {
+          const emoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '  '
+          ui.info(`   ${emoji} ${test.name}: ${test.responseTime.toFixed(1)}ms`)
+        })
+        ui.info('')
+      }
+
+      ui.success(`✅ ${result.message}`)
+      ui.info(`   Healthy endpoints: ${result.healthyEndpoints}/${result.totalEndpoints}`)
+    }
+    else {
+      // Display endpoint details for failed switch
+      if (result.endpointDetails && result.endpointDetails.length > 0) {
+        for (const detail of result.endpointDetails) {
+          if (detail.healthy) {
+            ui.success(`✅ ${detail.name} - healthy`)
+          }
+          else {
+            ui.error(`❌ ${detail.name} - ${detail.error || 'failed'}`)
+          }
+        }
+      }
+
+      ui.error(`❌ Switch failed: ${result.message}`)
+      process.exit(1)
+    }
+  }
+  catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    ui.error(`❌ Failed to connect to proxy server: ${errorMessage}`)
+    ui.info(`   Make sure the proxy server is running on port ${port}`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Send switch request to the running proxy server
+ */
+async function sendSwitchRequest(
+  port: number,
+  configs: ClaudeConfig[],
+): Promise<{
+  success: boolean
+  message: string
+  healthyEndpoints?: number
+  totalEndpoints?: number
+  endpointDetails?: Array<{ name: string, healthy: boolean, error?: string }>
+  speedTestResults?: Array<{ name: string, responseTime: number }>
+}> {
+  return new Promise((resolve, reject) => {
+    const requestBody = JSON.stringify({ configs })
+
+    const options = {
+      hostname: 'localhost',
+      port,
+      path: '/__switch',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(requestBody),
+      },
+    }
+
+    const req = http.request(options, (res) => {
+      let data = ''
+
+      res.on('data', (chunk) => {
+        data += chunk
+      })
+
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(data)
+
+          // Handle both success and error responses
+          if (response.success) {
+            resolve(response)
+          }
+          else if (response.error) {
+            // Server returned an error response
+            resolve({
+              success: false,
+              message: response.error.message || 'Unknown error',
+              endpointDetails: response.endpointDetails,
+            })
+          }
+          else {
+            reject(new Error('Invalid response format from server'))
+          }
+        }
+        catch {
+          reject(new Error(`Invalid response from server: ${data}`))
+        }
+      })
+    })
+
+    req.on('error', (error) => {
+      reject(error)
+    })
+
+    req.write(requestBody)
+    req.end()
   })
 }
 

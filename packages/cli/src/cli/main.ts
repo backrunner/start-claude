@@ -616,7 +616,7 @@ syncCmd
   .action(async () => (await import('../commands/sync')).disableSyncCommand())
 
 // Proxy command for starting proxy server with specific configs
-program
+const proxyCmd = program
   .command('proxy [config-names...]')
   .description('Start proxy server with specified configuration(s)')
   .option('--strategy <strategy>', 'Load balancer strategy: fallback, polling, or speedfirst')
@@ -626,6 +626,18 @@ program
   .option('--debug', 'Enable debug mode')
   .option('--proxy <url>', 'Set HTTPS proxy for requests')
   .action(async (configNames, options) => (await import('../commands/proxy')).handleProxyCommand(configNames, options))
+
+// Proxy switch subcommand
+proxyCmd
+  .command('switch <config-names...>')
+  .description('Switch running proxy server to new configuration(s)')
+  .option('--verbose', 'Enable verbose output')
+  .option('--debug', 'Enable debug mode')
+  .option('-p, --port <number>', 'Proxy server port (default: 2333)', '2333')
+  .action(async (configNames, options) => {
+    const port = Number.parseInt(options.port, 10)
+    await (await import('../commands/proxy')).handleProxySwitchCommand(configNames, options, port)
+  })
 
 // Only parse with Commander.js if not an MCP command
 if (!isMcpCommand) {

@@ -387,6 +387,238 @@ export class ProxyServer {
     })
   }
 
+  getServerPort(): number | undefined {
+    if (!this.server) {
+      return undefined
+    }
+    const address = this.server.address()
+    if (!address || typeof address === 'string') {
+      return undefined
+    }
+    return address.port
+  }
+
+  private async handleSwitchRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    try {
+      // Collect request body
+      const chunks: Buffer[] = []
+      req.on('data', (chunk: Buffer) => chunks.push(chunk))
+
+      req.on('end', () => {
+        void (async () => {
+          try {
+            const body = Buffer.concat(chunks)
+            const switchRequest = JSON.parse(body.toString())
+
+            if (!switchRequest.configs || !Array.isArray(switchRequest.configs)) {
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                error: {
+                  message: 'Invalid switch request: configs array required',
+                  type: 'invalid_request',
+                },
+              }))
+              return
+            }
+
+            // Perform config switch
+            const result = await this.switchConfigs(switchRequest.configs)
+
+            if (result.success) {
+              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                success: true,
+                message: result.message,
+                healthyEndpoints: result.healthyEndpoints,
+                totalEndpoints: result.totalEndpoints,
+                endpointDetails: result.endpointDetails,
+                speedTestResults: result.speedTestResults,
+              }))
+            }
+            else {
+              res.writeHead(503, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({
+                success: false,
+                error: {
+                  message: result.message,
+                  type: 'switch_failed',
+                },
+                endpointDetails: result.endpointDetails,
+              }))
+            }
+          }
+          catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({
+              success: false,
+              error: {
+                message: `Switch request failed: ${errorMessage}`,
+                type: 'internal_error',
+              },
+            }))
+          }
+        })()
+      })
+    }
+    catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        success: false,
+        error: {
+          message: errorMessage,
+          type: 'internal_error',
+        },
+      }))
+    }
+  }
+
+  async switchConfigs(configs: ClaudeConfig[]): Promise<{
+    success: boolean
+    message: string
+    healthyEndpoints?: number
+    totalEndpoints?: number
+    endpointDetails?: Array<{ name: string, healthy: boolean, error?: string }>
+    speedTestResults?: Array<{ name: string, responseTime: number }>
+  }> {
+    try {
+      // Validate configs
+      const validConfigs = configs.filter((c) => {
+        const hasApiCredentials = c.baseUrl && c.apiKey
+        const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabled(c.transformerEnabled)
+
+        if (hasTransformerEnabled && !hasApiCredentials) {
+          // Just skip invalid configs, don't output to server console
+          return false
+        }
+
+        return hasApiCredentials || hasTransformerEnabled
+      })
+
+      if (validConfigs.length === 0) {
+        return {
+          success: false,
+          message: 'No valid configurations provided',
+        }
+      }
+
+      // Sort configs by order
+      validConfigs.sort((a, b) => {
+        const orderA = a.order ?? 0
+        const orderB = b.order ?? 0
+        return orderA - orderB
+      })
+
+      // Create new endpoints
+      const newEndpoints: EndpointStatus[] = validConfigs.map(config => ({
+        config,
+        isHealthy: true,
+        lastCheck: 0,
+        failureCount: 0,
+        responseTimes: [],
+        averageResponseTime: 0,
+        totalRequests: 0,
+      }))
+
+      // Perform health checks on new endpoints
+      const healthyEndpoints: EndpointStatus[] = []
+      const endpointDetails: Array<{ name: string, healthy: boolean, error?: string }> = []
+
+      for (const endpoint of newEndpoints) {
+        const configName = endpoint.config.name || endpoint.config.baseUrl || 'unknown'
+
+        try {
+          await this.healthCheck(endpoint, true)
+          healthyEndpoints.push(endpoint)
+          endpointDetails.push({ name: configName, healthy: true })
+        }
+        catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          this.markEndpointUnhealthy(endpoint, errorMessage)
+          endpointDetails.push({ name: configName, healthy: false, error: errorMessage })
+        }
+      }
+
+      // Check if we have at least one healthy endpoint
+      if (healthyEndpoints.length === 0) {
+        return {
+          success: false,
+          message: 'All new endpoints failed health checks',
+          endpointDetails,
+        }
+      }
+
+      // Switch to new endpoints (atomic operation)
+      this.endpoints = newEndpoints
+      this.currentIndex = 0
+
+      // If Speed First strategy, perform speed tests
+      let speedTestResults: Array<{ name: string, responseTime: number }> | undefined
+
+      if (this.loadBalancerStrategy === LoadBalancerStrategy.SpeedFirst && healthyEndpoints.length > 1) {
+        const speedTestManager = SpeedTestManager.fromConfig(
+          this.speedFirstConfig.speedTestStrategy,
+          {
+            timeout: 8000,
+            verbose: this.verbose,
+            debug: this.debug,
+            httpAgent: this.httpAgent,
+            httpsAgent: this.httpsAgent,
+          },
+        )
+
+        try {
+          const endpointConfigs = healthyEndpoints.map(e => e.config)
+          const speedResults = await speedTestManager.testMultipleEndpoints(endpointConfigs)
+
+          speedTestResults = []
+
+          for (const endpoint of healthyEndpoints) {
+            const endpointName = endpoint.config.name || endpoint.config.baseUrl || 'unknown'
+            const result = speedResults.get(endpointName)
+
+            if (result && result.success) {
+              this.recordResponseTime(endpoint, result.responseTime)
+              speedTestResults.push({ name: endpointName, responseTime: result.responseTime })
+            }
+          }
+
+          // Sort by response time
+          speedTestResults.sort((a, b) => a.responseTime - b.responseTime)
+        }
+        catch (error) {
+          // Speed test errors are non-fatal
+          if (this.debug) {
+            fileLogger.error('SWITCH_SPEED_TEST_ERROR', 'Speed test failed during config switch', {
+              error: error instanceof Error ? error.message : 'Unknown error',
+            })
+          }
+        }
+      }
+
+      const healthyCount = this.endpoints.filter(e => e.isHealthy).length
+      const message = `Successfully switched to ${configs.length} new configurations (${healthyCount} healthy)`
+
+      return {
+        success: true,
+        message,
+        healthyEndpoints: healthyCount,
+        totalEndpoints: configs.length,
+        endpointDetails,
+        speedTestResults,
+      }
+    }
+    catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      return {
+        success: false,
+        message: `Config switch failed: ${errorMessage}`,
+      }
+    }
+  }
+
   private async handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     try {
       // Log incoming request if debug is enabled
@@ -423,6 +655,12 @@ export class ProxyServer {
       }
 
       this.ui.verbose(`Handling ${req.method} ${req.url}`)
+
+      // Handle special management endpoints
+      if (req.url === '/__switch' && req.method === 'POST') {
+        await this.handleSwitchRequest(req, res)
+        return
+      }
 
       // Handle requests - either through load balancer or transformer-only mode
       if (this.enableLoadBalance) {

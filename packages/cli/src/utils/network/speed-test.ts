@@ -147,6 +147,9 @@ export class SpeedTestManager {
             text: 'Analyze if this message indicates a new conversation topic. If it does, extract a 2-3 word title that captures the new topic. Format your response as a JSON object with two fields: \'isNewTopic\' (boolean) and \'title\' (string, or null if isNewTopic is false). Only include these fields, no other text.',
           },
         ],
+        metadata: {
+          user_id: 'start-claude-test',
+        },
         temperature: 0,
         stream: true,
       })
