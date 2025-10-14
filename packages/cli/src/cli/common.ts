@@ -33,6 +33,7 @@ export interface ProgramOptions {
   proxy?: string
   apiKey?: string
   baseUrl?: string
+  skipHealthCheck?: boolean
 }
 
 /**

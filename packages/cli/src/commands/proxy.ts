@@ -13,6 +13,7 @@ export interface ProxyCommandOptions {
   verbose?: boolean
   debug?: boolean
   proxy?: string
+  skipHealthCheck?: boolean
 }
 
 /**
@@ -29,6 +30,7 @@ export function filterProxyArgs(): string[] {
   const proxySpecificFlags = [
     '--strategy',
     '--all',
+    '--skip-health-check',
   ]
 
   // Track if we've seen the proxy command
@@ -128,6 +130,7 @@ export async function handleProxyCommand(
     verbose: options.verbose,
     debug: options.debug,
     proxy: options.proxy,
+    skipHealthCheck: options.skipHealthCheck,
   }
 
   // Call handleProxyMode with the selected configs

@@ -621,6 +621,7 @@ program
   .description('Start proxy server with specified configuration(s)')
   .option('--strategy <strategy>', 'Load balancer strategy: fallback, polling, or speedfirst')
   .option('--all', 'Start proxy server with all configurations')
+  .option('--skip-health-check', 'Skip health checks and force use specified configs')
   .option('--verbose', 'Enable verbose output')
   .option('--debug', 'Enable debug mode')
   .option('--proxy <url>', 'Set HTTPS proxy for requests')

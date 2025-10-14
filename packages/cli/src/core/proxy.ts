@@ -799,11 +799,15 @@ export class ProxyServer {
     const isSSE = this.isStreamingResponse(proxyRes.headers)
 
     if (isSSE && context.isTransformer) {
-      // Handle streaming conversion directly
+      // Transformer mode: convert OpenAI stream to Anthropic format
       await this.handleDirectStreamConversion(proxyRes, res, initialResponseHeaders, context)
     }
+    else if (isSSE && !context.isTransformer) {
+      // Non-transformer SSE mode: transparent proxy - pipe directly without parsing
+      await this.handleDirectStreamPassthrough(proxyRes, res, initialResponseHeaders)
+    }
     else {
-      // Handle non-streaming responses or regular proxy
+      // Non-streaming responses: buffer and parse
       await this.handleBufferedResponse(proxyRes, res, initialResponseHeaders, context, endpoint)
     }
 
@@ -817,6 +821,57 @@ export class ProxyServer {
   private isStreamingResponse(headers: http.IncomingHttpHeaders): boolean {
     const contentType = headers['content-type'] || headers['Content-Type'] || ''
     return contentType.includes('text/event-stream')
+  }
+
+  /**
+   * Handle direct SSE stream passthrough for non-transformer mode
+   * This acts as a transparent proxy, forwarding the SSE stream without any parsing or modification
+   */
+  private async handleDirectStreamPassthrough(
+    proxyRes: http.IncomingMessage,
+    res: http.ServerResponse,
+    headers: http.IncomingHttpHeaders,
+  ): Promise<void> {
+    try {
+      // Set SSE headers for streaming
+      if (!res.headersSent) {
+        const finalHeaders = {
+          ...headers,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        }
+        res.writeHead(proxyRes.statusCode || 200, finalHeaders)
+      }
+
+      // Directly pipe the incoming SSE stream to the client without any parsing
+      proxyRes.pipe(res)
+
+      if (this.debug) {
+        fileLogger.info('SSE_PASSTHROUGH', 'Streaming SSE response directly to client (transparent proxy)', {
+          statusCode: proxyRes.statusCode || 200,
+          contentType: headers['content-type'],
+        })
+      }
+    }
+    catch (error) {
+      if (this.debug) {
+        fileLogger.error('SSE_PASSTHROUGH_ERROR', 'Error during SSE stream passthrough', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+
+      // If headers haven't been sent yet, send error response
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+          error: {
+            message: 'SSE streaming error',
+            type: 'stream_error',
+          },
+        }))
+      }
+    }
   }
 
   private async handleDirectStreamConversion(
@@ -1718,7 +1773,7 @@ export class ProxyServer {
       SpeedTestStrategy.ResponseTime,
       {
         timeout: options.timeout,
-        verbose: false,
+        verbose: this.verbose, // Use proxy's verbose setting
         debug: this.debug,
         httpAgent: this.httpAgent,
         httpsAgent: this.httpsAgent,
@@ -1968,7 +2023,7 @@ export class ProxyServer {
         SpeedTestStrategy.ResponseTime, // Always use response time for initial tests
         {
           timeout: 8000,
-          verbose: false, // We'll handle the output ourselves
+          verbose: this.verbose, // Use proxy's verbose setting
           debug: this.debug,
           httpAgent: this.httpAgent,
           httpsAgent: this.httpsAgent,

@@ -127,8 +127,15 @@ export async function handleProxyMode(
       verbose: options.verbose || options.debug || false, // Enable verbose by default in debug mode
     }, effectiveSystemSettings, options.proxy)
 
-    // Perform initial health checks
-    await proxyServer.performInitialHealthChecks()
+    // Perform initial health checks (skip if --skip-health-check is specified)
+    if (!options.skipHealthCheck) {
+      await proxyServer.performInitialHealthChecks()
+    }
+    else {
+      const ui = new UILogger()
+      ui.warning('⚠️ Skipping health checks (--skip-health-check specified)')
+      ui.info('All specified configurations will be used without validation')
+    }
 
     await proxyServer.startServer(2333)
 

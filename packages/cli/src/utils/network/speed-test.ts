@@ -30,14 +30,13 @@ const GENERAL_TEST_HEADERS = {
   'User-Agent': 'claude-cli/2.0.14 (external, cli)',
   'anthropic-dangerous-direct-browser-access': 'true',
   'anthropic-version': '2023-06-01',
-  'anthropic-beta': 'fine-grained-tool-streaming-2025-05-14',
+  'anthropic-beta': 'claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14,token-counting-2024-11-01',
   'x-stainless-helper-method': 'stream',
   'accept-language': '*',
   'accept-encoding': 'gzip, deflate',
   'connection': 'keep-alive',
   'accept': 'application/json',
   'x-stainless-retry-count': '0',
-  'x-stainless-timeout': '60',
   'x-stainless-lang': 'js',
   'x-stainless-package-version': '0.60.0',
   'x-stainless-os': 'Windows',
@@ -129,24 +128,22 @@ export class SpeedTestManager {
         return
       }
       const baseUrl = endpoint.baseUrl.endsWith('/') ? endpoint.baseUrl.slice(0, -1) : endpoint.baseUrl
-      const testUrl = new URL(`${baseUrl}/v1/messages`)
+      const testUrl = new URL(`${baseUrl}/v1/messages?beta=true`)
       const startTime = performance.now()
 
       // Ultra-minimal payload for response time testing
       const testBody = JSON.stringify({
         model: endpoint.model || 'claude-3-5-haiku-20241022',
-        messages: [{ role: 'user', content: '1' }],
-        system: [
+        messages: [
           {
-            type: 'text',
-            text: 'Test',
-            cache_control: {
-              type: 'ephemeral',
-            },
+            role: 'user',
+            content: 'foo',
           },
         ],
+        messageCount: 1,
+        temperature: 1,
+        max_tokens: 32000,
         stream: true,
-        temperature: 0,
       })
 
       const isHttps = testUrl.protocol === 'https:'
@@ -228,7 +225,7 @@ export class SpeedTestManager {
         return
       }
       const baseUrl = endpoint.baseUrl.endsWith('/') ? endpoint.baseUrl.slice(0, -1) : endpoint.baseUrl
-      const testUrl = new URL(`${baseUrl}/v1/messages`)
+      const testUrl = new URL(`${baseUrl}/v1/messages?beta=true`)
       const startTime = performance.now()
 
       const isHttps = testUrl.protocol === 'https:'
