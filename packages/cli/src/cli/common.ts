@@ -11,7 +11,6 @@ import { UILogger } from '../utils/cli/ui'
 export interface ProgramOptions {
   config?: string
   list?: boolean
-  balance?: boolean | string
   healthCheck?: boolean
   addDir?: string[]
   allowedTools?: string[]
@@ -179,7 +178,6 @@ export function filterProcessArgs(configArg?: string): string[] {
     const skipFlags = [
       '--config',
       '--list',
-      '--balance',
       '--health-check',
       '--add-dir',
       '--allowedTools',
@@ -228,7 +226,6 @@ export function filterProcessArgs(configArg?: string): string[] {
     const prevArg = process.argv[process.argv.indexOf(arg) - 1]
     const flagsWithValues = [
       '--config',
-      '--balance',
       '--add-dir',
       '--allowedTools',
       '--disallowedTools',

@@ -27,7 +27,7 @@ export interface SpeedTestConfig {
 const GENERAL_TEST_HEADERS = {
   'x-app': 'cli',
   'Content-Type': 'application/json',
-  'User-Agent': 'claude-cli/1.0.83 (external, cli)',
+  'User-Agent': 'claude-cli/2.0.14 (external, cli)',
   'anthropic-dangerous-direct-browser-access': 'true',
   'anthropic-version': '2023-06-01',
   'anthropic-beta': 'fine-grained-tool-streaming-2025-05-14',
@@ -39,7 +39,7 @@ const GENERAL_TEST_HEADERS = {
   'x-stainless-retry-count': '0',
   'x-stainless-timeout': '60',
   'x-stainless-lang': 'js',
-  'x-stainless-package-version': '0.55.1',
+  'x-stainless-package-version': '0.60.0',
   'x-stainless-os': 'Windows',
   'x-stainless-arch': 'x64',
   'x-stainless-runtime': 'node',
@@ -147,7 +147,6 @@ export class SpeedTestManager {
         ],
         stream: true,
         temperature: 0,
-        max_tokens: 1,
       })
 
       const isHttps = testUrl.protocol === 'https:'

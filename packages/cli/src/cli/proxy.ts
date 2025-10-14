@@ -2,6 +2,7 @@ import type { ConfigManager } from '../config/manager'
 import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
 import type { ProgramOptions } from './common'
 import process from 'node:process'
+import { filterProxyArgs } from '../commands/proxy'
 import { ProxyServer } from '../core/proxy'
 import { TransformerService } from '../services/transformer'
 import { UILogger } from '../utils/cli/ui'
@@ -21,13 +22,18 @@ export async function handleProxyMode(
   forcedConfigs?: any[], // Allow forced configs for transformer mode
   cliStrategy?: LoadBalancerStrategy, // CLI-specified strategy override
 ): Promise<void> {
+  // Determine if we're called from proxy command or transformer auto-enable
+  // If forcedConfigs is provided, we're from proxy command
+  const isFromProxyCommand = forcedConfigs !== undefined
+
   // Check if proxy server is already running
   const shouldStartNewProxy = await checkAndHandleExistingProxy()
   if (!shouldStartNewProxy) {
     // Proxy server is already running, just start Claude Code with existing proxy
     const baseConfig = await resolveBaseConfig(configManager, options, configArg, forcedConfigs || await configManager.listConfigs())
     const claudeArgs = buildClaudeArgs(options, baseConfig)
-    const filteredArgs = filterProcessArgs(configArg)
+    // Use appropriate filter based on context
+    const filteredArgs = isFromProxyCommand ? filterProxyArgs() : filterProcessArgs(configArg)
     const allArgs = [...claudeArgs, ...filteredArgs]
 
     const cliOverrides = {
@@ -81,21 +87,19 @@ export async function handleProxyMode(
     process.exit(1)
   }
 
-  // Show which configs are included and why - only when balance mode is enabled
-  if (options.balance) {
-    const ui = new UILogger()
-    ui.info(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
-    proxyableConfigs.forEach((c) => {
-      const hasTransformer = TransformerService.isTransformerEnabled(c.transformerEnabled)
+  // Show which configs are included and why
+  const ui = new UILogger()
+  ui.info(`Starting proxy with ${proxyableConfigs.length} endpoint${proxyableConfigs.length > 1 ? 's' : ''}:`)
+  proxyableConfigs.forEach((c) => {
+    const hasTransformer = TransformerService.isTransformerEnabled(c.transformerEnabled)
 
-      let status = ''
-      if (hasTransformer) {
-        status = ' (transformer)'
-      }
+    let status = ''
+    if (hasTransformer) {
+      status = ' (transformer)'
+    }
 
-      ui.info(`  - ${c.name}: ${c.baseUrl || 'no baseUrl'}${status}`)
-    })
-  }
+    ui.info(`  - ${c.name}: ${c.baseUrl || 'no baseUrl'}${status}`)
+  })
 
   try {
     // Check if any config has transformer enabled
@@ -117,7 +121,7 @@ export async function handleProxyMode(
     }
 
     const proxyServer = new ProxyServer(proxyableConfigs, {
-      enableLoadBalance: typeof options.balance === 'string' || options.balance === true,
+      enableLoadBalance: isFromProxyCommand || proxyableConfigs.length > 1, // Always enable for proxy command, or when multiple configs
       enableTransform: hasTransformerEnabled,
       debug: options.debug || false,
       verbose: options.verbose || options.debug || false, // Enable verbose by default in debug mode
@@ -141,70 +145,16 @@ export async function handleProxyMode(
       const transformers = proxyServer.listTransformers()
       if (transformers.length > 0) {
         ui.info('')
-        if (options.balance) {
-          ui.info('🔧 Available transformers:')
-          transformers.forEach((transformer) => {
-            if (transformer.hasDomain) {
-              ui.info(`  - ${transformer.name} (${transformer.domain})`)
-            }
-            else {
-              ui.info(`  - ${transformer.name}`)
-            }
-          })
-        }
-        else {
-          // Show only the current transformer matching the base config when not in balance mode
-          if (baseConfig?.baseUrl) {
-            let matchingTransformer: { name: string, hasDomain: boolean, domain?: string } | undefined
-
-            // First, check if a specific transformer is configured
-            if (baseConfig.transformer && baseConfig.transformer !== 'auto') {
-              matchingTransformer = transformers.find(t => t.name === baseConfig.transformer)
-              if (matchingTransformer) {
-                ui.info('🔧 Current transformer (manually specified):')
-                if (matchingTransformer.hasDomain) {
-                  ui.info(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
-                }
-                else {
-                  ui.info(`  - ${matchingTransformer.name}`)
-                }
-              }
-            }
-
-            // If no manual transformer specified or found, try domain matching
-            if (!matchingTransformer) {
-              matchingTransformer = transformers.find(t =>
-                t.hasDomain && t.domain && baseConfig.baseUrl!.includes(t.domain),
-              )
-
-              if (matchingTransformer) {
-                ui.info('🔧 Current transformer (auto-detected):')
-                ui.info(`  - ${matchingTransformer.name} (${matchingTransformer.domain})`)
-              }
-            }
-
-            if (!matchingTransformer) {
-              ui.error(`❌ No transformer found for baseUrl: ${baseConfig.baseUrl}`)
-              if (baseConfig.transformer && baseConfig.transformer !== 'auto') {
-                ui.error(`❌ Manually specified transformer "${baseConfig.transformer}" not found`)
-              }
-              ui.info('Available transformers:')
-              transformers.forEach((transformer) => {
-                if (transformer.hasDomain) {
-                  ui.info(`  - ${transformer.name} (${transformer.domain})`)
-                }
-                else {
-                  ui.info(`  - ${transformer.name}`)
-                }
-              })
-              process.exit(1)
-            }
+        // Show all transformers when in proxy mode
+        ui.info('🔧 Available transformers:')
+        transformers.forEach((transformer) => {
+          if (transformer.hasDomain) {
+            ui.info(`  - ${transformer.name} (${transformer.domain})`)
           }
           else {
-            ui.error('❌ No baseConfig available for transformer matching')
-            process.exit(1)
+            ui.info(`  - ${transformer.name}`)
           }
-        }
+        })
       }
     }
 
@@ -234,7 +184,8 @@ export async function handleProxyMode(
 
     // Build arguments to pass to claude command (same as normal mode)
     const claudeArgs = buildClaudeArgs(options, baseConfig)
-    const filteredArgs = filterProcessArgs(configArg)
+    // Use appropriate filter based on context
+    const filteredArgs = isFromProxyCommand ? filterProxyArgs() : filterProcessArgs(configArg)
     const allArgs = [...claudeArgs, ...filteredArgs]
 
     // Create CLI overrides with load balancer settings

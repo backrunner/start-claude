@@ -25,7 +25,6 @@ import {
   buildClaudeArgs,
   buildCliOverrides,
   filterProcessArgs,
-  parseBalanceStrategy,
   resolveConfig,
 } from './common'
 import { handleProxyMode } from './proxy'
@@ -117,7 +116,6 @@ program
 program
   .option('--config <name>', 'Use specific configuration')
   .option('--list', 'List all configurations')
-  .option('--balance [strategy]', '[DEPRECATED: use "start-claude proxy" instead] Start a proxy server with load balancing on port 2333. Strategies: fallback (priority-based), polling (round-robin), speedfirst (fastest response)')
   .option('--health-check', 'Perform health check on the endpoint without starting proxy server')
   .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
   .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
@@ -229,36 +227,14 @@ program
     // Display verbose mode status if enabled
     ui.verbose('Verbose mode enabled')
 
-    // Parse balance strategy from CLI options
-    const balanceConfig = parseBalanceStrategy(options.balance)
-    let shouldUseProxy = balanceConfig.enabled
-    const cliStrategy = balanceConfig.strategy
     let systemSettings: unknown = null
-
-    // Display deprecation warning if using --balance option
-    if (options.balance !== undefined && options.balance !== false) {
-      ui.warning('⚠️  WARNING: The --balance option is deprecated.')
-      ui.warning('   Please use "start-claude proxy [config-names...] --strategy <strategy>" instead.')
-      ui.warning('   This option will be removed in the next minor version.\n')
-    }
-
-    // Display strategy info if CLI strategy was provided
-    if (cliStrategy && typeof options.balance === 'string') {
-      ui.info(`🎯 Using ${cliStrategy} load balancer strategy`)
-    }
 
     // Perform multiple async operations in parallel for faster startup
     const [
-      systemSettingsResult,
       updateInfo,
       remoteUpdateResult,
       claudeCheckResult,
     ] = await Promise.allSettled([
-      // Get system settings if needed
-      (!shouldUseProxy && options.balance !== false)
-        ? s3SyncManager.getSystemSettings().catch(() => null)
-        : Promise.resolve(null),
-
       // Check for updates
       checkForUpdates(options.checkUpdates || configManager.needsImmediateUpdate()),
 
@@ -273,14 +249,8 @@ program
       checkClaudeInstallation(),
     ])
 
-    // Process system settings result
-    if (systemSettingsResult.status === 'fulfilled' && systemSettingsResult.value) {
-      systemSettings = systemSettingsResult.value
-      if (systemSettings && typeof systemSettings === 'object' && 'balanceMode' in systemSettings) {
-        const balanceMode = (systemSettings as { balanceMode?: { enableByDefault?: boolean } }).balanceMode
-        shouldUseProxy = balanceMode?.enableByDefault === true
-      }
-    }
+    // Process system settings result - get system settings for transformer check
+    systemSettings = await s3SyncManager.getSystemSettings().catch(() => null)
 
     // Process update check result
     const updateCheckInfo = updateInfo?.status === 'fulfilled' ? updateInfo.value : null
@@ -299,45 +269,37 @@ program
       process.exit(1)
     }
 
-    // If not yet using proxy, check if we need it for transformer-enabled configs
-    // We check config existence without triggering fuzzy search prompts to avoid double confirmation
-    if (!shouldUseProxy) {
-      const configName = options.config || configArg
-      let config: ClaudeConfig | undefined
+    // Check if we need proxy for transformer-enabled configs
+    let shouldUseProxy = false
+    const configName = options.config || configArg
+    let config: ClaudeConfig | undefined
 
-      if (configName) {
-        // Check config directly without fuzzy search to avoid prompts
+    if (configName) {
+      // Check config directly without fuzzy search to avoid prompts
+      config = await configManager.getConfig(configName)
+      if (!config && remoteUpdateResult.status === 'fulfilled' && remoteUpdateResult.value) {
+        // Config might have been updated during the remote sync
         config = await configManager.getConfig(configName)
-        if (!config && remoteUpdateResult.status === 'fulfilled' && remoteUpdateResult.value) {
-          // Config might have been updated during the remote sync
-          config = await configManager.getConfig(configName)
-        }
       }
-      else {
-        // For default config, we can check normally
-        config = await configManager.getDefaultConfig()
-      }
+    }
+    else {
+      // For default config, we can check normally
+      config = await configManager.getDefaultConfig()
+    }
 
-      if (TransformerService.isTransformerEnabled(config?.transformerEnabled)) {
-        shouldUseProxy = true
-        ui.info(
-          '🔧 Auto-enabling proxy mode for transformer-enabled configuration',
-        )
-      }
+    if (TransformerService.isTransformerEnabled(config?.transformerEnabled)) {
+      shouldUseProxy = true
+      ui.info(
+        '🔧 Auto-enabling proxy mode for transformer-enabled configuration',
+      )
     }
 
     if (shouldUseProxy) {
-      // Get fresh system settings if we haven't already
-      if (!systemSettings) {
-        systemSettings = await s3SyncManager.getSystemSettings().catch(() => null)
-      }
       await handleProxyMode(
         configManager,
         options,
         configArg,
         systemSettings,
-        undefined,
-        cliStrategy,
       )
       return
     }
@@ -379,7 +341,7 @@ program
       }
     }
 
-    const config = await resolveConfig(configManager, s3SyncManager, options, configArg, hasS3Synced)
+    config = await resolveConfig(configManager, s3SyncManager, options, configArg, hasS3Synced)
 
     // Handle statusline and MCP sync in parallel for faster startup with error resilience
     try {

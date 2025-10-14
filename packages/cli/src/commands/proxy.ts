@@ -16,6 +16,63 @@ export interface ProxyCommandOptions {
 }
 
 /**
+ * Filter out proxy command and its positional arguments
+ * Aligns with filterProcessArgs logic in common.ts but additionally filters:
+ * - The 'proxy' command itself
+ * - Positional arguments (config names) after 'proxy'
+ * - Proxy-specific flags (--strategy, --all)
+ */
+export function filterProxyArgs(): string[] {
+  const args = process.argv.slice(2)
+
+  // Proxy-specific flags that should NOT be passed to Claude Code
+  const proxySpecificFlags = [
+    '--strategy',
+    '--all',
+  ]
+
+  // Track if we've seen the proxy command
+  let seenProxyCommand = false
+  let skipNext = false
+
+  return args.filter((arg, index) => {
+    // If we should skip this arg (it's a value for a previous flag)
+    if (skipNext) {
+      skipNext = false
+      return false
+    }
+
+    // Skip the 'proxy' command itself
+    if (arg === 'proxy') {
+      seenProxyCommand = true
+      return false
+    }
+
+    // Skip proxy-specific flags
+    if (proxySpecificFlags.some(flag => arg.startsWith(flag))) {
+      // Check if this flag has a value (not using = syntax)
+      if (arg === '--strategy' && index + 1 < args.length && !args[index + 1].startsWith('-')) {
+        skipNext = true
+      }
+      return false
+    }
+
+    // If it's a flag, keep it (it will be passed to Claude Code)
+    if (arg.startsWith('-')) {
+      return true
+    }
+
+    // If we've seen the proxy command, this is a positional config name argument - filter it out
+    if (seenProxyCommand) {
+      return false
+    }
+
+    // Otherwise keep it (though this shouldn't happen in normal usage)
+    return true
+  })
+}
+
+/**
  * Handle the proxy command
  */
 export async function handleProxyCommand(
@@ -44,8 +101,8 @@ export async function handleProxyCommand(
   // Determine which configs to use
   let configs: ClaudeConfig[] = []
 
-  if (options.all) {
-    // Use all configs
+  if (options.all || configNames.length === 0) {
+    // Use all configs when --all is specified or no config names provided
     configs = await configManager.listConfigs()
     if (configs.length === 0) {
       ui.error('No configurations found')
@@ -53,7 +110,7 @@ export async function handleProxyCommand(
     }
     ui.info(`Starting proxy with all ${configs.length} configuration${configs.length > 1 ? 's' : ''}`)
   }
-  else if (configNames.length > 0) {
+  else {
     // Use specified config(s)
     for (const configName of configNames) {
       const config = await configManager.getConfig(configName)
@@ -65,21 +122,9 @@ export async function handleProxyCommand(
     }
     ui.info(`Starting proxy with ${configs.length} configuration${configs.length > 1 ? 's' : ''}: ${configs.map(c => c.name).join(', ')}`)
   }
-  else {
-    // No config specified, use default
-    const defaultConfig = await configManager.getDefaultConfig()
-    if (!defaultConfig) {
-      ui.error('No default configuration found')
-      ui.info('Please specify a config name or use --all to include all configs')
-      process.exit(1)
-    }
-    configs.push(defaultConfig)
-    ui.info(`Starting proxy with default configuration: ${defaultConfig.name}`)
-  }
 
   // Convert options to ProgramOptions format for handleProxyMode
   const programOptions = {
-    balance: true, // Always enable balance mode for proxy command
     verbose: options.verbose,
     debug: options.debug,
     proxy: options.proxy,
