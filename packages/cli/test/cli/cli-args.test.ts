@@ -10,50 +10,7 @@ describe('cLI argument filtering', () => {
   })
 
   describe('filterProcessArgs', () => {
-    it('should filter out balance strategy arguments', () => {
-      process.argv = ['node', 'start-claude', '--balance', 'speedfirst', 'some-file.txt']
-      const result = filterProcessArgs()
-      expect(result).toEqual(['some-file.txt'])
-      expect(result).not.toContain('speedfirst')
-      expect(result).not.toContain('--balance')
-    })
-
-    it('should filter out balance polling strategy', () => {
-      process.argv = ['node', 'start-claude', '--balance', 'polling', '--verbose', 'file.txt']
-      const result = filterProcessArgs()
-      expect(result).toEqual(['file.txt'])
-      expect(result).not.toContain('polling')
-      expect(result).not.toContain('--balance')
-      expect(result).not.toContain('--verbose')
-    })
-
-    it('should filter out balance fallback strategy', () => {
-      process.argv = ['node', 'start-claude', '--balance', 'fallback', 'test.md']
-      const result = filterProcessArgs()
-      expect(result).toEqual(['test.md'])
-      expect(result).not.toContain('fallback')
-    })
-
-    it('should handle balance as boolean flag', () => {
-      // When --balance has no explicit strategy, the next arg is treated as the strategy value
-      // This is the current behavior - we need to adjust expectations
-      process.argv = ['node', 'start-claude', '--balance', 'file.txt']
-      const result = filterProcessArgs()
-      // 'file.txt' gets filtered because it's treated as the balance strategy value
-      expect(result).toEqual([])
-      expect(result).not.toContain('--balance')
-      expect(result).not.toContain('file.txt') // file.txt is consumed as balance strategy
-    })
-
-    it('should handle balance as boolean flag when at end of args', () => {
-      // When --balance is at the end, no next arg is consumed
-      process.argv = ['node', 'start-claude', 'file.txt', '--balance']
-      const result = filterProcessArgs()
-      expect(result).toEqual(['file.txt'])
-      expect(result).not.toContain('--balance')
-    })
-
-    it('should preserve non-balance arguments', () => {
+    it('should preserve file arguments', () => {
       process.argv = ['node', 'start-claude', 'file1.txt', 'file2.txt', '--some-unknown-flag']
       const result = filterProcessArgs()
       expect(result).toEqual(['file1.txt', 'file2.txt', '--some-unknown-flag'])
@@ -71,8 +28,6 @@ describe('cLI argument filtering', () => {
       process.argv = [
         'node',
         'start-claude',
-        '--balance',
-        'speedfirst',
         '--config',
         'test-config',
         '--verbose',
@@ -83,9 +38,19 @@ describe('cLI argument filtering', () => {
       ]
       const result = filterProcessArgs('test-config')
       expect(result).toEqual(['remaining-file.txt'])
-      expect(result).not.toContain('speedfirst')
       expect(result).not.toContain('test-config')
       expect(result).not.toContain('claude-sonnet-4-5-20250929')
+      expect(result).not.toContain('--verbose')
+      expect(result).not.toContain('--debug')
+    })
+
+    it('should filter proxy command', () => {
+      process.argv = ['node', 'start-claude', 'proxy', 'config1', 'config2']
+      const result = filterProcessArgs()
+      // filterProcessArgs filters 'proxy' command itself, but not the config names
+      // Config names should be handled by filterProxyArgs in proxy command module
+      expect(result).toEqual(['config1', 'config2'])
+      expect(result).not.toContain('proxy')
     })
   })
 

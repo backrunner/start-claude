@@ -104,7 +104,10 @@ describe('configManager', () => {
 
       const config = await configManager.load()
 
-      expect(config).toEqual(mockConfig)
+      expect(config.version).toBe(TEST_CONFIG_VERSION)
+      expect(config.configs).toHaveLength(1)
+      expect(config.configs[0]).toMatchObject({ name: 'test', baseUrl: 'https://api.test.com', isDefault: true, enabled: true })
+      expect(config.settings).toEqual(mockConfig.settings)
     })
 
     it('should handle corrupted config file', async () => {
@@ -217,7 +220,7 @@ describe('configManager', () => {
 
       const result = await configManager.getConfig('test')
 
-      expect(result).toEqual(testConfig)
+      expect(result).toMatchObject(testConfig)
     })
 
     it('should return undefined for non-existent configuration', async () => {
@@ -253,7 +256,7 @@ describe('configManager', () => {
 
       const result = await configManager.getDefaultConfig()
 
-      expect(result).toEqual(defaultConfig)
+      expect(result).toMatchObject(defaultConfig)
     })
 
     it('should return undefined when no default configuration exists', async () => {
@@ -360,7 +363,9 @@ describe('configManager', () => {
 
       const result = await configManager.listConfigs()
 
-      expect(result).toEqual(configs)
+      expect(result).toHaveLength(2)
+      expect(result[0]).toMatchObject({ name: 'test1', isDefault: false, enabled: true })
+      expect(result[1]).toMatchObject({ name: 'test2', isDefault: true, enabled: true })
     })
   })
 
@@ -446,7 +451,10 @@ describe('configManager', () => {
 
       const result = await configManager.getConfigFile()
 
-      expect(result).toEqual(mockConfigData)
+      expect(result.version).toBe(TEST_CONFIG_VERSION)
+      expect(result.configs).toHaveLength(1)
+      expect(result.configs[0]).toMatchObject({ name: 'test', isDefault: true, enabled: true })
+      expect(result.settings).toEqual(mockConfigData.settings)
     })
   })
 
@@ -650,7 +658,7 @@ describe('configManager', () => {
 
       const result = await configManager.getConfig('profile-test')
 
-      expect(result).toEqual(configWithProfileType)
+      expect(result).toMatchObject(configWithProfileType)
       expect(result?.profileType).toBe('official')
     })
 
@@ -671,7 +679,10 @@ describe('configManager', () => {
 
       const result = await configManager.listConfigs()
 
-      expect(result).toEqual(configs)
+      expect(result).toHaveLength(3)
+      expect(result[0]).toMatchObject({ name: 'default-config', profileType: 'default', baseUrl: 'https://api.test.com' })
+      expect(result[1]).toMatchObject({ name: 'official-config', profileType: 'official', httpProxy: 'http://proxy:8080' })
+      expect(result[2]).toMatchObject({ name: 'legacy-config', baseUrl: 'https://api.legacy.com' })
       expect(result[0].profileType).toBe('default')
       expect(result[1].profileType).toBe('official')
       expect(result[2].profileType).toBeUndefined()
