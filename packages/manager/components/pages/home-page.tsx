@@ -14,12 +14,15 @@ import { ConfirmDeleteModal } from '@/components/config/confirm-delete-modal'
 import { EmptyState } from '@/components/layout/empty-state'
 import { Header } from '@/components/layout/header'
 import { SearchBar } from '@/components/layout/search-bar'
+import { ConfigSwitchModal } from '@/components/proxy/config-switch-modal'
+import { ProxyStatusCard } from '@/components/proxy/proxy-status-card'
 import { SystemSettingsModal } from '@/components/settings/system-settings-modal'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { VSCodeProvider } from '@/context/vscode-context'
 import { useBroadcastChannel } from '@/hooks/use-broadcast-channel'
 import { useConfigs } from '@/hooks/use-configs'
 import { useHeartbeat } from '@/hooks/use-heartbeat'
+import { useProxyStatus } from '@/hooks/use-proxy-status'
 import { useShutdownCoordinator } from '@/hooks/use-shutdown-coordinator'
 
 interface HomePageProps {
@@ -44,12 +47,20 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
   const [editingConfig, setEditingConfig] = useState<ClaudeConfig | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSystemSettingsOpen, setIsSystemSettingsOpen] = useState(false)
+  const [isConfigSwitchOpen, setIsConfigSwitchOpen] = useState(false)
   const [deleteConfig, setDeleteConfig] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const dragOperationInProgress = useRef(false)
 
   const { shutdownCoordinator } = useShutdownCoordinator()
+
+  // Monitor proxy server status
+  const proxyStatus = useProxyStatus({
+    port: 2333,
+    intervalMs: 5000,
+    enabled: !isVSCode, // Disable in VSCode since proxy is managed differently
+  })
 
   // Use Broadcast Channel for cross-tab communication
   const { notifyConfigChange } = useBroadcastChannel({
@@ -215,6 +226,19 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
             </Alert>
           )}
 
+          {/* Proxy Server Status - only show outside of VSCode */}
+          {!isVSCode && (
+            <div className="mt-6">
+              <ProxyStatusCard
+                isRunning={proxyStatus.isRunning}
+                status={proxyStatus.status}
+                loading={proxyStatus.loading}
+                error={proxyStatus.error}
+                onSwitchClick={() => setIsConfigSwitchOpen(true)}
+              />
+            </div>
+          )}
+
           <div className="mt-8 space-y-6">
             <SearchBar
               searchTerm={searchTerm}
@@ -283,6 +307,12 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
             onClose={() => setDeleteConfig(null)}
             configName={deleteConfig}
             onConfirm={handleDeleteConfirm}
+          />
+
+          <ConfigSwitchModal
+            open={isConfigSwitchOpen}
+            onClose={() => setIsConfigSwitchOpen(false)}
+            currentProxyPort={2333}
           />
         </div>
       </div>

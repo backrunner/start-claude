@@ -477,6 +477,51 @@ export class ProxyServer {
   }
 
   /**
+   * Handle the /__status endpoint
+   * Returns the current status of the proxy server
+   */
+  private async handleStatusRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    try {
+      const status = this.getStatus()
+
+      // Return status with CORS headers
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      })
+      res.end(JSON.stringify(status))
+
+      if (this.debug) {
+        fileLogger.info('STATUS_REQUEST', 'Proxy status requested', {
+          total: status.total,
+          healthy: status.healthy,
+          unhealthy: status.unhealthy,
+          loadBalance: status.loadBalance,
+          transform: status.transform,
+          strategy: status.strategy,
+        })
+      }
+    }
+    catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+      if (this.debug) {
+        fileLogger.error('STATUS_REQUEST_ERROR', 'Failed to get proxy status', {
+          error: errorMessage,
+        })
+      }
+
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        error: {
+          message: `Status request failed: ${errorMessage}`,
+          type: 'internal_error',
+        },
+      }))
+    }
+  }
+
+  /**
    * Handle the count_tokens endpoint
    * This endpoint calculates token count for messages locally without calling upstream
    */
@@ -745,6 +790,12 @@ export class ProxyServer {
       // Handle special management endpoints
       if (req.url === '/__switch' && req.method === 'POST') {
         await this.handleSwitchRequest(req, res)
+        return
+      }
+
+      // Handle status endpoint
+      if (req.url === '/__status' && req.method === 'GET') {
+        await this.handleStatusRequest(req, res)
         return
       }
 
