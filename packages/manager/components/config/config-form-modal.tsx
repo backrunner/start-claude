@@ -73,7 +73,7 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pb-6 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent -mt-6 -mx-6 px-6 pt-6 flex-shrink-0">
+        <DialogHeader className="pb-6 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent -mt-6 -mx-6 px-6 pt-6">
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-lg shadow-primary/20">
               <Settings className="h-6 w-6 text-primary-foreground" />
@@ -111,7 +111,7 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
               Cancel
             </Button>
             <Button
-              onClick={() => void handleSave()}
+              onClick={(): void => { void handleSave() }}
               disabled={saving || !formData || !isValid}
               className="min-w-[140px] h-11 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25 font-semibold transition-all duration-200"
             >

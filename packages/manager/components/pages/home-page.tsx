@@ -17,9 +17,10 @@ import { SearchBar } from '@/components/layout/search-bar'
 import { SystemSettingsModal } from '@/components/settings/system-settings-modal'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { VSCodeProvider } from '@/context/vscode-context'
-import { useConfigs } from '@/hooks/use-configs'
-import { useShutdownCoordinator } from '@/hooks/use-shutdown-coordinator'
 import { useBroadcastChannel } from '@/hooks/use-broadcast-channel'
+import { useConfigs } from '@/hooks/use-configs'
+import { useHeartbeat } from '@/hooks/use-heartbeat'
+import { useShutdownCoordinator } from '@/hooks/use-shutdown-coordinator'
 
 interface HomePageProps {
   isVSCode: boolean
@@ -60,6 +61,30 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
       console.log('Shutdown notification received, closing page...')
       window.close()
     },
+  })
+
+  // Monitor backend health and close manager if connection is lost
+  useHeartbeat({
+    intervalMs: 3000, // Check every 3 seconds
+    maxFailures: 3, // Allow 3 consecutive failures before closing
+    timeoutMs: 2000, // 2 second timeout per request
+    startupDelayMs: 5000, // Wait 5 seconds before starting health checks (allows server to initialize)
+    onConnectionLost: () => {
+      console.error('[Heartbeat] Backend connection lost, closing manager...')
+
+      // Call shutdown if this is the last tab, then close window
+      void (async () => {
+        if (shutdownCoordinator) {
+          await shutdownCoordinator.callShutdownIfLastTab()
+        }
+
+        // Give a moment for shutdown to process, then close
+        setTimeout(() => {
+          window.close()
+        }, 500)
+      })()
+    },
+    enabled: !isVSCode, // Disable in VSCode since it manages lifecycle differently
   })
 
   const sensors = useSensors(
@@ -250,7 +275,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
             open={isSystemSettingsOpen}
             onClose={() => setIsSystemSettingsOpen(false)}
             initialSettings={settings}
-            onSave={(newSettings) => saveSettings(newSettings, notifyConfigChange)}
+            onSave={async newSettings => saveSettings(newSettings, notifyConfigChange)}
           />
 
           <ConfirmDeleteModal

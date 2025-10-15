@@ -219,7 +219,7 @@ export class ManagerServer {
       }
       removeLock()
 
-      // First, try to broadcast shutdown message to WebSocket clients
+      // Send shutdown request to manager server
       try {
         const req = http.request({
           hostname: 'localhost',
@@ -230,7 +230,7 @@ export class ManagerServer {
           timeout: 2000,
         }, () => {
           // Response received, shutdown message sent
-          ui.displayInfo('Shutdown signal sent to manager page')
+          ui.displayInfo('Shutdown signal sent to manager')
         })
 
         req.on('error', () => {
@@ -244,7 +244,7 @@ export class ManagerServer {
         req.write('{}')
         req.end()
 
-        // Give a brief moment for the WebSocket message to be sent
+        // Give a brief moment for the shutdown request to be processed
         await new Promise(resolve => setTimeout(resolve, 200))
       }
       catch {

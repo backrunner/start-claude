@@ -50,8 +50,11 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
 
   return (
     <div ref={setNodeRef} style={style} className={isDragging ? 'opacity-50' : ''}>
-      <Card className={`group relative overflow-hidden transition-all duration-200 hover:shadow-lg ${isEnabled ? 'border-l-4 border-l-primary shadow-sm' : ''}`}>
-        <CardContent className="p-4 sm:p-5">
+      <Card className={`group relative overflow-hidden transition-all duration-300 hover:shadow-xl ${isEnabled ? 'border-l-4 border-l-primary shadow-sm' : ''}`}>
+        {/* Gradient overlay on hover */}
+        <div className="absolute inset-0 bg-gradient-to-br from-white/[0.15] via-white/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none dark:from-white/[0.08] dark:via-white/[0.03]" />
+
+        <CardContent className="p-4 sm:p-5 relative z-10">
           {/* Mobile Layout */}
           <div className="flex flex-col gap-3 sm:hidden">
             <div
@@ -66,7 +69,8 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
               <div className="relative flex-shrink-0">
                 <div className={`rounded-xl bg-muted flex items-center justify-center font-bold text-sm border-2 ${
                   String((config.order ?? 0) || 1).length === 1 ? 'w-10 h-10' : 'w-12 h-10 px-2'
-                }`}>
+                }`}
+                >
                   {(config.order ?? 0) || 1}
                 </div>
                 {isDefault && (
@@ -156,7 +160,8 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
             <div className="relative flex-shrink-0">
               <div className={`rounded-xl bg-muted flex items-center justify-center font-bold text-lg border-2 ${
                 String((config.order ?? 0) || 1).length === 1 ? 'w-14 h-14' : 'w-16 h-14 px-2'
-              }`}>
+              }`}
+              >
                 {(config.order ?? 0) || 1}
               </div>
               {isDefault && (
