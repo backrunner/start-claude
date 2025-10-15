@@ -64,7 +64,9 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
 
             <div className="flex items-start gap-4 pr-12">
               <div className="relative flex-shrink-0">
-                <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center font-bold text-sm border-2">
+                <div className={`rounded-xl bg-muted flex items-center justify-center font-bold text-sm border-2 ${
+                  String((config.order ?? 0) || 1).length === 1 ? 'w-10 h-10' : 'w-12 h-10 px-2'
+                }`}>
                   {(config.order ?? 0) || 1}
                 </div>
                 {isDefault && (
@@ -152,7 +154,9 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
             </div>
 
             <div className="relative flex-shrink-0">
-              <div className="w-14 h-14 rounded-xl bg-muted flex items-center justify-center font-bold text-lg border-2">
+              <div className={`rounded-xl bg-muted flex items-center justify-center font-bold text-lg border-2 ${
+                String((config.order ?? 0) || 1).length === 1 ? 'w-14 h-14' : 'w-16 h-14 px-2'
+              }`}>
                 {(config.order ?? 0) || 1}
               </div>
               {isDefault && (

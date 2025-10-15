@@ -1,11 +1,12 @@
 {
   "compilerOptions": {
     "incremental": true,
-    "target": "es5",
+    "target": "es2015",
     "jsx": "preserve",
-    "lib": ["dom", "dom.iterable", "es6"],
+    "lib": ["dom", "dom.iterable", "es2015"],
     "module": "esnext",
     "moduleResolution": "bundler",
+    "downlevelIteration": true,
     "paths": {
       "@/*": ["./*"],
       "@/config/types": ["../cli/src/config/types"],

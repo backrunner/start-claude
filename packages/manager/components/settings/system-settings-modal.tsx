@@ -2,8 +2,8 @@
 
 import type { ReactNode } from 'react'
 import type { SystemSettings } from '@/config/types'
-import { Activity, AlertCircle, Cloud, Database, Globe, Key, Lock, Settings2, Timer, Zap } from 'lucide-react'
-import { useState } from 'react'
+import { Activity, AlertCircle, Cloud, CloudOff, Database, FolderSync, Globe, HardDrive, Key, Lock, RefreshCw, Settings2, Timer, Zap } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +13,38 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
+
+interface CloudProvider {
+  name: string
+  path?: string
+  isEnabled: boolean
+  hasConfigs?: boolean
+  configModifiedDate?: string
+}
+
+interface SyncConfig {
+  enabled: boolean
+  provider: 'icloud' | 'onedrive' | 'custom' | 's3'
+  cloudPath?: string
+  customPath?: string
+  s3Config?: {
+    bucket: string
+    region: string
+    key: string
+    endpointUrl?: string
+  }
+  linkedAt: string
+  lastVerified?: string
+}
+
+interface SyncStatus {
+  isConfigured: boolean
+  isValid: boolean
+  provider?: string
+  cloudPath?: string
+  configPath: string
+  issues: string[]
+}
 
 interface SystemSettingsModalProps {
   open: boolean
@@ -55,6 +87,45 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
   })
 
   const [saving, setSaving] = useState(false)
+  const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>([])
+  const [syncConfig, setSyncConfig] = useState<SyncConfig | null>(null)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
+  const [loadingSync, setLoadingSync] = useState(false)
+  const [customSyncPath, setCustomSyncPath] = useState('')
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
+  const [pendingSync, setPendingSync] = useState<{ provider: string, path?: string } | null>(null)
+  const [conflicts, setConflicts] = useState<any[]>([])
+  const [resolvingConflict, setResolvingConflict] = useState(false)
+  const [conflictDates, setConflictDates] = useState<{ local?: string, cloud?: string } | null>(null)
+
+  // Load cloud providers and sync status on mount
+  useEffect(() => {
+    const loadSyncData = async (): Promise<void> => {
+      try {
+        // Load available cloud providers
+        const providersRes = await fetch('/api/sync/providers')
+        if (providersRes.ok) {
+          const data = await providersRes.json()
+          setCloudProviders(data.available || [])
+        }
+
+        // Load sync status
+        const syncRes = await fetch('/api/sync')
+        if (syncRes.ok) {
+          const data = await syncRes.json()
+          setSyncStatus(data.status)
+          setSyncConfig(data.config)
+        }
+      }
+      catch (error) {
+        console.error('Error loading sync data:', error)
+      }
+    }
+
+    if (open) {
+      void loadSyncData()
+    }
+  }, [open])
 
   const handleSave = async (): Promise<void> => {
     setSaving(true)
@@ -153,6 +224,189 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
       ...prev,
       s3Sync: undefined,
     }))
+  }
+
+  const handleEnableCloudSync = async (provider: 'icloud' | 'onedrive' | 'custom'): Promise<void> => {
+    if (provider === 'custom') {
+      // Custom path will be set by user in the UI
+      return
+    }
+
+    setLoadingSync(true)
+    try {
+      const cloudProvider = cloudProviders.find(p =>
+        p.name.toLowerCase() === provider,
+      )
+
+      if (!cloudProvider || !cloudProvider.path) {
+        console.error(`Provider ${provider} not available or has no path`)
+        return
+      }
+
+      const response = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          cloudPath: cloudProvider.path,
+        }),
+      })
+
+      if (response.status === 409) {
+        // Conflict detected
+        const data = await response.json()
+        setConflicts(data.conflicts || [])
+        setConflictDates({
+          local: data.localModifiedDate,
+          cloud: data.cloudModifiedDate,
+        })
+        setPendingSync({ provider, path: cloudProvider.path })
+        setConflictDialogOpen(true)
+      }
+      else if (response.ok) {
+        const data = await response.json()
+        setSyncConfig(data.config)
+        setSyncStatus(data.status)
+      }
+    }
+    catch (error) {
+      console.error('Error enabling cloud sync:', error)
+    }
+    finally {
+      setLoadingSync(false)
+    }
+  }
+
+  const handleEnableCustomSync = async (): Promise<void> => {
+    if (!customSyncPath.trim()) {
+      return
+    }
+
+    setLoadingSync(true)
+    try {
+      const response = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'custom',
+          customPath: customSyncPath.trim(),
+        }),
+      })
+
+      if (response.status === 409) {
+        // Conflict detected
+        const data = await response.json()
+        setConflicts(data.conflicts || [])
+        setConflictDates({
+          local: data.localModifiedDate,
+          cloud: data.cloudModifiedDate,
+        })
+        setPendingSync({ provider: 'custom', path: customSyncPath.trim() })
+        setConflictDialogOpen(true)
+      }
+      else if (response.ok) {
+        const data = await response.json()
+        setSyncConfig(data.config)
+        setSyncStatus(data.status)
+        setCustomSyncPath('')
+      }
+    }
+    catch (error) {
+      console.error('Error enabling custom sync:', error)
+    }
+    finally {
+      setLoadingSync(false)
+    }
+  }
+
+  const handleDisableSync = async (): Promise<void> => {
+    setLoadingSync(true)
+    try {
+      const response = await fetch('/api/sync', {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        setSyncConfig(null)
+        setSyncStatus(null)
+      }
+    }
+    catch (error) {
+      console.error('Error disabling sync:', error)
+    }
+    finally {
+      setLoadingSync(false)
+    }
+  }
+
+  const handleResolveConflict = async (strategy: 'local' | 'remote' | 'merge'): Promise<void> => {
+    if (!pendingSync)
+      return
+
+    setResolvingConflict(true)
+    try {
+      // First resolve the conflicts
+      const resolveResponse = await fetch('/api/sync/conflicts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy }),
+      })
+
+      if (!resolveResponse.ok) {
+        console.error('Failed to resolve conflicts')
+        return
+      }
+
+      // After resolving, enable the sync
+      const enableResponse = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: pendingSync.provider,
+          cloudPath: pendingSync.provider !== 'custom' ? pendingSync.path : undefined,
+          customPath: pendingSync.provider === 'custom' ? pendingSync.path : undefined,
+        }),
+      })
+
+      if (enableResponse.ok) {
+        const data = await enableResponse.json()
+        setSyncConfig(data.config)
+        setSyncStatus(data.status)
+        setConflictDialogOpen(false)
+        setPendingSync(null)
+        setConflicts([])
+        setConflictDates(null)
+        if (pendingSync.provider === 'custom') {
+          setCustomSyncPath('')
+        }
+      }
+    }
+    catch (error) {
+      console.error('Error resolving conflict:', error)
+    }
+    finally {
+      setResolvingConflict(false)
+    }
+  }
+
+  const getProviderIcon = (provider: string): typeof Cloud => {
+    if (provider === 'icloud')
+      return Cloud
+    if (provider === 'onedrive')
+      return HardDrive
+    if (provider === 'custom')
+      return FolderSync
+    return Cloud
+  }
+
+  const getProviderDisplayName = (provider: string): string => {
+    if (provider === 'icloud')
+      return 'iCloud Drive'
+    if (provider === 'onedrive')
+      return 'OneDrive'
+    if (provider === 'custom')
+      return 'Custom Folder'
+    return provider
   }
 
   return (
@@ -375,6 +629,202 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
               </CardContent>
             </Card>
 
+            {/* Cloud Storage Sync - Full Width */}
+            <Card className="transition-all hover:shadow-md">
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/20">
+                      <RefreshCw className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Cloud Storage Sync</CardTitle>
+                      <CardDescription>Sync configurations across devices using iCloud, OneDrive, or custom folder</CardDescription>
+                    </div>
+                  </div>
+                  {syncConfig?.enabled && (
+                    <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+                      Active -
+                      {' '}
+                      {getProviderDisplayName(syncConfig.provider)}
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                {syncConfig?.enabled
+                  ? (
+                    // Currently Enabled - Show status and disable option
+                      <div className="space-y-4">
+                        <div className="p-4 rounded-lg border bg-muted/50">
+                          <div className="flex items-start gap-3">
+                            {(() => {
+                              const ProviderIcon = getProviderIcon(syncConfig.provider)
+                              return <ProviderIcon className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
+                            })()}
+                            <div className="flex-1">
+                              <div className="font-medium">
+                                {getProviderDisplayName(syncConfig.provider)}
+                                {' '}
+                                Sync Active
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Syncing enabled
+                              </p>
+                              {syncStatus && !syncStatus.isValid && (
+                                <div className="mt-2 p-2 rounded bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800">
+                                  <div className="flex items-start gap-2">
+                                    <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                                    <div className="text-sm">
+                                      <p className="font-medium text-yellow-900 dark:text-yellow-100">Sync Issues Detected</p>
+                                      <ul className="text-yellow-700 dark:text-yellow-300 mt-1 list-disc list-inside">
+                                        {syncStatus.issues.map((issue, idx) => (
+                                          <li key={idx}>{issue}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {syncConfig.linkedAt && (
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  Linked:
+                                  {' '}
+                                  {new Date(syncConfig.linkedAt).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                          <div className="flex-1">
+                            <Label className="font-medium">Migrate to Different Provider</Label>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Switch from
+                              {' '}
+                              {getProviderDisplayName(syncConfig.provider)}
+                              {' '}
+                              to another cloud provider
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(): void => { void handleDisableSync() }}
+                            disabled={loadingSync}
+                          >
+                            {loadingSync
+                              ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                    Processing...
+                                  </div>
+                                )
+                              : (
+                                  <>
+                                    <CloudOff className="h-4 w-4 mr-2" />
+                                    Disable & Reconfigure
+                                  </>
+                                )}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  : (
+                    // Not Enabled - Show options to enable
+                      <div className="space-y-4">
+                        <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                            <div className="text-sm">
+                              <p className="font-medium text-blue-900 dark:text-blue-100">Cloud Storage Sync</p>
+                              <p className="text-blue-700 dark:text-blue-300 mt-1">
+                                Automatically sync your configurations across multiple devices using cloud storage.
+                                Choose your preferred provider below.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Available Cloud Providers */}
+                        {cloudProviders.length > 0 && (
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Available Cloud Providers</Label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {cloudProviders.map(provider => (
+                                <Button
+                                  key={provider.name}
+                                  variant="outline"
+                                  className="h-auto p-4 justify-start"
+                                  onClick={(): void => {
+                                    void handleEnableCloudSync(provider.name.toLowerCase() as 'icloud' | 'onedrive')
+                                  }}
+                                  disabled={!provider.isEnabled || loadingSync}
+                                >
+                                  <div className="flex items-start gap-3 w-full">
+                                    {provider.name.toLowerCase() === 'icloud'
+                                      ? <Cloud className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                                      : <HardDrive className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />}
+                                    <div className="flex-1 text-left">
+                                      <div className="font-medium">{provider.name}</div>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        {provider.isEnabled
+                                          ? (provider.hasConfigs
+                                              ? (
+                                                  <>
+                                                    Configs Detected
+                                                    {provider.configModifiedDate && (
+                                                      <span className="block text-[10px] mt-0.5 opacity-75">
+                                                        Modified:
+                                                        {' '}
+                                                        {new Date(provider.configModifiedDate).toLocaleString()}
+                                                      </span>
+                                                    )}
+                                                  </>
+                                                )
+                                              : 'Available')
+                                          : 'Not available on this system'}
+                                      </p>
+                                    </div>
+                                    {provider.isEnabled && (
+                                      <Badge variant="secondary" className="text-xs">Ready</Badge>
+                                    )}
+                                  </div>
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Custom Folder Option */}
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Custom Folder</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="/path/to/sync/folder"
+                              value={customSyncPath}
+                              onChange={e => setCustomSyncPath(e.target.value)}
+                              disabled={loadingSync}
+                            />
+                            <Button
+                              onClick={(): void => { void handleEnableCustomSync() }}
+                              disabled={!customSyncPath.trim() || loadingSync}
+                            >
+                              <FolderSync className="h-4 w-4 mr-2" />
+                              Enable
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Use a custom directory for syncing (e.g., a network drive or manually synced folder)
+                          </p>
+                        </div>
+                      </div>
+                    )}
+              </CardContent>
+            </Card>
+
             {/* S3 Sync Settings - Full Width */}
             <Card className="transition-all hover:shadow-md">
               <CardHeader className="pb-4">
@@ -566,6 +1016,150 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {/* Conflict Resolution Dialog */}
+      <Dialog
+        open={conflictDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConflictDialogOpen(false)
+            setPendingSync(null)
+            setConflicts([])
+            setConflictDates(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0" />
+              <span className="truncate">Configuration Conflict Detected</span>
+            </DialogTitle>
+            <DialogDescription className="text-base">
+              Both local and cloud storage contain configuration files. How would you like to proceed?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4 overflow-x-hidden">
+            <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                <div className="text-sm min-w-0 flex-1">
+                  <p className="font-medium text-orange-900 dark:text-orange-100">
+                    {conflicts.length}
+                    {' '}
+                    conflict
+                    {conflicts.length !== 1 ? 's' : ''}
+                    {' '}
+                    detected
+                  </p>
+                  <p className="text-orange-700 dark:text-orange-300 mt-1">
+                    Please choose how to resolve the configuration differences.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Show modification dates */}
+            {conflictDates && (
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-2 rounded bg-muted/50 border">
+                  <div className="font-medium text-muted-foreground mb-1">Local Configuration</div>
+                  <div className="truncate">
+                    Modified:
+                    {' '}
+                    {conflictDates.local ? new Date(conflictDates.local).toLocaleString() : 'Unknown'}
+                  </div>
+                </div>
+                <div className="p-2 rounded bg-muted/50 border">
+                  <div className="font-medium text-muted-foreground mb-1">Cloud Configuration</div>
+                  <div className="truncate">
+                    Modified:
+                    {' '}
+                    {conflictDates.cloud ? new Date(conflictDates.cloud).toLocaleString() : 'Unknown'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Resolution Options */}
+            <div className="space-y-3">
+              <Button
+                variant="outline"
+                className="w-full h-auto p-4 justify-start text-left overflow-hidden"
+                onClick={() => { void handleResolveConflict('local') }}
+                disabled={resolvingConflict}
+              >
+                <div className="flex flex-col gap-1 w-full min-w-0">
+                  <div className="font-medium flex items-center gap-2">
+                    <HardDrive className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">Use Local Configuration</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground break-words">
+                    Upload your local configs to cloud. Remote configs will be replaced.
+                  </p>
+                </div>
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-auto p-4 justify-start text-left overflow-hidden"
+                onClick={() => { void handleResolveConflict('remote') }}
+                disabled={resolvingConflict}
+              >
+                <div className="flex flex-col gap-1 w-full min-w-0">
+                  <div className="font-medium flex items-center gap-2">
+                    <Cloud className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">Use Cloud Configuration</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground break-words">
+                    Download and use cloud configs. Local configs will be replaced.
+                  </p>
+                </div>
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-auto p-4 justify-start text-left overflow-hidden"
+                onClick={() => { void handleResolveConflict('merge') }}
+                disabled={resolvingConflict}
+              >
+                <div className="flex flex-col gap-1 w-full min-w-0">
+                  <div className="font-medium flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">Smart Merge (Recommended)</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground break-words">
+                    Merge both configs intelligently. Keeps API keys and preferences local, adds remote configs.
+                  </p>
+                </div>
+              </Button>
+            </div>
+
+            {resolvingConflict && (
+              <div className="flex items-center justify-center gap-2 p-4">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                <span className="text-sm text-muted-foreground">Resolving conflicts...</span>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConflictDialogOpen(false)
+                setPendingSync(null)
+                setConflicts([])
+                setConflictDates(null)
+              }}
+              disabled={resolvingConflict}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }
