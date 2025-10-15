@@ -2,10 +2,12 @@ import type { ClaudeConfig, ConfigFile } from './types'
 import { randomUUID } from 'node:crypto'
 import dayjs from 'dayjs'
 import { ConfigFileManager } from './file-operations'
+import { S3SyncManager } from '../storage/s3-sync'
 
 export class ConfigManager {
   private static instance: ConfigManager
   private configFileManager: ConfigFileManager
+  private pendingSyncs: Set<Promise<void>> = new Set()
 
   constructor() {
     this.configFileManager = ConfigFileManager.getInstance()
@@ -37,9 +39,16 @@ export class ConfigManager {
 
     this.configFileManager.save(config)
 
-    // Trigger S3 sync unless explicitly skipped
+    // Trigger S3 sync in background unless explicitly skipped
+    // Track the sync promise to enable graceful shutdown
     if (!skipSync) {
-      await this.triggerS3Sync()
+      const syncPromise = this.triggerS3Sync()
+        .finally(() => {
+          // Remove from pending syncs when complete
+          this.pendingSyncs.delete(syncPromise)
+        })
+
+      this.pendingSyncs.add(syncPromise)
     }
   }
 
@@ -64,8 +73,6 @@ export class ConfigManager {
 
   private async triggerS3Sync(): Promise<void> {
     try {
-      // Lazy import to avoid circular dependency at module level
-      const { S3SyncManager } = await import('../storage/s3-sync')
       const s3SyncManager = S3SyncManager.getInstance()
 
       // Only sync if S3 is configured
@@ -77,6 +84,43 @@ export class ConfigManager {
       // Silent fail for auto-sync, but log for debugging
       console.error('S3 sync failed:', error)
     }
+  }
+
+  /**
+   * Wait for all pending S3 sync operations to complete
+   * @param timeout Maximum time to wait in milliseconds (default: 10 seconds)
+   * @returns Promise that resolves when all syncs are complete or timeout is reached
+   */
+  async waitForPendingSyncs(timeout = 10000): Promise<void> {
+    if (this.pendingSyncs.size === 0) {
+      return
+    }
+
+    console.log(`[ConfigManager] Waiting for ${this.pendingSyncs.size} pending S3 sync operations...`)
+
+    const timeoutPromise = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        console.warn(`[ConfigManager] Timeout waiting for S3 syncs after ${timeout}ms`)
+        resolve()
+      }, timeout)
+    })
+
+    const allSyncsPromise = Promise.all(Array.from(this.pendingSyncs))
+      .then(() => {
+        console.log('[ConfigManager] All pending S3 syncs completed')
+      })
+      .catch((error) => {
+        console.error('[ConfigManager] Error in pending S3 syncs:', error)
+      })
+
+    await Promise.race([allSyncsPromise, timeoutPromise])
+  }
+
+  /**
+   * Check if there are any pending sync operations
+   */
+  hasPendingSyncs(): boolean {
+    return this.pendingSyncs.size > 0
   }
 
   async addConfig(config: ClaudeConfig): Promise<void> {

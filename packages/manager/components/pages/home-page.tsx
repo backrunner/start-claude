@@ -7,7 +7,7 @@ import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, us
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { AlertCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ConfigFormModal } from '@/components/config/config-form-modal'
 import { ConfigList } from '@/components/config/config-list'
 import { ConfirmDeleteModal } from '@/components/config/confirm-delete-modal'
@@ -19,7 +19,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { VSCodeProvider } from '@/context/vscode-context'
 import { useConfigs } from '@/hooks/use-configs'
 import { useShutdownCoordinator } from '@/hooks/use-shutdown-coordinator'
-import { useWebSocket } from '@/hooks/use-websocket'
+import { useBroadcastChannel } from '@/hooks/use-broadcast-channel'
 
 interface HomePageProps {
   isVSCode: boolean
@@ -34,9 +34,10 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     error,
     saveConfig,
     updateConfigs,
+    updateConfigsOptimistically,
     deleteConfig: deleteConfigAPI,
     saveSettings,
-    updateConfigsAndSettings,
+    refetchConfigs,
   } = useConfigs(initialConfigs, initialSettings)
 
   const [editingConfig, setEditingConfig] = useState<ClaudeConfig | null>(null)
@@ -44,12 +45,20 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
   const [isSystemSettingsOpen, setIsSystemSettingsOpen] = useState(false)
   const [deleteConfig, setDeleteConfig] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
+  const dragOperationInProgress = useRef(false)
 
   const { shutdownCoordinator } = useShutdownCoordinator()
-  useWebSocket({
-    onConfigUpdate: (newConfigs, newSettings) => {
-      console.log('Received config update via WebSocket')
-      updateConfigsAndSettings(newConfigs, newSettings)
+
+  // Use Broadcast Channel for cross-tab communication
+  const { notifyConfigChange } = useBroadcastChannel({
+    onConfigChange: () => {
+      console.log('Config change notification received, refetching...')
+      void refetchConfigs()
+    },
+    onShutdown: () => {
+      console.log('Shutdown notification received, closing page...')
+      window.close()
     },
   })
 
@@ -61,7 +70,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
   )
 
   const handleSaveConfig = async (config: ClaudeConfig): Promise<void> => {
-    await saveConfig(config, !!editingConfig)
+    await saveConfig(config, !!editingConfig, notifyConfigChange)
     setIsFormOpen(false)
     setEditingConfig(null)
   }
@@ -75,7 +84,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
       return
     }
 
-    await deleteConfigAPI(deleteConfig)
+    await deleteConfigAPI(deleteConfig, notifyConfigChange)
     setDeleteConfig(null)
   }
 
@@ -87,22 +96,56 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
   const handleDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event
 
-    if (active.id !== over?.id && over?.id) {
-      const oldIndex = filteredConfigs.findIndex(config => config.name === active.id)
-      const newIndex = filteredConfigs.findIndex(config => config.name === over.id)
+    // Prevent concurrent drag operations
+    if (dragOperationInProgress.current) {
+      console.warn('Drag operation already in progress, ignoring...')
+      return
+    }
 
-      const reorderedConfigs = arrayMove(filteredConfigs, oldIndex, newIndex)
-      const updatedFilteredConfigs = reorderedConfigs.map((config, index) => ({
+    if (active.id !== over?.id && over?.id) {
+      // Find the indices in the full configs array
+      const oldIndex = configs.findIndex(config => config.name === active.id)
+      const newIndex = configs.findIndex(config => config.name === over.id)
+
+      if (oldIndex === -1 || newIndex === -1) {
+        console.error('Invalid drag operation: config not found')
+        return
+      }
+
+      // Lock the operation
+      dragOperationInProgress.current = true
+      setIsDragging(true)
+
+      // Save original state for potential rollback
+      const originalConfigs = [...configs]
+
+      // Calculate new order
+      const reorderedConfigs = arrayMove(configs, oldIndex, newIndex)
+      const updatedConfigs = reorderedConfigs.map((config, index) => ({
         ...config,
         order: index + 1,
       }))
 
-      const allConfigsUpdated = configs.map((config) => {
-        const updatedConfig = updatedFilteredConfigs.find(c => c.name === config.name)
-        return updatedConfig || config
-      })
+      // Update UI optimistically
+      updateConfigsOptimistically(updatedConfigs)
 
-      void updateConfigs(allConfigsUpdated)
+      // Persist to server
+      void (async () => {
+        try {
+          await updateConfigs(updatedConfigs, undefined, notifyConfigChange)
+          console.log('Config order updated successfully')
+        }
+        catch (error) {
+          // Rollback to original state on failure
+          console.error('Failed to update config order, reverting...', error)
+          updateConfigsOptimistically(originalConfigs)
+        }
+        finally {
+          // Release the lock
+          dragOperationInProgress.current = false
+          setIsDragging(false)
+        }
+      })()
     }
   }
 
@@ -115,7 +158,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     const updatedConfigs = configs.map(config =>
       config.name === configName ? { ...config, enabled } : config,
     )
-    void updateConfigs(updatedConfigs, `Configuration "${configName}" has been ${enabled ? 'enabled' : 'disabled'}.`)
+    void updateConfigs(updatedConfigs, `Configuration "${configName}" has been ${enabled ? 'enabled' : 'disabled'}.`, notifyConfigChange)
   }
 
   const handleSetDefault = (configName: string): void => {
@@ -123,7 +166,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
       ...config,
       isDefault: config.name === configName,
     }))
-    void updateConfigs(updatedConfigs, `Configuration "${configName}" has been set as the default.`)
+    void updateConfigs(updatedConfigs, `Configuration "${configName}" has been set as the default.`, notifyConfigChange)
   }
 
   return (
@@ -175,7 +218,11 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
                       onDragEnd={handleDragEnd}
                       modifiers={[restrictToVerticalAxis]}
                     >
-                      <SortableContext items={filteredConfigs.map(c => c.name)} strategy={verticalListSortingStrategy}>
+                      <SortableContext
+                        items={filteredConfigs.map(c => c.name)}
+                        strategy={verticalListSortingStrategy}
+                        disabled={isDragging}
+                      >
                         <ConfigList
                           configs={filteredConfigs}
                           onEdit={handleEdit}
@@ -203,7 +250,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
             open={isSystemSettingsOpen}
             onClose={() => setIsSystemSettingsOpen(false)}
             initialSettings={settings}
-            onSave={saveSettings}
+            onSave={(newSettings) => saveSettings(newSettings, notifyConfigChange)}
           />
 
           <ConfirmDeleteModal

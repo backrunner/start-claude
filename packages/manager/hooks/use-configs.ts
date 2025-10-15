@@ -9,27 +9,25 @@ interface UseConfigsReturn {
   settings: SystemSettings
   error: string | null
   setError: (error: string | null) => void
-  saveConfig: (config: ClaudeConfig, isEditing: boolean) => Promise<void>
-  updateConfigs: (updatedConfigs: ClaudeConfig[], customMessage?: string) => Promise<void>
-  deleteConfig: (configName: string) => Promise<void>
-  saveSettings: (newSettings: SystemSettings) => Promise<void>
-  updateConfigsAndSettings: (newConfigs: ClaudeConfig[], newSettings: SystemSettings) => void
+  saveConfig: (config: ClaudeConfig, isEditing: boolean, notifyOthers?: () => void) => Promise<void>
+  updateConfigs: (updatedConfigs: ClaudeConfig[], customMessage?: string, notifyOthers?: () => void) => Promise<void>
+  updateConfigsOptimistically: (updatedConfigs: ClaudeConfig[]) => void
+  deleteConfig: (configName: string, notifyOthers?: () => void) => Promise<void>
+  saveSettings: (newSettings: SystemSettings, notifyOthers?: () => void) => Promise<void>
   refetchConfigs: () => Promise<void>
 }
 
 export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: SystemSettings): UseConfigsReturn {
   const { toast } = useToast()
-  const [configs, setConfigs] = useState<ClaudeConfig[]>(initialConfigs || [])
+
+  // Helper function to sort configs by order
+  const sortConfigsByOrder = (configs: ClaudeConfig[]): ClaudeConfig[] => {
+    return [...configs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  }
+
+  const [configs, setConfigs] = useState<ClaudeConfig[]>(sortConfigsByOrder(initialConfigs || []))
   const [settings, setSettings] = useState<SystemSettings>(initialSettings || {} as SystemSettings)
   const [error, setError] = useState<string | null>(null)
-
-  // Function to update configs and settings (for WebSocket updates)
-  // WebSocket updates should always take precedence over optimistic updates
-  const updateConfigsAndSettings = (newConfigs: ClaudeConfig[], newSettings: SystemSettings): void => {
-    console.log('[useConfigs] Applying WebSocket update')
-    setConfigs(newConfigs)
-    setSettings(newSettings)
-  }
 
   // Function to refetch configs from the server
   const refetchConfigs = async (): Promise<void> => {
@@ -45,7 +43,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       }
 
       const data = await response.json()
-      setConfigs(data.configs)
+      setConfigs(sortConfigsByOrder(data.configs))
       if (data.settings) {
         setSettings(data.settings)
       }
@@ -57,7 +55,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
     }
   }
 
-  const saveConfig = async (config: ClaudeConfig, isEditing: boolean): Promise<void> => {
+  const saveConfig = async (config: ClaudeConfig, isEditing: boolean, notifyOthers?: () => void): Promise<void> => {
     try {
       const response = await fetch('/api/configs', {
         method: 'POST',
@@ -73,7 +71,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       const data = await response.json()
 
       // Update configs with the response data immediately
-      setConfigs(data.configs)
+      setConfigs(sortConfigsByOrder(data.configs))
       if (data.settings) {
         setSettings(data.settings)
       }
@@ -83,6 +81,11 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
         description: `Configuration "${config.name}" has been ${isEditing ? 'updated' : 'created'} successfully.`,
         variant: 'success',
       })
+
+      // Notify other tabs about the config change
+      if (notifyOthers) {
+        notifyOthers()
+      }
     }
     catch (error) {
       console.error('Error saving config:', error)
@@ -98,7 +101,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
     }
   }
 
-  const updateConfigs = async (updatedConfigs: ClaudeConfig[], customMessage?: string): Promise<void> => {
+  const updateConfigs = async (updatedConfigs: ClaudeConfig[], customMessage?: string, notifyOthers?: () => void): Promise<void> => {
     try {
       const response = await fetch('/api/configs', {
         method: 'PUT',
@@ -114,7 +117,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       const data = await response.json()
 
       // Update configs with the response data immediately
-      setConfigs(data.configs)
+      setConfigs(sortConfigsByOrder(data.configs))
       if (data.settings) {
         setSettings(data.settings)
       }
@@ -124,6 +127,11 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
         description: customMessage || 'Configuration order has been updated successfully.',
         variant: 'success',
       })
+
+      // Notify other tabs about the config change
+      if (notifyOthers) {
+        notifyOthers()
+      }
     }
     catch (error) {
       console.error('Error updating configs:', error)
@@ -139,7 +147,12 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
     }
   }
 
-  const deleteConfig = async (configName: string): Promise<void> => {
+  // Optimistically update configs locally without API call
+  const updateConfigsOptimistically = (updatedConfigs: ClaudeConfig[]): void => {
+    setConfigs(sortConfigsByOrder(updatedConfigs))
+  }
+
+  const deleteConfig = async (configName: string, notifyOthers?: () => void): Promise<void> => {
     try {
       const response = await fetch(`/api/configs?name=${encodeURIComponent(configName)}`, {
         method: 'DELETE',
@@ -153,7 +166,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       const data = await response.json()
 
       // Update configs with the response data immediately
-      setConfigs(data.configs)
+      setConfigs(sortConfigsByOrder(data.configs))
       if (data.settings) {
         setSettings(data.settings)
       }
@@ -163,6 +176,11 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
         description: `Configuration "${configName}" has been deleted successfully.`,
         variant: 'success',
       })
+
+      // Notify other tabs about the config change
+      if (notifyOthers) {
+        notifyOthers()
+      }
     }
     catch (error) {
       console.error('Error deleting config:', error)
@@ -178,7 +196,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
     }
   }
 
-  const saveSettings = async (newSettings: SystemSettings): Promise<void> => {
+  const saveSettings = async (newSettings: SystemSettings, notifyOthers?: () => void): Promise<void> => {
     try {
       const response = await fetch('/api/settings', {
         method: 'PUT',
@@ -199,6 +217,11 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
         description: 'System settings have been updated successfully.',
         variant: 'success',
       })
+
+      // Notify other tabs about the config change
+      if (notifyOthers) {
+        notifyOthers()
+      }
     }
     catch (error) {
       console.error('Error saving system settings:', error)
@@ -221,9 +244,9 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
     setError,
     saveConfig,
     updateConfigs,
+    updateConfigsOptimistically,
     deleteConfig,
     saveSettings,
-    updateConfigsAndSettings, // Export for WebSocket updates
     refetchConfigs,
   }
 }

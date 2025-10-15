@@ -1,13 +1,13 @@
 import type { NextRequest } from 'next/server'
 import process from 'node:process'
 import { NextResponse } from 'next/server'
-import { broadcastShutdown } from '../ws/route'
+import { ConfigManager } from '@start-claude/cli/src/config/manager'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-function initiateShutdown(): void {
+async function initiateShutdown(): Promise<void> {
   console.log('Shutdown initiated...')
 
   // Check if running in VSCode plugin - if so, don't shutdown
@@ -16,13 +16,22 @@ function initiateShutdown(): void {
     return
   }
 
-  // First broadcast shutdown message to WebSocket clients
+  // Wait for any pending S3 sync operations to complete
   try {
-    broadcastShutdown()
-    console.log('WebSocket shutdown message broadcasted')
+    const configManager = ConfigManager.getInstance()
+
+    if (configManager.hasPendingSyncs()) {
+      console.log('[Shutdown] Waiting for pending S3 sync operations to complete...')
+      await configManager.waitForPendingSyncs(10000) // 10 second timeout
+      console.log('[Shutdown] All pending syncs completed or timed out')
+    }
+    else {
+      console.log('[Shutdown] No pending sync operations')
+    }
   }
   catch (error) {
-    console.error('Failed to broadcast shutdown via WebSocket:', error)
+    console.error('[Shutdown] Error waiting for pending syncs:', error)
+    // Continue with shutdown even if there's an error
   }
 
   // Schedule the server shutdown after a brief delay to allow response to be sent
@@ -35,7 +44,7 @@ function initiateShutdown(): void {
   setTimeout(() => {
     console.log('Force killing manager server...')
     process.exit(1)
-  }, 1000)
+  }, 12000) // Increased to 12 seconds to account for sync timeout
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -49,14 +58,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     console.log('Shutdown request received')
-    initiateShutdown()
+    await initiateShutdown()
 
     return NextResponse.json({ success: true, message: 'Server shutdown initiated' })
   }
   catch (error) {
     console.error('Shutdown API error:', error)
     // Still initiate shutdown even if there's an error
-    initiateShutdown()
+    await initiateShutdown()
     return NextResponse.json({ error: 'Failed to process shutdown request, but shutdown initiated' }, { status: 500 })
   }
 }
@@ -64,12 +73,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 // Handle sendBeacon requests which might come as different HTTP methods
 export async function GET(): Promise<NextResponse> {
   console.log('Shutdown request received (GET)')
-  initiateShutdown()
+  await initiateShutdown()
   return NextResponse.json({ success: true, message: 'Server shutdown initiated' })
 }
 
 export async function PUT(): Promise<NextResponse> {
   console.log('Shutdown request received (PUT)')
-  initiateShutdown()
+  await initiateShutdown()
   return NextResponse.json({ success: true, message: 'Server shutdown initiated' })
 }
