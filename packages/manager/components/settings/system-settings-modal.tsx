@@ -411,15 +411,17 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pb-6 border-b">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <Settings2 className="h-5 w-5 text-primary" />
+      <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
+        <DialogHeader className="pb-6 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent -mt-6 -mx-6 px-6 pt-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-lg shadow-primary/20">
+              <Settings2 className="h-6 w-6 text-primary-foreground" />
             </div>
             <div className="flex-1">
-              <DialogTitle className="text-2xl font-semibold">System Settings</DialogTitle>
-              <DialogDescription className="text-base mt-1">
+              <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                System Settings
+              </DialogTitle>
+              <DialogDescription className="text-base mt-1.5 text-muted-foreground">
                 Configure advanced features and integrations for Start Claude
               </DialogDescription>
             </div>
@@ -430,23 +432,23 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           <div className="grid grid-cols-1 gap-6 pr-3">
 
             {/* Proxy Server Settings - Full Width */}
-            <Card className="transition-all hover:shadow-md">
-              <CardHeader className="pb-4">
+            <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/10 border-2 hover:border-blue-500/30 group">
+              <CardHeader className="pb-5 bg-gradient-to-br from-blue-50/50 via-transparent to-transparent dark:from-blue-950/20">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/20">
-                    <Zap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30 group-hover:shadow-blue-500/50 transition-all duration-300">
+                    <Zap className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-lg">Proxy Server</CardTitle>
-                    <CardDescription>Configure proxy server and load balancing behavior</CardDescription>
+                    <CardTitle className="text-xl font-bold">Proxy Server</CardTitle>
+                    <CardDescription className="text-sm mt-0.5">Configure proxy server and load balancing behavior</CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                   <div className="flex-1">
-                    <Label htmlFor="enableByDefault" className="font-medium">Enable by Default</Label>
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <Label htmlFor="enableByDefault" className="font-semibold text-base cursor-pointer">Enable by Default</Label>
+                    <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                       Automatically start proxy server for multi-endpoint configurations
                     </p>
                   </div>
@@ -454,14 +456,15 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                     id="enableByDefault"
                     checked={settings.balanceMode?.enableByDefault || false}
                     onCheckedChange={checked => handleBalanceModeChange('enableByDefault', checked)}
+                    className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600"
                   />
                 </div>
 
                 {/* Load Balancing Strategy */}
-                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                   <div className="flex-1">
-                    <Label htmlFor="loadBalancerStrategy" className="font-medium">Load Balancing Strategy</Label>
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <Label htmlFor="loadBalancerStrategy" className="font-semibold text-base">Load Balancing Strategy</Label>
+                    <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                       Determines how requests are distributed across multiple endpoints
                     </p>
                   </div>
@@ -469,7 +472,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                     value={settings.balanceMode?.strategy || LoadBalancerStrategy.Fallback}
                     onValueChange={(value: LoadBalancerStrategy) => handleBalanceModeChange('strategy', value)}
                   >
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger className="w-40 h-10 font-medium">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -482,10 +485,12 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
 
                 {/* Speed First Configuration */}
                 {settings.balanceMode?.strategy === LoadBalancerStrategy.SpeedFirst && (
-                  <div className="space-y-3 p-3 rounded-lg border bg-muted/50">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Timer className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                      <Label className="font-medium">Speed First Configuration</Label>
+                  <div className="space-y-4 p-5 rounded-xl border-2 bg-gradient-to-br from-orange-50/50 via-transparent to-transparent dark:from-orange-950/20 border-orange-200/50 dark:border-orange-800/50">
+                    <div className="flex items-center gap-2.5 mb-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 shadow-md shadow-orange-500/30">
+                        <Timer className="h-4 w-4 text-white" />
+                      </div>
+                      <Label className="font-bold text-lg">Speed First Configuration</Label>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -564,12 +569,14 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                   </div>
                 )}
 
-                <div className="space-y-3 p-3 rounded-lg border bg-muted/50">
+                <div className="space-y-4 p-5 rounded-xl border-2 bg-gradient-to-br from-green-50/50 via-transparent to-transparent dark:from-green-950/20 border-green-200/50 dark:border-green-800/50">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Activity className="h-4 w-4 text-green-600 dark:text-green-400" />
-                      <Label htmlFor="healthCheckEnabled" className="font-medium">Endpoint Health Checks</Label>
-                      <Badge variant="secondary" className="text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600 shadow-md shadow-green-500/30">
+                        <Activity className="h-4 w-4 text-white" />
+                      </div>
+                      <Label htmlFor="healthCheckEnabled" className="font-bold text-base">Endpoint Health Checks</Label>
+                      <Badge variant={settings.balanceMode?.healthCheck?.enabled !== false ? "default" : "secondary"} className="text-xs ml-1">
                         {settings.balanceMode?.healthCheck?.enabled !== false ? 'Enabled' : 'Disabled'}
                       </Badge>
                     </div>
@@ -577,6 +584,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                       id="healthCheckEnabled"
                       checked={settings.balanceMode?.healthCheck?.enabled !== false}
                       onCheckedChange={checked => handleHealthCheckChange('enabled', checked)}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-green-500 data-[state=checked]:to-green-600"
                     />
                   </div>
 
@@ -630,23 +638,21 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
             </Card>
 
             {/* Cloud Storage Sync - Full Width */}
-            <Card className="transition-all hover:shadow-md">
-              <CardHeader className="pb-4">
+            <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/10 border-2 hover:border-purple-500/30 group">
+              <CardHeader className="pb-5 bg-gradient-to-br from-purple-50/50 via-transparent to-transparent dark:from-purple-950/20">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900/20">
-                      <RefreshCw className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg shadow-purple-500/30 group-hover:shadow-purple-500/50 transition-all duration-300">
+                      <RefreshCw className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <CardTitle className="text-lg">Cloud Storage Sync</CardTitle>
-                      <CardDescription>Sync configurations across devices using iCloud, OneDrive, or custom folder</CardDescription>
+                      <CardTitle className="text-xl font-bold">Cloud Storage Sync</CardTitle>
+                      <CardDescription className="text-sm mt-0.5">Sync configurations across devices using iCloud, OneDrive, or custom folder</CardDescription>
                     </div>
                   </div>
                   {syncConfig?.enabled && (
-                    <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
-                      Active -
-                      {' '}
-                      {getProviderDisplayName(syncConfig.provider)}
+                    <Badge className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 shadow-lg shadow-green-500/30 px-3 py-1">
+                      Active - {getProviderDisplayName(syncConfig.provider)}
                     </Badge>
                   )}
                 </div>
@@ -826,24 +832,29 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
             </Card>
 
             {/* S3 Sync Settings - Full Width */}
-            <Card className="transition-all hover:shadow-md">
-              <CardHeader className="pb-4">
+            <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-orange-500/10 border-2 hover:border-orange-500/30 group">
+              <CardHeader className="pb-5 bg-gradient-to-br from-orange-50/50 via-transparent to-transparent dark:from-orange-950/20">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/20">
-                      <Cloud className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg shadow-orange-500/30 group-hover:shadow-orange-500/50 transition-all duration-300">
+                      <Cloud className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <CardTitle className="text-lg">S3 Cloud Sync</CardTitle>
-                      <CardDescription>Sync configurations across devices using AWS S3 or compatible storage</CardDescription>
+                      <CardTitle className="text-xl font-bold">S3 Cloud Sync</CardTitle>
+                      <CardDescription className="text-sm mt-0.5">Sync configurations across devices using AWS S3 or compatible storage</CardDescription>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {settings.s3Sync && <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">Active</Badge>}
+                  <div className="flex items-center gap-3">
+                    {settings.s3Sync && (
+                      <Badge className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 shadow-lg shadow-green-500/30 px-3 py-1">
+                        Active
+                      </Badge>
+                    )}
                     <Switch
                       id="enableS3"
                       checked={!!settings.s3Sync}
                       onCheckedChange={checked => checked ? enableS3() : disableS3()}
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-orange-500 data-[state=checked]:to-orange-600"
                     />
                   </div>
                 </div>
@@ -994,25 +1005,32 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           </div>
         </div>
 
-        <DialogFooter className="pt-6 border-t bg-muted/10 flex-shrink-0">
-          <div className="flex items-center justify-end w-full">
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={onClose} disabled={saving} className="min-w-[100px]">
-                Cancel
-              </Button>
-              <Button onClick={(): void => { void handleSave() }} disabled={saving} className="min-w-[120px] bg-primary hover:bg-primary/90">
-                {saving
-                  ? (
-                      <div className="flex items-center gap-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        Saving...
-                      </div>
-                    )
-                  : (
-                      'Save Settings'
-                    )}
-              </Button>
-            </div>
+        <DialogFooter className="pt-6 border-t bg-gradient-to-r from-muted/20 to-transparent flex-shrink-0 -mb-6 -mx-6 px-6 pb-6">
+          <div className="flex items-center justify-end w-full gap-3">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              disabled={saving}
+              className="min-w-[100px] h-11 font-medium hover:bg-muted/80 transition-colors"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={(): void => { void handleSave() }}
+              disabled={saving}
+              className="min-w-[140px] h-11 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25 font-semibold transition-all duration-200"
+            >
+              {saving
+                ? (
+                    <div className="flex items-center gap-2">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Saving...
+                    </div>
+                  )
+                : (
+                    'Save Settings'
+                  )}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>

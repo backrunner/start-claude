@@ -72,17 +72,17 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pb-6 border-b flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <Settings className="h-5 w-5 text-primary" />
+      <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
+        <DialogHeader className="pb-6 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent -mt-6 -mx-6 px-6 pt-6 flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-lg shadow-primary/20">
+              <Settings className="h-6 w-6 text-primary-foreground" />
             </div>
             <div className="flex-1">
-              <DialogTitle className="text-2xl font-semibold">
+              <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
                 {config ? 'Edit Configuration' : 'Create Configuration'}
               </DialogTitle>
-              <DialogDescription className="text-base mt-1">
+              <DialogDescription className="text-base mt-1.5 text-muted-foreground">
                 {config ? 'Update your Claude configuration settings' : 'Set up a new Claude configuration'}
               </DialogDescription>
             </div>
@@ -100,29 +100,32 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
           </div>
         </div>
 
-        <DialogFooter className="pt-6 border-t bg-muted/10 flex-shrink-0">
-          <div className="flex items-center justify-end w-full">
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={handleCancel} disabled={saving} className="min-w-[100px]">
-                Cancel
-              </Button>
-              <Button
-                onClick={() => void handleSave()}
-                disabled={saving || !formData || !isValid}
-                className="min-w-[120px] bg-primary hover:bg-primary/90"
-              >
-                {saving
-                  ? (
-                      <div className="flex items-center gap-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        Saving...
-                      </div>
-                    )
-                  : (
-                      config ? 'Update Configuration' : 'Create Configuration'
-                    )}
-              </Button>
-            </div>
+        <DialogFooter className="pt-6 border-t bg-gradient-to-r from-muted/20 to-transparent flex-shrink-0 -mb-6 -mx-6 px-6 pb-6">
+          <div className="flex items-center justify-end w-full gap-3">
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              disabled={saving}
+              className="min-w-[100px] h-11 font-medium hover:bg-muted/80 transition-colors"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleSave()}
+              disabled={saving || !formData || !isValid}
+              className="min-w-[140px] h-11 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25 font-semibold transition-all duration-200"
+            >
+              {saving
+                ? (
+                    <div className="flex items-center gap-2">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Saving...
+                    </div>
+                  )
+                : (
+                    config ? 'Update Configuration' : 'Create Configuration'
+                  )}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>
