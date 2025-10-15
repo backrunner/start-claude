@@ -1081,6 +1081,11 @@ export class ProxyServer {
       return false // Continue normal processing (pass through the error)
     }
 
+    // Don't attempt retry if there's only one endpoint (no fallback available)
+    if (this.endpoints.length === 1) {
+      return false // No retry possible with single endpoint
+    }
+
     // Mark endpoint as unhealthy only for main /v1/messages endpoint errors
     this.markEndpointUnhealthy(endpoint, errorMessage)
 
@@ -2080,6 +2085,17 @@ export class ProxyServer {
   }
 
   private markEndpointUnhealthy(endpoint: EndpointStatus, error: string): void {
+    // IMPORTANT: If there's only one endpoint, don't mark it as unhealthy
+    // Otherwise the service will become completely unavailable with no fallback
+    if (this.endpoints.length === 1) {
+      this.ui.verbose(`Endpoint ${endpoint.config.name} error (single endpoint, keeping available): ${error}`)
+      endpoint.failureCount++
+      endpoint.lastError = error
+      endpoint.lastCheck = Date.now()
+      // Keep endpoint as healthy since there's no alternative
+      return
+    }
+
     endpoint.isHealthy = false
     endpoint.failureCount++
     endpoint.lastError = error
