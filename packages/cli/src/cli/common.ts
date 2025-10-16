@@ -454,13 +454,15 @@ export async function resolveConfig(
       return createNewConfig(configManager)
     }
     else {
-      // Check for newer remote configs even when we have local configs
-      const updatedConfig = await handleS3UpdateCheck(
-        configManager,
-        s3SyncManager,
-      )
-      if (updatedConfig) {
-        config = updatedConfig
+      // Check for newer remote configs only if we haven't already synced at startup
+      if (!hasAlreadySynced) {
+        const updatedConfig = await handleS3UpdateCheck(
+          configManager,
+          s3SyncManager,
+        )
+        if (updatedConfig) {
+          config = updatedConfig
+        }
       }
 
       if (!config) {
@@ -484,13 +486,15 @@ export async function resolveConfig(
     }
   }
   else {
-    // Even when we have a default config, check if there's a newer version on S3
-    const updatedConfig = await handleS3UpdateCheck(
-      configManager,
-      s3SyncManager,
-    )
-    if (updatedConfig) {
-      config = updatedConfig
+    // Check for newer version on S3 only if we haven't already synced at startup
+    if (!hasAlreadySynced) {
+      const updatedConfig = await handleS3UpdateCheck(
+        configManager,
+        s3SyncManager,
+      )
+      if (updatedConfig) {
+        config = updatedConfig
+      }
     }
   }
 

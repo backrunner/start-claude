@@ -239,9 +239,15 @@ program
       checkForUpdates(options.checkUpdates || configManager.needsImmediateUpdate()),
 
       // Check for remote config updates
+      // Skip if cloud sync is enabled (cloud sync auto-syncs via filesystem, no need to check S3)
       s3SyncManager.isS3Configured().then(async (isConfigured) => {
         if (!isConfigured)
           return false
+        // Skip S3 sync if cloud sync is enabled (filesystem-based sync is faster)
+        if (s3SyncManager.isCloudSyncEnabled()) {
+          ui.verbose('Cloud sync enabled, skipping S3 sync check')
+          return false
+        }
         return s3SyncManager.checkAutoSync({ verbose: options.verbose }).catch(() => false)
       }),
 
