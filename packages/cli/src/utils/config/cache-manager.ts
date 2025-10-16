@@ -260,9 +260,10 @@ export class CacheManager {
   }
 
   /**
-   * Check if we should perform an update check (24 hour interval)
+   * Check if we should perform an update check
+   * @param intervalMs - Custom interval in milliseconds (default: 24 hours)
    */
-  shouldCheckForUpdates(): boolean {
+  shouldCheckForUpdates(intervalMs: number = 24 * 60 * 60 * 1000): boolean {
     const lastCheck = this.getUpdateCheckTimestamp()
 
     if (!lastCheck) {
@@ -270,10 +271,9 @@ export class CacheManager {
     }
 
     const now = Date.now()
-    const oneDayInMs = 24 * 60 * 60 * 1000 // 24 hours
     const timeSinceLastCheck = now - lastCheck
 
-    return timeSinceLastCheck >= oneDayInMs
+    return timeSinceLastCheck >= intervalMs
   }
 
   /**

@@ -1,4 +1,6 @@
+import type { Buffer } from 'node:buffer'
 import { exec, spawn } from 'node:child_process'
+import https from 'node:https'
 import process from 'node:process'
 import { version } from '../../../package.json'
 import { isGlobalNodePath } from '../system/path-utils'
@@ -11,6 +13,49 @@ export interface UpdateInfo {
   updateCommand: string
 }
 
+/**
+ * Fetch latest version from npm registry via HTTP
+ * Much faster than spawning pnpm subprocess
+ */
+async function fetchLatestVersionFromNpm(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timeout = 3000 // Reduced to 3 seconds
+
+    const req = https.get('https://registry.npmjs.org/start-claude/latest', {
+      timeout,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'start-claude-cli',
+      },
+    }, (res: any) => {
+      let data = ''
+
+      res.on('data', (chunk: Buffer) => {
+        data += chunk.toString()
+      })
+
+      res.on('end', () => {
+        try {
+          const pkg = JSON.parse(data)
+          resolve(pkg.version)
+        }
+        catch {
+          reject(new Error('Failed to parse npm registry response'))
+        }
+      })
+    })
+
+    req.on('timeout', () => {
+      req.destroy()
+      reject(new Error('Request timeout'))
+    })
+
+    req.on('error', (error: Error) => {
+      reject(error)
+    })
+  })
+}
+
 export async function checkForUpdates(forceCheck = false): Promise<UpdateInfo | null> {
   try {
     const cache = CacheManager.getInstance()
@@ -20,16 +65,8 @@ export async function checkForUpdates(forceCheck = false): Promise<UpdateInfo | 
       return null
     }
 
-    const latestVersion = await new Promise<string>((resolve, reject) => {
-      exec('pnpm view start-claude version', { timeout: 5000 }, (error, stdout) => {
-        if (error) {
-          reject(error)
-        }
-        else {
-          resolve(stdout.trim())
-        }
-      })
-    })
+    // Use HTTP request instead of spawning pnpm subprocess
+    const latestVersion = await fetchLatestVersionFromNpm()
 
     const hasUpdate = compareVersions(version, latestVersion) < 0
 
