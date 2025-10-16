@@ -328,4 +328,36 @@ export class CacheManager {
 
     this.saveCacheData(data)
   }
+
+  /**
+   * Claude installation check (permanent cache - only check once)
+   */
+  isClaudeInstalled(): boolean | null {
+    return this.get('claude.installed')
+  }
+
+  /**
+   * Set Claude installation status (permanent - no expiration)
+   */
+  setClaudeInstalled(isInstalled: boolean, version?: string): void {
+    this.set('claude.installed', isInstalled) // No TTL = permanent
+    if (version) {
+      this.set('claude.version', version)
+    }
+  }
+
+  /**
+   * Get cached Claude version
+   */
+  getClaudeVersion(): string | null {
+    return this.get('claude.version')
+  }
+
+  /**
+   * Clear Claude installation cache (force re-check on next startup)
+   */
+  clearClaudeInstallationCache(): void {
+    this.delete('claude.installed')
+    this.delete('claude.version')
+  }
 }

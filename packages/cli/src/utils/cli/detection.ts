@@ -1,6 +1,7 @@
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import inquirer from 'inquirer'
+import { CacheManager } from '../config/cache-manager'
 
 const execAsync = promisify(exec)
 
@@ -9,15 +10,33 @@ export async function checkClaudeInstallation(): Promise<{
   version?: string
   error?: string
 }> {
+  const cache = CacheManager.getInstance()
+
+  // Check permanent cache first - only verify installation once
+  const cachedInstalled = cache.isClaudeInstalled()
+  if (cachedInstalled === true) {
+    const cachedVersion = cache.getClaudeVersion()
+    return {
+      isInstalled: true,
+      version: cachedVersion || undefined,
+    }
+  }
+
+  // First time check or previously failed - verify installation
   try {
     const { stdout } = await execAsync('claude --version')
     const version = stdout.trim()
+
+    // Cache permanently (no expiration)
+    cache.setClaudeInstalled(true, version)
+
     return {
       isInstalled: true,
       version,
     }
   }
   catch (error) {
+    // Don't cache failures - allow retry on next startup
     return {
       isInstalled: false,
       error: error instanceof Error ? error.message : 'Unknown error',

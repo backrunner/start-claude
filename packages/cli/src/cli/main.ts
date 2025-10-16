@@ -639,6 +639,35 @@ proxyCmd
     await (await import('../commands/proxy')).handleProxySwitchCommand(configNames, options, port)
   })
 
+// Cache command group
+const cacheCmd = program
+  .command('cache')
+  .description('Manage start-claude cache')
+
+cacheCmd
+  .command('clear')
+  .description('Clear all cache (force re-check everything on next startup)')
+  .option('--verbose', 'Enable verbose output')
+  .action(async options =>
+    (await import('../commands/cache')).handleCacheClearCommand(options),
+  )
+
+cacheCmd
+  .command('clear-claude')
+  .description('Clear Claude installation cache only')
+  .option('--verbose', 'Enable verbose output')
+  .action(async options =>
+    (await import('../commands/cache')).handleCacheClearClaudeCommand(options),
+  )
+
+cacheCmd
+  .command('status')
+  .description('Show cache status')
+  .option('--verbose', 'Enable verbose output (show all cache keys)')
+  .action(async options =>
+    (await import('../commands/cache')).handleCacheStatusCommand(options),
+  )
+
 // Only parse with Commander.js if not an MCP command
 if (!isMcpCommand) {
   // Ensure migrations run before parsing commands
