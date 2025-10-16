@@ -51,9 +51,10 @@ interface SystemSettingsModalProps {
   onClose: () => void
   initialSettings?: SystemSettings
   onSave: (settings: SystemSettings) => Promise<void>
+  onConfigsChange?: () => Promise<void>
 }
 
-export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: SystemSettingsModalProps): ReactNode {
+export function SystemSettingsModal({ open, onClose, initialSettings, onSave, onConfigsChange }: SystemSettingsModalProps): ReactNode {
   const [settings, setSettings] = useState<SystemSettings>({
     overrideClaudeCommand: initialSettings?.overrideClaudeCommand || false,
     balanceMode: {
@@ -267,6 +268,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
         const data = await response.json()
         setSyncConfig(data.config)
         setSyncStatus(data.status)
+        // Refresh configs since they may have changed
+        if (onConfigsChange) {
+          await onConfigsChange()
+        }
       }
     }
     catch (error) {
@@ -309,6 +314,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
         setSyncConfig(data.config)
         setSyncStatus(data.status)
         setCustomSyncPath('')
+        // Refresh configs since they may have changed
+        if (onConfigsChange) {
+          await onConfigsChange()
+        }
       }
     }
     catch (error) {
@@ -345,19 +354,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
 
     setResolvingConflict(true)
     try {
-      // First resolve the conflicts
-      const resolveResponse = await fetch('/api/sync/conflicts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ strategy }),
-      })
-
-      if (!resolveResponse.ok) {
-        console.error('Failed to resolve conflicts')
-        return
-      }
-
-      // After resolving, enable the sync
+      // Enable sync with the resolution strategy in a single call
       const enableResponse = await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -365,6 +362,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
           provider: pendingSync.provider,
           cloudPath: pendingSync.provider !== 'custom' ? pendingSync.path : undefined,
           customPath: pendingSync.provider === 'custom' ? pendingSync.path : undefined,
+          conflictStrategy: strategy,
         }),
       })
 
@@ -379,6 +377,13 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
         if (pendingSync.provider === 'custom') {
           setCustomSyncPath('')
         }
+        // Refresh configs since they may have changed during conflict resolution
+        if (onConfigsChange) {
+          await onConfigsChange()
+        }
+      }
+      else {
+        console.error('Failed to enable sync with conflict resolution')
       }
     }
     catch (error) {
@@ -576,7 +581,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                         <Activity className="h-4 w-4 text-white" />
                       </div>
                       <Label htmlFor="healthCheckEnabled" className="font-bold text-base">Endpoint Health Checks</Label>
-                      <Badge variant={settings.balanceMode?.healthCheck?.enabled !== false ? "default" : "secondary"} className="text-xs ml-1">
+                      <Badge variant={settings.balanceMode?.healthCheck?.enabled !== false ? 'default' : 'secondary'} className="text-xs ml-1">
                         {settings.balanceMode?.healthCheck?.enabled !== false ? 'Enabled' : 'Disabled'}
                       </Badge>
                     </div>
@@ -652,7 +657,9 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                   </div>
                   {syncConfig?.enabled && (
                     <Badge className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 shadow-lg shadow-green-500/30 px-3 py-1">
-                      Active - {getProviderDisplayName(syncConfig.provider)}
+                      Active -
+                      {' '}
+                      {getProviderDisplayName(syncConfig.provider)}
                     </Badge>
                   )}
                 </div>
@@ -1053,8 +1060,8 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
               <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0" />
               <span className="truncate">Configuration Conflict Detected</span>
             </DialogTitle>
-            <DialogDescription className="text-base">
-              Both local and cloud storage contain configuration files. How would you like to proceed?
+            <DialogDescription className="text-base leading-relaxed">
+              Both local and cloud storage contain configuration files. Choose how to proceed.
             </DialogDescription>
           </DialogHeader>
 
@@ -1072,7 +1079,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
                     detected
                   </p>
                   <p className="text-orange-700 dark:text-orange-300 mt-1">
-                    Please choose how to resolve the configuration differences.
+                    Choose how to resolve the differences.
                   </p>
                 </div>
               </div>
@@ -1104,52 +1111,52 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave }: 
             <div className="space-y-3">
               <Button
                 variant="outline"
-                className="w-full h-auto p-4 justify-start text-left overflow-hidden"
+                className="w-full h-auto p-4 justify-start text-left"
                 onClick={() => { void handleResolveConflict('local') }}
                 disabled={resolvingConflict}
               >
-                <div className="flex flex-col gap-1 w-full min-w-0">
-                  <div className="font-medium flex items-center gap-2">
-                    <HardDrive className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate">Use Local Configuration</span>
+                <div className="flex items-center gap-3 w-full">
+                  <HardDrive className="h-5 w-5 flex-shrink-0 text-blue-600" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">Use Local Configuration</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Upload to cloud, replace remote
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground break-words">
-                    Upload your local configs to cloud. Remote configs will be replaced.
-                  </p>
                 </div>
               </Button>
 
               <Button
                 variant="outline"
-                className="w-full h-auto p-4 justify-start text-left overflow-hidden"
+                className="w-full h-auto p-4 justify-start text-left"
                 onClick={() => { void handleResolveConflict('remote') }}
                 disabled={resolvingConflict}
               >
-                <div className="flex flex-col gap-1 w-full min-w-0">
-                  <div className="font-medium flex items-center gap-2">
-                    <Cloud className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate">Use Cloud Configuration</span>
+                <div className="flex items-center gap-3 w-full">
+                  <Cloud className="h-5 w-5 flex-shrink-0 text-blue-600" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">Use Cloud Configuration</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Download from cloud, replace local
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground break-words">
-                    Download and use cloud configs. Local configs will be replaced.
-                  </p>
                 </div>
               </Button>
 
               <Button
                 variant="outline"
-                className="w-full h-auto p-4 justify-start text-left overflow-hidden"
+                className="w-full h-auto p-4 justify-start text-left"
                 onClick={() => { void handleResolveConflict('merge') }}
                 disabled={resolvingConflict}
               >
-                <div className="flex flex-col gap-1 w-full min-w-0">
-                  <div className="font-medium flex items-center gap-2">
-                    <RefreshCw className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate">Smart Merge (Recommended)</span>
+                <div className="flex items-center gap-3 w-full">
+                  <RefreshCw className="h-5 w-5 flex-shrink-0 text-green-600" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">Smart Merge (Recommended)</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Combine intelligently, keep local keys
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground break-words">
-                    Merge both configs intelligently. Keeps API keys and preferences local, adds remote configs.
-                  </p>
                 </div>
               </Button>
             </div>

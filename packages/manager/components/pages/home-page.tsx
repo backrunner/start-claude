@@ -300,6 +300,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
             onClose={() => setIsSystemSettingsOpen(false)}
             initialSettings={settings}
             onSave={async newSettings => saveSettings(newSettings, notifyConfigChange)}
+            onConfigsChange={refetchConfigs}
           />
 
           <ConfirmDeleteModal

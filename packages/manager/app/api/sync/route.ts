@@ -1,12 +1,12 @@
+import type { ConfigFile } from '@start-claude/cli/src/config/types'
+import type { SyncConfig } from '@start-claude/cli/src/sync/manager'
 import type { NextRequest } from 'next/server'
-import type { SyncConfig, SyncStatus } from '@start-claude/cli/src/sync/manager'
-import { SyncManager } from '@start-claude/cli/src/sync/manager'
-import { NextResponse } from 'next/server'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { detectConfigConflicts } from '@start-claude/cli/src/utils/config/conflict-resolver'
-import type { ConfigFile } from '@start-claude/cli/src/config/types'
+import { SyncManager } from '@start-claude/cli/src/sync/manager'
+import { detectConfigConflicts, resolveConfigConflicts } from '@start-claude/cli/src/utils/config/conflict-resolver'
+import { NextResponse } from 'next/server'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -42,7 +42,7 @@ export async function GET(): Promise<NextResponse> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json()
-    const { provider, cloudPath, customPath, s3Config } = body
+    const { provider, cloudPath, customPath, s3Config, conflictStrategy } = body
 
     if (!provider) {
       return NextResponse.json(
@@ -77,15 +77,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
             conflicts = detectConfigConflicts(localConfig, cloudConfig)
             hasConflicts = conflicts.length > 0
+
+            // If conflicts detected but we have a resolution strategy, resolve them
+            if (hasConflicts && conflictStrategy) {
+              const resolution = resolveConfigConflicts(localConfig, cloudConfig, {
+                preferLocal: conflictStrategy === 'local',
+                preferRemote: conflictStrategy === 'remote',
+                autoResolve: conflictStrategy === 'merge',
+              })
+
+              // Apply the resolved configuration
+              writeFileSync(localConfigFile, JSON.stringify(resolution.resolvedConfig, null, 2), 'utf-8')
+
+              // If using local or merge, also update cloud
+              if (conflictStrategy === 'local' || conflictStrategy === 'merge') {
+                writeFileSync(cloudConfigFile, JSON.stringify(resolution.resolvedConfig, null, 2), 'utf-8')
+              }
+
+              // Clear conflicts since we've resolved them
+              hasConflicts = false
+              conflicts = []
+            }
           }
           catch (error) {
-            console.error('Error detecting conflicts:', error)
+            console.error('Error detecting/resolving conflicts:', error)
           }
         }
       }
     }
 
-    // If conflicts detected, return them instead of enabling sync
+    // If conflicts detected and NO strategy provided, return them for user to resolve
     if (hasConflicts) {
       return NextResponse.json({
         hasConflicts: true,
