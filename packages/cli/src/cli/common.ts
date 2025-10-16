@@ -277,6 +277,12 @@ async function handleS3ConfigLookup(
     return undefined
   }
 
+  // Skip S3 download if cloud sync is enabled (cloud sync auto-syncs via filesystem)
+  if (s3SyncManager.isCloudSyncEnabled()) {
+    ui.verbose('Cloud sync is enabled, skipping S3 download check')
+    return undefined
+  }
+
   // Only perform sync if it hasn't been done already
   if (!hasAlreadySynced) {
     ui.info(`Configuration "${configName}" not found locally. Checking S3 for updates...`)
@@ -299,6 +305,12 @@ async function handleS3EmptyConfigDownload(
 ): Promise<ClaudeConfig | undefined> {
   const ui = new UILogger()
   if (!(await s3SyncManager.isS3Configured())) {
+    return undefined
+  }
+
+  // Skip S3 download if cloud sync is enabled (cloud sync auto-syncs via filesystem)
+  if (s3SyncManager.isCloudSyncEnabled()) {
+    ui.verbose('Cloud sync is enabled, skipping S3 download check')
     return undefined
   }
 
@@ -347,6 +359,12 @@ async function handleS3UpdateCheck(
   s3SyncManager: S3SyncManager,
 ): Promise<ClaudeConfig | undefined> {
   if (!(await s3SyncManager.isS3Configured())) {
+    return undefined
+  }
+
+  // Skip S3 download if cloud sync is enabled (cloud sync auto-syncs via filesystem)
+  if (s3SyncManager.isCloudSyncEnabled()) {
+    // Note: checkAutoSync will still upload to S3 as backup when cloud sync is enabled
     return undefined
   }
 

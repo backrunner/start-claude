@@ -189,7 +189,7 @@ export class S3SyncManager {
    * When true, S3 should be treated as backup (upload-only).
    * Reads ~/.start-claude/sync.json directly to avoid circular deps.
    */
-  private isCloudSyncEnabled(): boolean {
+  public isCloudSyncEnabled(): boolean {
     try {
       if (!existsSync(this.SYNC_STATE_PATH))
         return false
