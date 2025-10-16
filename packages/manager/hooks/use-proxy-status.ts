@@ -78,6 +78,7 @@ interface UseProxyStatusReturn {
   status: ProxyStatus | null
   loading: boolean
   error: string | null
+  refetch: () => Promise<void>
 }
 
 export function useProxyStatus(options: UseProxyStatusOptions = {}): UseProxyStatusReturn {
@@ -99,6 +100,7 @@ export function useProxyStatus(options: UseProxyStatusOptions = {}): UseProxySta
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const wasRunningRef = useRef(false)
+  const checkProxyStatusRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
     if (!enabled) {
@@ -176,6 +178,9 @@ export function useProxyStatus(options: UseProxyStatusOptions = {}): UseProxySta
       }
     }
 
+    // Store reference for manual refetch
+    checkProxyStatusRef.current = checkProxyStatus
+
     // Start status check interval
     console.log(`[ProxyStatus] Starting proxy status checks in ${startupDelayMs}ms, then every ${intervalMs}ms`)
 
@@ -213,5 +218,10 @@ export function useProxyStatus(options: UseProxyStatusOptions = {}): UseProxySta
     status,
     loading,
     error,
+    refetch: async () => {
+      if (checkProxyStatusRef.current) {
+        await checkProxyStatusRef.current()
+      }
+    },
   }
 }

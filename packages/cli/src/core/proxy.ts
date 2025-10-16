@@ -412,7 +412,10 @@ export class ProxyServer {
             const switchRequest = JSON.parse(body.toString())
 
             if (!switchRequest.configs || !Array.isArray(switchRequest.configs)) {
-              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.writeHead(400, {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              })
               res.end(JSON.stringify({
                 error: {
                   message: 'Invalid switch request: configs array required',
@@ -426,7 +429,10 @@ export class ProxyServer {
             const result = await this.switchConfigs(switchRequest.configs)
 
             if (result.success) {
-              res.writeHead(200, { 'Content-Type': 'application/json' })
+              res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              })
               res.end(JSON.stringify({
                 success: true,
                 message: result.message,
@@ -437,7 +443,10 @@ export class ProxyServer {
               }))
             }
             else {
-              res.writeHead(503, { 'Content-Type': 'application/json' })
+              res.writeHead(503, {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              })
               res.end(JSON.stringify({
                 success: false,
                 error: {
@@ -451,7 +460,10 @@ export class ProxyServer {
           catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
-            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.writeHead(500, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            })
             res.end(JSON.stringify({
               success: false,
               error: {
@@ -465,7 +477,10 @@ export class ProxyServer {
     }
     catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.writeHead(500, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      })
       res.end(JSON.stringify({
         success: false,
         error: {
@@ -653,24 +668,31 @@ export class ProxyServer {
         totalRequests: 0,
       }))
 
-      // Perform health checks on new endpoints
+      // Perform health checks on new endpoints with shorter timeout for faster switching
       const healthyEndpoints: EndpointStatus[] = []
       const endpointDetails: Array<{ name: string, healthy: boolean, error?: string }> = []
 
-      for (const endpoint of newEndpoints) {
+      // Use parallel health checks with shorter timeout (5 seconds each) to speed up switching
+      const healthCheckPromises = newEndpoints.map(async (endpoint) => {
         const configName = endpoint.config.name || endpoint.config.baseUrl || 'unknown'
 
         try {
-          await this.healthCheck(endpoint, true)
+          // Use a shorter timeout for switch health checks (5 seconds instead of 15)
+          await this.performHealthCheckRequest(endpoint, { timeout: 5000, isInitial: true })
           healthyEndpoints.push(endpoint)
           endpointDetails.push({ name: configName, healthy: true })
+          return { endpoint, success: true }
         }
         catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           this.markEndpointUnhealthy(endpoint, errorMessage)
           endpointDetails.push({ name: configName, healthy: false, error: errorMessage })
+          return { endpoint, success: false, error: errorMessage }
         }
-      }
+      })
+
+      // Wait for all health checks to complete in parallel
+      await Promise.all(healthCheckPromises)
 
       // Check if we have at least one healthy endpoint
       if (healthyEndpoints.length === 0) {

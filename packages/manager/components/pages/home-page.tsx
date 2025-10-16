@@ -3,6 +3,7 @@
 import type { DragEndEvent } from '@dnd-kit/core'
 import type { ReactNode } from 'react'
 import type { ClaudeConfig, SystemSettings } from '@/config/types'
+import type { SwitchResult } from '@/components/proxy/config-switch-modal'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -24,6 +25,7 @@ import { useConfigs } from '@/hooks/use-configs'
 import { useHeartbeat } from '@/hooks/use-heartbeat'
 import { useProxyStatus } from '@/hooks/use-proxy-status'
 import { useShutdownCoordinator } from '@/hooks/use-shutdown-coordinator'
+import { toast } from '@/lib/use-toast'
 
 interface HomePageProps {
   isVSCode: boolean
@@ -205,6 +207,29 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     void updateConfigs(updatedConfigs, `Configuration "${configName}" has been set as the default.`, notifyConfigChange)
   }
 
+  const handleSwitchSuccess = (result: SwitchResult): void => {
+    // Show success toast with endpoint details
+    const healthyCount = result.healthyEndpoints || 0
+    const totalCount = result.totalEndpoints || 0
+
+    let description = `${healthyCount} of ${totalCount} endpoints are healthy`
+
+    // Add speed test info if available
+    if (result.speedTestResults && result.speedTestResults.length > 0) {
+      const fastest = result.speedTestResults[0]
+      description += ` • Fastest: ${fastest.name} (${fastest.responseTime.toFixed(0)}ms)`
+    }
+
+    toast({
+      variant: 'success',
+      title: 'Configuration Switch Successful',
+      description,
+    })
+
+    // Refresh proxy status to update the card
+    proxyStatus.refetch()
+  }
+
   return (
     <VSCodeProvider isVSCode={isVSCode}>
       <div className="min-h-screen bg-background">
@@ -314,6 +339,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
             open={isConfigSwitchOpen}
             onClose={() => setIsConfigSwitchOpen(false)}
             currentProxyPort={2333}
+            onSwitchSuccess={handleSwitchSuccess}
           />
         </div>
       </div>
