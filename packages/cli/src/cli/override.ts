@@ -254,6 +254,7 @@ export class OverrideManager {
         const filteredLines = lines.filter(line =>
           !line.includes(shellConfig.comment)
           && !line.includes('alias claude="start-claude"')
+          && !line.includes('Set-Alias -Name claude -Value start-claude')
           && !line.includes('export PATH="$HOME/.start-claude/bin:$PATH"')
           && !line.includes('set -x PATH "$HOME/.start-claude/bin" $PATH'),
         )
@@ -292,8 +293,11 @@ export class OverrideManager {
         return { success: true, cleanupCommand }
       }
 
-      // For CMD, just delete the batch file (already handled by removeScriptDirectory)
+      // For CMD, delete the batch file
       if (this.isWindows() && this.detectWindowsShell() === 'cmd') {
+        if (fs.existsSync(shellConfig.path)) {
+          fs.unlinkSync(shellConfig.path)
+        }
         return { success: true, cleanupCommand }
       }
 
@@ -304,6 +308,7 @@ export class OverrideManager {
       const filteredLines = lines.filter(line =>
         !line.includes(shellConfig.comment)
         && !line.includes('alias claude="start-claude"')
+        && !line.includes('Set-Alias -Name claude -Value start-claude')
         && !line.includes('export PATH="$HOME/.start-claude/bin:$PATH"')
         && !line.includes('set -x PATH "$HOME/.start-claude/bin" $PATH'),
       )

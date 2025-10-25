@@ -195,12 +195,18 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
   // Set basic string environment variables (higher priority - will override env map)
   basicEnvMap.forEach(([configKey, envKey]) => {
     const value = config[configKey]
+
+    // For official profile type, skip setting API key and base URL
+    if (config.profileType === 'official' && (configKey === 'baseUrl' || configKey === 'apiKey')) {
+      return
+    }
+
     if (typeof value === 'string' && value.length > 0) {
-      // For official profile type, skip setting API key and base URL
-      if (config.profileType === 'official' && (configKey === 'baseUrl' || configKey === 'apiKey')) {
-        return
-      }
       env[envKey] = value
+    }
+    else {
+      // If the config value is not set, remove the env key to avoid inheriting from process.env
+      delete env[envKey]
     }
   })
 
