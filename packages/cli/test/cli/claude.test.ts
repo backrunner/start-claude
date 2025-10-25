@@ -410,6 +410,56 @@ describe('claude', () => {
       expect(env!.ANTHROPIC_API_KEY).toBeUndefined()
       expect(env!.ANTHROPIC_MODEL).toBeUndefined()
     })
+
+    it('should not pass empty or whitespace authToken to prevent auth conflicts', async () => {
+      const configWithEmptyAuth: ClaudeConfig = {
+        name: 'test-empty-auth',
+        apiKey: 'sk-test-key',
+        authToken: '',
+      }
+
+      const promise = startClaude(configWithEmptyAuth)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.ANTHROPIC_API_KEY).toBe('sk-test-key')
+      // Empty authToken should not be passed at all (should be undefined, not empty string)
+      expect(env!.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
+    })
+
+    it('should not pass whitespace-only authToken', async () => {
+      const configWithWhitespaceAuth: ClaudeConfig = {
+        name: 'test-whitespace-auth',
+        apiKey: 'sk-test-key',
+        authToken: '   ',
+      }
+
+      const promise = startClaude(configWithWhitespaceAuth)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.ANTHROPIC_API_KEY).toBe('sk-test-key')
+      // Whitespace-only authToken should not be passed at all
+      expect(env!.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
+    })
   })
 
   describe('cli overrides', () => {

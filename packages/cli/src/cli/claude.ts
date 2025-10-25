@@ -134,7 +134,8 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
   // First, apply environment variables from the env map (lower priority)
   if (config.env) {
     Object.entries(config.env).forEach(([key, value]) => {
-      if (typeof value === 'string' && value.length > 0) {
+      // Only set non-empty, non-whitespace values
+      if (typeof value === 'string' && value.trim().length > 0) {
         env[key] = value
       }
     })
@@ -201,11 +202,13 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
       return
     }
 
-    if (typeof value === 'string' && value.length > 0) {
+    // Only set the env variable if value is a non-empty string (after trimming)
+    if (typeof value === 'string' && value.trim().length > 0) {
       env[envKey] = value
     }
     else {
-      // If the config value is not set, remove the env key to avoid inheriting from process.env
+      // If the config value is not set, empty, or whitespace-only,
+      // remove the env key to avoid inheriting from process.env or passing empty values
       delete env[envKey]
     }
   })
