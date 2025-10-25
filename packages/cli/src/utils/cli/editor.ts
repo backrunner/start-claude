@@ -187,6 +187,7 @@ function createTempConfigFile(config: Partial<ClaudeConfig>, prefix = 'start-cla
 
     // Environment variables for Claude Code (keep existing values or set to null/empty)
     authToken: config.authToken || '',
+    claudeCodeDisableNonessentialTraffic: config.claudeCodeDisableNonessentialTraffic ?? true,
     customHeaders: config.customHeaders || '',
     smallFastModel: config.smallFastModel || '',
     smallFastModelAwsRegion: config.smallFastModelAwsRegion || '',
@@ -209,7 +210,7 @@ function createTempConfigFile(config: Partial<ClaudeConfig>, prefix = 'start-cla
     disableCostWarnings: config.disableCostWarnings ?? null,
     disableErrorReporting: config.disableErrorReporting ?? null,
     disableNonEssentialModelCalls: config.disableNonEssentialModelCalls ?? null,
-    disableTelemetry: config.disableTelemetry ?? null,
+    disableTelemetry: config.disableTelemetry ?? true,
     httpProxy: config.httpProxy || '',
     httpsProxy: config.httpsProxy || '',
     maxThinkingTokens: config.maxThinkingTokens ?? null,
@@ -335,6 +336,7 @@ function parseConfigFromFile(filePath: string): ClaudeConfig | null {
 
       // Environment variables for Claude Code
       authToken: parsed.authToken?.trim() || undefined,
+      claudeCodeDisableNonessentialTraffic: typeof parsed.claudeCodeDisableNonessentialTraffic === 'boolean' ? parsed.claudeCodeDisableNonessentialTraffic : true,
       customHeaders: parsed.customHeaders?.trim() || undefined,
       smallFastModel: parsed.smallFastModel?.trim() || undefined,
       smallFastModelAwsRegion: parsed.smallFastModelAwsRegion?.trim() || undefined,

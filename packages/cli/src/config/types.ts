@@ -20,6 +20,7 @@ export interface ClaudeConfig {
 
   // Environment variables for Claude Code
   authToken?: string
+  claudeCodeDisableNonessentialTraffic?: boolean
   customHeaders?: string
   smallFastModel?: string
   smallFastModelAwsRegion?: string

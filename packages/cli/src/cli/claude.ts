@@ -177,6 +177,7 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
   const booleanEnvMap: Array<[keyof ClaudeConfig, string]> = [
     ['maintainProjectWorkingDir', 'CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR'],
     ['ideSkipAutoInstall', 'CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL'],
+    ['claudeCodeDisableNonessentialTraffic', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'],
     ['useBedrock', 'CLAUDE_CODE_USE_BEDROCK'],
     ['useVertex', 'CLAUDE_CODE_USE_VERTEX'],
     ['skipBedrockAuth', 'CLAUDE_CODE_SKIP_BEDROCK_AUTH'],
