@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
-import { Settings } from 'lucide-react'
+import { Edit, Plus } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -76,7 +76,7 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
         <DialogHeader className="pb-6 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent -mt-6 -mx-6 px-6 pt-6">
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-lg shadow-primary/20">
-              <Settings className="h-6 w-6 text-primary-foreground" />
+              {config ? <Edit className="h-6 w-6 text-primary-foreground" /> : <Plus className="h-6 w-6 text-primary-foreground" />}
             </div>
             <div className="flex-1">
               <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">

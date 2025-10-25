@@ -56,6 +56,7 @@ export function detectConfigConflicts(
         'order',
         'enabled',
         'authToken',
+        'authorization',
         'customHeaders',
         'smallFastModel',
         'smallFastModelAwsRegion',
@@ -263,6 +264,7 @@ function smartMergeConfigs(
               // Clear sensitive data
               delete remoteConfig.apiKey
               delete remoteConfig.authToken
+              delete remoteConfig.authorization
               delete remoteConfig.awsBearerTokenBedrock
               resolutionDetails.push(`Applied local deletion to remote config: ${conflict.configName}`)
             }
@@ -342,6 +344,7 @@ function resolveFieldConflict(
   switch (field) {
     case 'apiKey':
     case 'authToken':
+    case 'authorization':
     case 'awsBearerTokenBedrock':
       // For sensitive fields, prefer local (user's current keys)
       resolutionDetails.push(`Using local ${field} (security preference)`)

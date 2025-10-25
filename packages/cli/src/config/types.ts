@@ -20,8 +20,9 @@ export interface ClaudeConfig {
 
   // Environment variables for Claude Code
   authToken?: string
+  authorization?: string // Convenience field for Authorization header (merged into customHeaders)
   claudeCodeDisableNonessentialTraffic?: boolean
-  customHeaders?: string
+  customHeaders?: string // Custom HTTP headers in format "Header1: Value1\nHeader2: Value2"
   smallFastModel?: string
   smallFastModelAwsRegion?: string
   awsBearerTokenBedrock?: string

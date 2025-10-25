@@ -73,6 +73,7 @@ export interface ProxyConfig {
   transformers?: TransformerConfig[]
   // Environment variables for Claude Code
   authToken?: string
+  authorization?: string
   customHeaders?: string
   smallFastModel?: string
   smallFastModelAwsRegion?: string

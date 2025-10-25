@@ -65,6 +65,7 @@ export async function handleSetCommand(name: string, property: string, value: st
   // Validate property name
   const validProperties = [
     'authToken',
+    'authorization',
     'customHeaders',
     'smallFastModel',
     'smallFastModelAwsRegion',

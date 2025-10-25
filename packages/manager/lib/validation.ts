@@ -18,6 +18,7 @@ export const claudeConfigSchema = z.object({
 
   // Environment variables
   authToken: z.string().optional(),
+  authorization: z.string().optional(),
   customHeaders: z.string().optional(),
   smallFastModel: z.string().optional(),
   smallFastModelAwsRegion: z.string().optional(),

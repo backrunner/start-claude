@@ -460,6 +460,77 @@ describe('claude', () => {
       // Whitespace-only authToken should not be passed at all
       expect(env!.ANTHROPIC_AUTH_TOKEN).toBeUndefined()
     })
+
+    it('should merge authorization header into customHeaders', async () => {
+      const configWithAuth: ClaudeConfig = {
+        name: 'test-auth-header',
+        apiKey: 'sk-test-key',
+        authorization: 'Bearer my-token',
+      }
+
+      const promise = startClaude(configWithAuth)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.ANTHROPIC_CUSTOM_HEADERS).toBe('Authorization: Bearer my-token')
+    })
+
+    it('should merge authorization and customHeaders correctly', async () => {
+      const configWithBoth: ClaudeConfig = {
+        name: 'test-both-headers',
+        apiKey: 'sk-test-key',
+        authorization: 'Bearer my-token',
+        customHeaders: 'X-Custom: value1\nX-Another: value2',
+      }
+
+      const promise = startClaude(configWithBoth)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.ANTHROPIC_CUSTOM_HEADERS).toBe('Authorization: Bearer my-token\nX-Custom: value1\nX-Another: value2')
+    })
+
+    it('should not set customHeaders if both authorization and customHeaders are empty', async () => {
+      const configEmpty: ClaudeConfig = {
+        name: 'test-empty-headers',
+        apiKey: 'sk-test-key',
+        authorization: '',
+        customHeaders: '',
+      }
+
+      const promise = startClaude(configEmpty)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined()
+    })
   })
 
   describe('cli overrides', () => {

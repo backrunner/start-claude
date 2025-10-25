@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 interface ConfigFormProps {
   config?: ClaudeConfig | null
@@ -31,6 +32,8 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     isDefault: false,
     enabled: true,
     authToken: '',
+    authorization: '',
+    customHeaders: '',
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -65,6 +68,27 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
       return false
     if (data.profileType !== 'official' && !data.apiKey?.trim())
       return false
+
+    // Validate baseUrl format
+    if (data.baseUrl?.trim()) {
+      try {
+        void new URL(data.baseUrl)
+      }
+      catch {
+        return false
+      }
+    }
+
+    // Validate customHeaders format
+    if (data.customHeaders?.trim()) {
+      const lines = data.customHeaders.split('\n').filter(line => line.trim())
+      for (const line of lines) {
+        if (!line.includes(':')) {
+          return false
+        }
+      }
+    }
+
     return true
   }
 
@@ -121,9 +145,28 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     if (formData.profileType !== 'official' && !formData.baseUrl?.trim()) {
       newErrors.baseUrl = 'Base URL is required for custom configurations'
     }
+    else if (formData.baseUrl?.trim()) {
+      try {
+        void new URL(formData.baseUrl)
+      }
+      catch {
+        newErrors.baseUrl = 'Invalid URL format (must start with http:// or https://)'
+      }
+    }
 
     if (formData.profileType !== 'official' && !formData.apiKey?.trim()) {
       newErrors.apiKey = 'API Key is required for custom configurations'
+    }
+
+    // Validate customHeaders format
+    if (formData.customHeaders?.trim()) {
+      const lines = formData.customHeaders.split('\n').filter(line => line.trim())
+      for (const line of lines) {
+        if (!line.includes(':')) {
+          newErrors.customHeaders = 'Invalid format. Each line must be in format "Header: Value"'
+          break
+        }
+      }
     }
 
     setErrors(newErrors)
@@ -144,12 +187,17 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     <form onSubmit={handleSubmit} className="flex flex-col h-full" id="config-form">
       <div className="flex-1 space-y-6 pr-2">
         {/* Basic Information */}
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-lg">Basic Information</CardTitle>
+        <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/10 border-2 hover:border-blue-500/30 group">
+          <CardHeader className="pb-5 bg-gradient-to-br from-blue-50/50 via-transparent to-transparent dark:from-blue-950/20">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30 group-hover:shadow-blue-500/50 transition-all duration-300">
+                <Settings className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-xl font-bold">Basic Information</CardTitle>
+                <CardDescription className="text-sm mt-0.5">Configure the basic details for your Claude instance</CardDescription>
+              </div>
             </div>
-            <CardDescription>Configure the basic details for your Claude instance</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -203,13 +251,17 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
         {/* API Configuration */}
         {formData.profileType !== 'official' && (
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-2">
-                <Key className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <CardTitle className="text-lg">API Configuration</CardTitle>
+          <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-green-500/10 border-2 hover:border-green-500/30 group">
+            <CardHeader className="pb-5 bg-gradient-to-br from-green-50/50 via-transparent to-transparent dark:from-green-950/20">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-green-600 shadow-lg shadow-green-500/30 group-hover:shadow-green-500/50 transition-all duration-300">
+                  <Key className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl font-bold">API Configuration</CardTitle>
+                  <CardDescription className="text-sm mt-0.5">Configure the API endpoint and authentication</CardDescription>
+                </div>
               </div>
-              <CardDescription>Configure the API endpoint and authentication</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -268,13 +320,17 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         )}
 
         {/* Model & Permissions */}
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <Brain className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-              <CardTitle className="text-lg">Model & Permissions</CardTitle>
+        <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/10 border-2 hover:border-purple-500/30 group">
+          <CardHeader className="pb-5 bg-gradient-to-br from-purple-50/50 via-transparent to-transparent dark:from-purple-950/20">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg shadow-purple-500/30 group-hover:shadow-purple-500/50 transition-all duration-300">
+                <Brain className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-xl font-bold">Model & Permissions</CardTitle>
+                <CardDescription className="text-sm mt-0.5">Configure the model and permission settings</CardDescription>
+              </div>
             </div>
-            <CardDescription>Configure the model and permission settings</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -318,10 +374,10 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             </div>
 
             <div className="space-y-4 pt-2">
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+              <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                 <div className="flex-1">
-                  <Label htmlFor="isDefault" className="font-medium">Default Configuration</Label>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <Label htmlFor="isDefault" className="font-semibold text-base cursor-pointer">Default Configuration</Label>
+                  <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                     Use this as the default configuration when starting Claude
                   </p>
                 </div>
@@ -329,13 +385,14 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   id="isDefault"
                   checked={formData.isDefault ?? false}
                   onCheckedChange={checked => handleChange('isDefault', checked)}
+                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-purple-600"
                 />
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+              <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                 <div className="flex-1">
-                  <Label htmlFor="transformerEnabled" className="font-medium">Transformer</Label>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <Label htmlFor="transformerEnabled" className="font-semibold text-base cursor-pointer">Transformer</Label>
+                  <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                     Transform API requests to match different provider formats
                   </p>
                 </div>
@@ -343,11 +400,12 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   id="transformerEnabled"
                   checked={formData.transformerEnabled ?? false}
                   onCheckedChange={checked => handleChange('transformerEnabled', checked)}
+                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-purple-600"
                 />
               </div>
 
               {formData.transformerEnabled && (
-                <div className="p-3 rounded-lg border bg-muted/50">
+                <div className="p-5 rounded-xl border-2 bg-gradient-to-br from-orange-50/50 via-transparent to-transparent dark:from-orange-950/20 border-orange-200/50 dark:border-orange-800/50">
                   <div className="flex flex-col space-y-3">
                     <Label htmlFor="transformer" className="font-medium">Transformer Type</Label>
                     <p className="text-sm text-muted-foreground">
@@ -373,10 +431,10 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 </div>
               )}
 
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+              <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                 <div className="flex-1">
-                  <Label htmlFor="enabled" className="font-medium">Enabled</Label>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <Label htmlFor="enabled" className="font-semibold text-base cursor-pointer">Enabled</Label>
+                  <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                     Configuration is active and can be used
                   </p>
                 </div>
@@ -384,6 +442,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   id="enabled"
                   checked={formData.enabled ?? true}
                   onCheckedChange={checked => handleChange('enabled', checked)}
+                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-purple-600"
                 />
               </div>
             </div>
@@ -391,13 +450,17 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         </Card>
 
         {/* Advanced Settings */}
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <Settings className="h-4 w-4 text-green-600 dark:text-green-400" />
-              <CardTitle className="text-lg">Advanced Settings</CardTitle>
+        <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-orange-500/10 border-2 hover:border-orange-500/30 group">
+          <CardHeader className="pb-5 bg-gradient-to-br from-orange-50/50 via-transparent to-transparent dark:from-orange-950/20">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg shadow-orange-500/30 group-hover:shadow-orange-500/50 transition-all duration-300">
+                <Settings className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-xl font-bold">Advanced Settings</CardTitle>
+                <CardDescription className="text-sm mt-0.5">Configure advanced environment variables and settings</CardDescription>
+              </div>
             </div>
-            <CardDescription>Configure advanced environment variables and settings</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -416,6 +479,50 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
               />
               <p className="text-xs text-muted-foreground">
                 Additional authentication token for Claude Code operations
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="authorization" className="font-medium flex items-center gap-2">
+                <Key className="h-3 w-3" />
+                Authorization Header
+                <Badge variant="outline" className="text-xs">Optional</Badge>
+              </Label>
+              <Input
+                id="authorization"
+                type="password"
+                value={formData.authorization ?? ''}
+                onChange={e => handleChange('authorization', e.target.value)}
+                placeholder="Bearer your-token-here"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Convenience field for Authorization header (e.g., &quot;Bearer token&quot;)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="customHeaders" className="font-medium flex items-center gap-2">
+                <Key className="h-3 w-3" />
+                Custom Headers
+                <Badge variant="outline" className="text-xs">Optional</Badge>
+              </Label>
+              <Textarea
+                id="customHeaders"
+                value={formData.customHeaders ?? ''}
+                onChange={e => handleChange('customHeaders', e.target.value)}
+                placeholder="X-Custom-Header: value1&#10;Another-Header: value2"
+                className={errors.customHeaders ? 'border-destructive focus-visible:ring-destructive font-mono' : 'font-mono'}
+                rows={3}
+              />
+              {errors.customHeaders && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <AlertCircle className="h-3 w-3" />
+                  {errors.customHeaders}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Additional HTTP headers in format: Header1: Value1\nHeader2: Value2
               </p>
             </div>
           </CardContent>

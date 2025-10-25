@@ -187,6 +187,7 @@ function createTempConfigFile(config: Partial<ClaudeConfig>, prefix = 'start-cla
 
     // Environment variables for Claude Code (keep existing values or set to null/empty)
     authToken: config.authToken || '',
+    authorization: config.authorization || '',
     claudeCodeDisableNonessentialTraffic: config.claudeCodeDisableNonessentialTraffic ?? true,
     customHeaders: config.customHeaders || '',
     smallFastModel: config.smallFastModel || '',
@@ -336,6 +337,7 @@ function parseConfigFromFile(filePath: string): ClaudeConfig | null {
 
       // Environment variables for Claude Code
       authToken: parsed.authToken?.trim() || undefined,
+      authorization: parsed.authorization?.trim() || undefined,
       claudeCodeDisableNonessentialTraffic: typeof parsed.claudeCodeDisableNonessentialTraffic === 'boolean' ? parsed.claudeCodeDisableNonessentialTraffic : true,
       customHeaders: parsed.customHeaders?.trim() || undefined,
       smallFastModel: parsed.smallFastModel?.trim() || undefined,

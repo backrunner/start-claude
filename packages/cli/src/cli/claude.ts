@@ -202,6 +202,11 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
       return
     }
 
+    // Skip customHeaders here - we'll handle it separately to merge with authorization
+    if (configKey === 'customHeaders') {
+      return
+    }
+
     // Only set the env variable if value is a non-empty string (after trimming)
     if (typeof value === 'string' && value.trim().length > 0) {
       env[envKey] = value
@@ -212,6 +217,28 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
       delete env[envKey]
     }
   })
+
+  // Handle customHeaders with authorization merging
+  const customHeadersParts: string[] = []
+
+  // Add authorization header if present
+  if (config.authorization && config.authorization.trim().length > 0) {
+    customHeadersParts.push(`Authorization: ${config.authorization.trim()}`)
+  }
+
+  // Add custom headers if present
+  if (config.customHeaders && config.customHeaders.trim().length > 0) {
+    customHeadersParts.push(config.customHeaders.trim())
+  }
+
+  // Set ANTHROPIC_CUSTOM_HEADERS if we have any headers to set
+  if (customHeadersParts.length > 0) {
+    env.ANTHROPIC_CUSTOM_HEADERS = customHeadersParts.join('\n')
+  }
+  else {
+    // Remove the env key if no headers are set
+    delete env.ANTHROPIC_CUSTOM_HEADERS
+  }
 
   // Set numeric environment variables (higher priority - will override env map)
   numericEnvMap.forEach(([configKey, envKey]) => {
