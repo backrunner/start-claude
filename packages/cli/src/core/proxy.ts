@@ -1102,10 +1102,45 @@ export class ProxyServer {
   /**
    * Prepare request headers for upstream request
    */
-  private prepareRequestHeaders(originalHeaders: http.IncomingHttpHeaders, targetUrl: URL, apiKey: string): http.IncomingHttpHeaders {
+  private prepareRequestHeaders(originalHeaders: http.IncomingHttpHeaders, targetUrl: URL, config: ClaudeConfig): http.IncomingHttpHeaders {
     const headers = { ...originalHeaders }
-    headers['x-api-key'] = apiKey
+
+    // Set API key (from ANTHROPIC_API_KEY)
+    headers['x-api-key'] = config.apiKey!
+
+    // Remove the original authorization header from the client
     delete headers.authorization
+
+    // Add authorization header from config
+    // Priority: config.authorization > config.authToken as Bearer token
+    if (config.authorization && config.authorization.trim().length > 0) {
+      // Use explicit authorization header if provided
+      headers.authorization = config.authorization.trim()
+    }
+    else if (config.authToken && config.authToken.trim().length > 0) {
+      // Use authToken as Bearer token if no explicit authorization is set
+      headers.authorization = `Bearer ${config.authToken.trim()}`
+    }
+
+    // Parse and add custom headers from config
+    if (config.customHeaders && config.customHeaders.trim().length > 0) {
+      const customHeaderLines = config.customHeaders.trim().split('\n')
+      for (const line of customHeaderLines) {
+        const trimmedLine = line.trim()
+        if (trimmedLine.length === 0)
+          continue
+
+        const colonIndex = trimmedLine.indexOf(':')
+        if (colonIndex > 0) {
+          const headerName = trimmedLine.substring(0, colonIndex).trim().toLowerCase()
+          const headerValue = trimmedLine.substring(colonIndex + 1).trim()
+          if (headerName && headerValue) {
+            headers[headerName] = headerValue
+          }
+        }
+      }
+    }
+
     headers.host = targetUrl.host
 
     // Remove hop-by-hop headers
@@ -1871,7 +1906,7 @@ export class ProxyServer {
           const targetUrl = this.constructTargetUrl(req.url || '/', endpoint.config.baseUrl || '')
 
           // Prepare headers for the upstream request using shared method
-          const headers = this.prepareRequestHeaders(req.headers, targetUrl, endpoint.config.apiKey)
+          const headers = this.prepareRequestHeaders(req.headers, targetUrl, endpoint.config)
 
           const isHttps = targetUrl.protocol === 'https:'
           const httpModule = isHttps ? https : http
@@ -2047,7 +2082,7 @@ export class ProxyServer {
     const targetUrl = this.constructTargetUrl(url, endpoint.config.baseUrl || '')
 
     // Prepare headers for the upstream request using shared method
-    const headers = this.prepareRequestHeaders(originalHeaders, targetUrl, endpoint.config.apiKey!)
+    const headers = this.prepareRequestHeaders(originalHeaders, targetUrl, endpoint.config)
 
     const isHttps = targetUrl.protocol === 'https:'
     const httpModule = isHttps ? https : http
