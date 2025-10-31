@@ -123,7 +123,7 @@ export class S3SyncManager {
     }
 
     const configManager = await this.getConfigManager()
-    const s3Config = configManager.getSettings().s3Sync
+    const s3Config = (await configManager.getSettings()).s3Sync
 
     if (s3Config) {
       // Validate required fields for fallback config too
