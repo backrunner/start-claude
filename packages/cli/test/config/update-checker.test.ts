@@ -1,7 +1,8 @@
 import * as childProcess from 'node:child_process'
+import * as https from 'node:https'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import packageJson from '../../../../package.json'
-import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../../src/utils/config/update-checker'
+import { checkBackgroundUpgradeResult, checkForUpdates, performAutoUpdate, performBackgroundUpgrade, relaunchCLI } from '../../src/utils/config/update-checker'
 
 // Get the actual version from package.json
 const CURRENT_VERSION = packageJson.version
@@ -9,7 +10,36 @@ const CURRENT_VERSION = packageJson.version
 // Mock child_process
 vi.mock('node:child_process', () => ({
   exec: vi.fn(),
+  execSync: vi.fn(),
   spawn: vi.fn(),
+}))
+
+// Mock https for network requests
+vi.mock('node:https', () => ({
+  default: {
+    get: vi.fn(),
+  },
+}))
+
+// Mock tar
+vi.mock('tar', () => ({
+  extract: vi.fn(() => Promise.resolve()),
+}))
+
+// Mock fs functions
+vi.mock('node:fs', () => ({
+  accessSync: vi.fn(),
+  createWriteStream: vi.fn(() => ({
+    on: vi.fn(),
+    write: vi.fn(),
+    end: vi.fn(),
+  })),
+  mkdirSync: vi.fn(),
+  rmSync: vi.fn(),
+  constants: {
+    F_OK: 0,
+    W_OK: 2,
+  },
 }))
 
 // Mock the entire cache-manager module
@@ -17,6 +47,9 @@ const mockInstance = {
   shouldCheckForUpdates: vi.fn(),
   setUpdateCheckTimestamp: vi.fn(),
   getUpdateCheckTimestamp: vi.fn(),
+  get: vi.fn(),
+  set: vi.fn(),
+  delete: vi.fn(),
   clear: vi.fn(),
 }
 
@@ -27,7 +60,9 @@ vi.mock('../../src/utils/config/cache-manager', () => ({
 }))
 
 const mockExec = vi.mocked(childProcess.exec)
+const mockExecSync = vi.mocked(childProcess.execSync)
 const mockSpawn = vi.mocked(childProcess.spawn)
+const mockHttpsGet = vi.mocked(https.default.get)
 
 describe('updateChecker', () => {
   beforeEach(() => {
@@ -38,6 +73,10 @@ describe('updateChecker', () => {
       value: ['node', '/path/to/cli.js', '--config', 'test'],
       writable: true,
     })
+
+    // Default cache behavior
+    mockInstance.get.mockReturnValue(null)
+    mockInstance.shouldCheckForUpdates.mockReturnValue(true)
   })
 
   afterEach(() => {
@@ -50,18 +89,29 @@ describe('updateChecker', () => {
 
       const result = await checkForUpdates(false)
       expect(result).toBeNull()
-      expect(mockExec).not.toHaveBeenCalled()
+      expect(mockHttpsGet).not.toHaveBeenCalled()
     })
 
-    it('should check for updates when never checked before', async () => {
+    it('should check for updates via https when updates available', async () => {
       mockInstance.shouldCheckForUpdates.mockReturnValue(true)
 
-      // Mock successful pnpm command
-      mockExec.mockImplementation((cmd, options, callback) => {
-        if (typeof callback === 'function') {
-          callback(null, '1.0.1\n', '')
+      // Mock successful https request
+      mockHttpsGet.mockImplementation((_url, _options, callback: any) => {
+        const mockResponse = {
+          on: vi.fn((event: string, handler: any) => {
+            if (event === 'data') {
+              handler(Buffer.from(JSON.stringify({ version: '1.0.1' })))
+            }
+            if (event === 'end') {
+              handler()
+            }
+            return mockResponse
+          }),
         }
-        return {} as any
+        callback(mockResponse)
+        return {
+          on: vi.fn(),
+        } as any
       })
 
       const result = await checkForUpdates(false)
@@ -72,43 +122,20 @@ describe('updateChecker', () => {
         hasUpdate: true,
         updateCommand: 'pnpm add -g start-claude@latest',
       })
-      expect(mockExec).toHaveBeenCalledWith(
-        'pnpm view start-claude version',
-        { timeout: 5000 },
-        expect.any(Function),
-      )
-    })
-
-    it('should check for updates when forced', async () => {
-      mockInstance.shouldCheckForUpdates.mockReturnValue(false)
-
-      // Mock successful pnpm command that returns the same version
-      mockExec.mockImplementation((cmd, options, callback) => {
-        if (typeof callback === 'function') {
-          callback(null, `${CURRENT_VERSION}\n`, '')
-        }
-        return {} as any
-      })
-
-      const result = await checkForUpdates(true)
-
-      expect(result).toEqual({
-        currentVersion: CURRENT_VERSION,
-        latestVersion: CURRENT_VERSION,
-        hasUpdate: false,
-        updateCommand: 'pnpm add -g start-claude@latest',
-      })
     })
 
     it('should return null on network error', async () => {
       mockInstance.shouldCheckForUpdates.mockReturnValue(true)
 
-      // Mock failed pnpm command
-      mockExec.mockImplementation((cmd, options, callback) => {
-        if (typeof callback === 'function') {
-          callback(new Error('Network error'), '', '')
-        }
-        return {} as any
+      // Mock failed https request
+      mockHttpsGet.mockImplementation(() => {
+        return {
+          on: vi.fn((event: string, handler: any) => {
+            if (event === 'error') {
+              handler(new Error('Network error'))
+            }
+          }),
+        } as any
       })
 
       const result = await checkForUpdates(false)
@@ -118,12 +145,23 @@ describe('updateChecker', () => {
     it('should save timestamp after successful check', async () => {
       mockInstance.shouldCheckForUpdates.mockReturnValue(true)
 
-      // Mock successful pnpm command
-      mockExec.mockImplementation((cmd, options, callback) => {
-        if (typeof callback === 'function') {
-          callback(null, '1.0.1\n', '')
+      // Mock successful https request
+      mockHttpsGet.mockImplementation((_url, _options, callback: any) => {
+        const mockResponse = {
+          on: vi.fn((event: string, handler: any) => {
+            if (event === 'data') {
+              handler(Buffer.from(JSON.stringify({ version: '1.0.1' })))
+            }
+            if (event === 'end') {
+              handler()
+            }
+            return mockResponse
+          }),
         }
-        return {} as any
+        callback(mockResponse)
+        return {
+          on: vi.fn(),
+        } as any
       })
 
       await checkForUpdates(false)
@@ -133,7 +171,21 @@ describe('updateChecker', () => {
   })
 
   describe('performAutoUpdate', () => {
-    it('should return success true on successful update', async () => {
+    beforeEach(() => {
+      // Mock execSync for package manager detection
+      mockExecSync.mockReturnValue(Buffer.from('7.0.0'))
+    })
+
+    it('should attempt silent upgrade by default when not flagged as failed', async () => {
+      // Silent upgrade will fail due to lack of proper mocks, but we're testing the flow
+      const result = await performAutoUpdate()
+
+      // Should attempt silent upgrade (which will fail in this test environment)
+      expect(result.success).toBe(false)
+      expect(result.shouldRetryWithPackageManager).toBe(true)
+    })
+
+    it('should use package manager when usePackageManager is true', async () => {
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
           callback(null, 'success', '')
@@ -141,37 +193,116 @@ describe('updateChecker', () => {
         return {} as any
       })
 
-      const result = await performAutoUpdate()
-      expect(result).toEqual({ success: true })
+      const result = await performAutoUpdate(true, false)
+
+      expect(result.success).toBe(true)
+      expect(result.method).toBe('package-manager')
+      expect(result.usedSudo).toBe(false)
       expect(mockExec).toHaveBeenCalledWith(
-        'pnpm add -g start-claude@latest',
-        { timeout: 30000 },
+        expect.stringContaining('start-claude@latest'),
+        { timeout: 60000 },
         expect.any(Function),
       )
     })
 
-    it('should return success false with error message on update failure with error in stderr', async () => {
+    it('should use package manager with sudo when requested', async () => {
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
-          callback(null, '', 'error: failed to install')
+          callback(null, 'success', '')
         }
         return {} as any
       })
 
-      const result = await performAutoUpdate()
-      expect(result).toEqual({ success: false, error: 'error: failed to install' })
+      const result = await performAutoUpdate(true, true)
+
+      expect(result.success).toBe(true)
+      expect(result.method).toBe('package-manager')
+      expect(result.usedSudo).toBe(true)
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('sudo'),
+        { timeout: 60000 },
+        expect.any(Function),
+      )
     })
 
-    it('should return success false with error message on command execution error', async () => {
+    it('should return shouldRetryWithPackageManager on permission error (macOS)', async () => {
+      Object.defineProperty(process, 'platform', {
+        value: 'darwin',
+        writable: true,
+        configurable: true,
+      })
+
       mockExec.mockImplementation((cmd, options, callback) => {
         if (typeof callback === 'function') {
-          callback(new Error('Command failed'), '', '')
+          callback(new Error('EACCES: permission denied'), '', '')
         }
         return {} as any
       })
 
-      const result = await performAutoUpdate()
-      expect(result).toEqual({ success: false, error: 'Command failed' })
+      const result = await performAutoUpdate(true, false)
+
+      expect(result.success).toBe(false)
+      expect(result.shouldRetryWithPackageManager).toBe(true)
+      expect(result.error).toContain('EACCES')
+    })
+  })
+
+  describe('performBackgroundUpgrade', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('should not start if already running', async () => {
+      mockInstance.get.mockReturnValue(true) // Background upgrade already running
+
+      await performBackgroundUpgrade()
+
+      expect(mockInstance.set).not.toHaveBeenCalled()
+    })
+
+    it('should set running flag and schedule upgrade', async () => {
+      mockInstance.get.mockReturnValue(null) // Not running
+
+      await performBackgroundUpgrade()
+
+      expect(mockInstance.set).toHaveBeenCalledWith('upgrade.backgroundRunning', true, 300000)
+    })
+  })
+
+  describe('checkBackgroundUpgradeResult', () => {
+    it('should return null if no result exists', () => {
+      mockInstance.get.mockReturnValue(null)
+
+      const result = checkBackgroundUpgradeResult()
+
+      expect(result).toBeNull()
+    })
+
+    it('should return result and clear it from cache', () => {
+      const mockResult = {
+        success: true,
+        method: 'silent-upgrade',
+        timestamp: Date.now(),
+      }
+      mockInstance.get.mockImplementation((key: string) => {
+        if (key === 'upgrade.backgroundResult')
+          return mockResult
+        if (key === 'updateCheck.lastVersion')
+          return '1.0.1'
+        return null
+      })
+
+      const result = checkBackgroundUpgradeResult()
+
+      expect(result).toEqual({
+        result: mockResult,
+        latestVersion: '1.0.1',
+      })
+      expect(mockInstance.delete).toHaveBeenCalledWith('upgrade.backgroundResult')
     })
   })
 

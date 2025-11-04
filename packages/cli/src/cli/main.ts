@@ -15,7 +15,7 @@ import {
   promptClaudeInstallation,
 } from '../utils/cli/detection'
 import { UILogger } from '../utils/cli/ui'
-import { checkForUpdates, performAutoUpdate, relaunchCLI } from '../utils/config/update-checker'
+import { checkBackgroundUpgradeResult, checkForUpdates, performAutoUpdate, performBackgroundUpgrade, relaunchCLI } from '../utils/config/update-checker'
 import { initializeMcpPassthrough } from '../utils/mcp/passthrough'
 import { McpSyncManager } from '../utils/mcp/sync-manager'
 import { SpeedTestManager } from '../utils/network/speed-test'
@@ -227,6 +227,25 @@ program
     // Display verbose mode status if enabled
     ui.verbose('Verbose mode enabled')
 
+    // Check if there's a background upgrade result from previous run
+    const backgroundUpgradeInfo = checkBackgroundUpgradeResult()
+    if (backgroundUpgradeInfo) {
+      const { result, latestVersion } = backgroundUpgradeInfo
+      if (result.success) {
+        ui.success(`✅ Update completed successfully${latestVersion ? ` to version ${latestVersion}` : ''}!`)
+        if (result.method === 'silent-upgrade') {
+          ui.info('ℹ️ The update was installed silently in the background')
+        }
+        ui.info('💡 The new version will be used on your next start-claude session')
+      }
+      else if (result.shouldRetryWithPackageManager) {
+        ui.warning('⚠️ Background upgrade encountered an issue. You may need to update manually.')
+        if (result.error) {
+          ui.verbose(`Error: ${result.error}`)
+        }
+      }
+    }
+
     let systemSettings: unknown = null
 
     // Perform multiple async operations in parallel for faster startup
@@ -315,19 +334,44 @@ program
 
       const updateAnswer = await inquirer.prompt([
         {
-          type: 'confirm',
-          name: 'autoUpdate',
-          message: 'Would you like to update now?',
-          default: configManager.needsImmediateUpdate(), // Default to Y if immediate update is needed
+          type: 'list',
+          name: 'updateChoice',
+          message: 'How would you like to update?',
+          choices: [
+            { name: 'Update in background (recommended - non-blocking)', value: 'background' },
+            { name: 'Update now (blocks startup)', value: 'now' },
+            { name: 'Skip for now', value: 'skip' },
+          ],
+          default: 'background',
         },
       ])
 
-      if (updateAnswer.autoUpdate) {
+      if (updateAnswer.updateChoice === 'background') {
+        ui.info('⏳ Starting background upgrade...')
+        // Start background upgrade asynchronously
+        performBackgroundUpgrade()
+        ui.success('✅ Upgrade started in background. Results will be shown on next startup.')
+        ui.info('💡 You can continue using the CLI while the upgrade happens.')
+      }
+      else if (updateAnswer.updateChoice === 'now') {
         ui.info('⏳ Updating start-claude...')
-        const updateResult = await performAutoUpdate()
+        let updateResult = await performAutoUpdate()
 
+        // Handle the upgrade flow
         if (updateResult.success) {
-          ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion}!`)
+          // Success - show appropriate message based on method
+          if (updateResult.method === 'silent-upgrade') {
+            ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion}!`)
+            ui.verbose('ℹ️ Update was installed silently without requiring package manager')
+          }
+          else if (updateResult.usedSudo) {
+            ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion} using sudo!`)
+            ui.info('ℹ️ Sudo was required due to permission restrictions')
+          }
+          else {
+            ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion}!`)
+          }
+
           ui.info('🔄 Relaunching with new version...')
 
           // Small delay to ensure the message is displayed
@@ -336,14 +380,61 @@ program
           }, 1000)
           return
         }
-        else {
-          ui.error('❌ Failed to auto-update. Please run manually:')
-          ui.error(updateCheckInfo.updateCommand)
-          if (updateResult.error) {
-            ui.error(`Error details: ${updateResult.error}`)
+
+        // Failed - check if we should retry with package manager
+        if (updateResult.shouldRetryWithPackageManager) {
+          ui.warning('⚠️ Silent upgrade failed, attempting update via package manager...')
+
+          // Retry with package manager
+          updateResult = await performAutoUpdate(true, false)
+
+          if (updateResult.success) {
+            ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion}!`)
+            ui.info('🔄 Relaunching with new version...')
+
+            setTimeout(() => {
+              relaunchCLI()
+            }, 1000)
+            return
           }
-          ui.warning('⚠️ Continuing with current version...')
+
+          // Package manager failed - check if we need sudo (macOS only)
+          if (updateResult.shouldRetryWithPackageManager && process.platform === 'darwin') {
+            ui.warning('⚠️ Permission denied. Sudo may be required for this installation.')
+
+            const sudoAnswer = await inquirer.prompt([
+              {
+                type: 'confirm',
+                name: 'useSudo',
+                message: 'Would you like to try updating with sudo?',
+                default: true,
+              },
+            ])
+
+            if (sudoAnswer.useSudo) {
+              ui.info('⏳ Updating with sudo...')
+              updateResult = await performAutoUpdate(true, true)
+
+              if (updateResult.success) {
+                ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion} using sudo!`)
+                ui.info('🔄 Relaunching with new version...')
+
+                setTimeout(() => {
+                  relaunchCLI()
+                }, 1000)
+                return
+              }
+            }
+          }
         }
+
+        // All attempts failed
+        ui.error('❌ Failed to auto-update. Please run manually:')
+        ui.error(updateCheckInfo.updateCommand)
+        if (updateResult.error) {
+          ui.error(`Error details: ${updateResult.error}`)
+        }
+        ui.warning('⚠️ Continuing with current version...')
       }
     }
 

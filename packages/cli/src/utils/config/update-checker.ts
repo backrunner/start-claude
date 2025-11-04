@@ -1,10 +1,20 @@
 import type { Buffer } from 'node:buffer'
-import { exec, spawn } from 'node:child_process'
+import { exec, execSync, spawn } from 'node:child_process'
+import { accessSync, constants, createWriteStream, mkdirSync, rmSync } from 'node:fs'
 import https from 'node:https'
+import os from 'node:os'
+import path from 'node:path'
 import process from 'node:process'
+import { pipeline } from 'node:stream/promises'
+import { fileURLToPath } from 'node:url'
+import { extract } from 'tar'
 import { version } from '../../../package.json'
 import { isGlobalNodePath } from '../system/path-utils'
 import { CacheManager } from './cache-manager'
+
+// Get the current file path using import.meta.url for bundled code
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 export interface UpdateInfo {
   currentVersion: string
@@ -106,12 +116,278 @@ function compareVersions(current: string, latest: string): number {
 export interface UpdateResult {
   success: boolean
   error?: string
+  usedSudo?: boolean
+  method?: 'silent-upgrade' | 'package-manager'
+  shouldRetryWithPackageManager?: boolean
 }
 
-export async function performAutoUpdate(): Promise<UpdateResult> {
+/**
+ * Get the global installation path for start-claude
+ * Uses import.meta.url to work correctly with bundled code
+ * Returns null if not running from a global installation
+ */
+function getGlobalInstallPath(): string | null {
+  try {
+    // Start from the current file location (bundled CLI in bin/ directory)
+    let currentPath = __dirname
+
+    // Walk up the directory tree to find the start-claude package root
+    // After bundling, __dirname will be in bin/ or similar, and we need to find the package root
+    while (currentPath !== path.dirname(currentPath)) {
+      // Check if this directory looks like the start-claude package root
+      // It should have package.json with name "start-claude"
+      const packageJsonPath = path.join(currentPath, 'package.json')
+      try {
+        accessSync(packageJsonPath, constants.F_OK)
+        // Found package.json, verify it's start-claude
+        // We can't use require here since we're bundled, so just check the directory structure
+        // If we find package.json and we're in a node_modules path, assume it's correct
+        if (currentPath.includes(path.join('node_modules', 'start-claude'))) {
+          return currentPath
+        }
+
+        // Check if the current directory is named "start-claude" and parent is "node_modules"
+        if (path.basename(currentPath) === 'start-claude') {
+          const parentDir = path.dirname(currentPath)
+          if (path.basename(parentDir) === 'node_modules') {
+            return currentPath
+          }
+        }
+      }
+      catch {
+        // Continue searching
+      }
+
+      currentPath = path.dirname(currentPath)
+    }
+
+    // Fallback: check if we're in a global node path
+    if (isGlobalNodePath(__filename)) {
+      // Walk up from __filename to find node_modules/start-claude
+      currentPath = path.dirname(__filename)
+      while (currentPath !== path.dirname(currentPath)) {
+        const modulePath = path.join(currentPath, 'node_modules', 'start-claude')
+        try {
+          accessSync(modulePath, constants.F_OK)
+          return modulePath
+        }
+        catch {
+          // Continue searching
+        }
+
+        // Check if we're directly in start-claude directory
+        if (path.basename(currentPath) === 'start-claude') {
+          const parentDir = path.dirname(currentPath)
+          if (path.basename(parentDir) === 'node_modules') {
+            return currentPath
+          }
+        }
+
+        currentPath = path.dirname(currentPath)
+      }
+    }
+  }
+  catch {
+    // Silently fail
+  }
+
+  return null
+}
+
+/**
+ * Check if we have write permissions to a directory
+ */
+function hasWritePermission(dirPath: string): boolean {
+  try {
+    accessSync(dirPath, constants.W_OK)
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+/**
+ * Detect package manager to use for updates
+ */
+function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
+  try {
+    execSync('pnpm --version', { stdio: 'ignore' })
+    return 'pnpm'
+  }
+  catch {
+    // pnpm not available
+  }
+
+  try {
+    execSync('yarn --version', { stdio: 'ignore' })
+    return 'yarn'
+  }
+  catch {
+    // yarn not available
+  }
+
+  return 'npm' // Fallback to npm
+}
+
+/**
+ * Download the latest start-claude tarball from npm
+ */
+async function downloadLatestTarball(destPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = 30000 // 30 seconds
+
+    https.get('https://registry.npmjs.org/start-claude/latest', {
+      timeout,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'start-claude-cli',
+      },
+    }, (res: any) => {
+      let data = ''
+
+      res.on('data', (chunk: Buffer) => {
+        data += chunk.toString()
+      })
+
+      res.on('end', () => {
+        try {
+          const pkg = JSON.parse(data)
+          const tarballUrl = pkg.dist?.tarball
+
+          if (!tarballUrl) {
+            reject(new Error('No tarball URL found in package metadata'))
+            return
+          }
+
+          // Download the tarball
+          https.get(tarballUrl, {
+            timeout,
+            headers: {
+              'User-Agent': 'start-claude-cli',
+            },
+          }, (tarRes: any) => {
+            const fileStream = createWriteStream(destPath)
+
+            pipeline(tarRes, fileStream)
+              .then(() => resolve())
+              .catch(reject)
+          }).on('error', reject)
+        }
+        catch (error) {
+          reject(error)
+        }
+      })
+    }).on('error', reject).on('timeout', () => {
+      reject(new Error('Download timeout'))
+    })
+  })
+}
+
+/**
+ * Perform silent upgrade by extracting tarball to the installation directory
+ * This method doesn't require sudo and should work in most cases
+ */
+async function performSilentUpgrade(): Promise<UpdateResult> {
+  const cache = CacheManager.getInstance()
+  const tmpDir = path.join(os.tmpdir(), `start-claude-upgrade-${Date.now()}`)
+
+  try {
+    const installPath = getGlobalInstallPath()
+    if (!installPath) {
+      cache.set('upgrade.silentFailed', true)
+      return {
+        success: false,
+        error: 'Could not determine installation path',
+        shouldRetryWithPackageManager: true,
+      }
+    }
+
+    // Check if we have write permissions to the installation directory
+    if (!hasWritePermission(installPath)) {
+      cache.set('upgrade.silentFailed', true)
+      return {
+        success: false,
+        error: 'No write permission to installation directory',
+        shouldRetryWithPackageManager: true,
+      }
+    }
+
+    // Create a temporary directory for the download
+    mkdirSync(tmpDir, { recursive: true })
+
+    const tarballPath = path.join(tmpDir, 'start-claude.tgz')
+
+    // Download the latest tarball
+    await downloadLatestTarball(tarballPath)
+
+    // Extract the tarball to a temp location first
+    const extractPath = path.join(tmpDir, 'package')
+    mkdirSync(extractPath, { recursive: true })
+
+    await extract({
+      file: tarballPath,
+      cwd: tmpDir,
+    })
+
+    // Copy files from extracted package to installation directory
+    // This is safer than extracting directly
+    if (process.platform === 'win32') {
+      // Windows - use robocopy or xcopy
+      execSync(`xcopy /E /I /Y "${path.join(extractPath, '*')}" "${installPath}"`, { stdio: 'ignore' })
+    }
+    else {
+      // Unix - use cp
+      execSync(`cp -rf "${extractPath}"/* "${installPath}/"`, { stdio: 'ignore' })
+    }
+
+    // Clear the failed flag on success
+    cache.delete('upgrade.silentFailed')
+
+    return {
+      success: true,
+      method: 'silent-upgrade',
+    }
+  }
+  catch (error) {
+    // Set flag to try package manager next time
+    cache.set('upgrade.silentFailed', true)
+
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error during silent upgrade',
+      shouldRetryWithPackageManager: true,
+    }
+  }
+  finally {
+    // Clean up temp directory
+    try {
+      if (tmpDir) {
+        rmSync(tmpDir, { recursive: true, force: true })
+      }
+    }
+    catch {
+      // Ignore cleanup errors
+    }
+  }
+}
+
+/**
+ * Perform package manager update with optional sudo for macOS
+ */
+async function performPackageManagerUpdate(useSudo: boolean = false): Promise<UpdateResult> {
+  const packageManager = detectPackageManager()
+  const updateCommand = packageManager === 'npm'
+    ? 'npm install -g start-claude@latest'
+    : packageManager === 'yarn'
+      ? 'yarn global add start-claude@latest'
+      : 'pnpm add -g start-claude@latest'
+
+  const finalCommand = useSudo ? `sudo ${updateCommand}` : updateCommand
+
   try {
     const result = await new Promise<{ stdout: string, stderr: string }>((resolve, reject) => {
-      exec('pnpm add -g start-claude@latest', { timeout: 30000 }, (error, stdout, stderr) => {
+      exec(finalCommand, { timeout: 60000 }, (error, stdout, stderr) => {
         if (error) {
           reject(error)
         }
@@ -123,20 +399,121 @@ export async function performAutoUpdate(): Promise<UpdateResult> {
 
     // Check if the update was successful
     if (result.stderr && (result.stderr.includes('error') || result.stderr.includes('failed'))) {
-      return {
-        success: false,
-        error: result.stderr.trim(),
-      }
+      throw new Error(result.stderr.trim())
     }
 
-    return { success: true }
-  }
-  catch (error) {
+    // Clear the failed flag on success
+    const cache = CacheManager.getInstance()
+    cache.delete('upgrade.silentFailed')
+
     return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred during update',
+      success: true,
+      usedSudo: useSudo,
+      method: 'package-manager',
     }
   }
+  catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    // Check if the error is permission-related
+    const isPermissionError = errorMessage.includes('EACCES')
+      || errorMessage.includes('EPERM')
+      || errorMessage.includes('permission denied')
+      || errorMessage.includes('Permission denied')
+
+    return {
+      success: false,
+      error: errorMessage,
+      usedSudo: useSudo,
+      method: 'package-manager',
+      shouldRetryWithPackageManager: !useSudo && isPermissionError && process.platform === 'darwin',
+    }
+  }
+}
+
+/**
+ * Main auto-update function
+ * Flow:
+ * 1. First time or if silent upgrade not flagged as failed: Try silent upgrade
+ * 2. If silent upgrade failed before: Return info to prompt user for package manager update
+ */
+export async function performAutoUpdate(usePackageManager: boolean = false, useSudo: boolean = false): Promise<UpdateResult> {
+  const cache = CacheManager.getInstance()
+  const silentUpgradeFailed = cache.get('upgrade.silentFailed')
+
+  // If explicitly requested to use package manager, or if silent upgrade failed before
+  if (usePackageManager || silentUpgradeFailed) {
+    return performPackageManagerUpdate(useSudo)
+  }
+
+  // Default: Try silent upgrade first
+  return performSilentUpgrade()
+}
+
+/**
+ * Perform background upgrade - this runs in the background without blocking the CLI
+ * The upgrade happens silently, and results are saved to cache for next startup
+ */
+export async function performBackgroundUpgrade(): Promise<void> {
+  const cache = CacheManager.getInstance()
+
+  // Don't start another background upgrade if one is already running
+  if (cache.get('upgrade.backgroundRunning')) {
+    return
+  }
+
+  // Mark that a background upgrade is running
+  cache.set('upgrade.backgroundRunning', true, 5 * 60 * 1000) // 5 minute TTL
+
+  // Run the upgrade asynchronously without blocking
+  // Using setTimeout to ensure it runs after the CLI starts
+  setTimeout(() => {
+    void (async () => {
+      try {
+        const result = await performSilentUpgrade()
+
+        // Save the result to cache
+        cache.set('upgrade.backgroundResult', {
+          ...result,
+          timestamp: Date.now(),
+        })
+      }
+      catch (error) {
+        cache.set('upgrade.backgroundResult', {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: Date.now(),
+        })
+      }
+      finally {
+        cache.delete('upgrade.backgroundRunning')
+      }
+    })()
+  }, 100) // Small delay to ensure CLI has started
+}
+
+/**
+ * Check if there's a background upgrade result to display
+ * Call this on CLI startup to show results from previous background upgrade
+ */
+export function checkBackgroundUpgradeResult(): { result: UpdateResult, latestVersion?: string } | null {
+  const cache = CacheManager.getInstance()
+  const result = cache.get('upgrade.backgroundResult')
+
+  if (result) {
+    // Get the latest version from the last update check
+    const latestVersion = cache.get('updateCheck.lastVersion')
+
+    // Clear the result after reading it
+    cache.delete('upgrade.backgroundResult')
+
+    return {
+      result,
+      latestVersion,
+    }
+  }
+
+  return null
 }
 
 /**

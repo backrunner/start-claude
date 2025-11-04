@@ -9,7 +9,7 @@ import typescript from '@rollup/plugin-typescript'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-// Bundle most dependencies except for Node.js builtins and AWS SDK
+// Bundle all third-party dependencies - only exclude Node.js builtins and Next.js (for manager)
 const external = [
   'fs/promises',
   'node:fs',
@@ -20,7 +20,10 @@ const external = [
   'node:util',
   'node:http',
   'node:https',
-  '@aws-sdk/client-s3',
+  'node:url',
+  'node:buffer',
+  'node:stream',
+  'node:stream/promises',
   'next/server',
   'next',
 ]
