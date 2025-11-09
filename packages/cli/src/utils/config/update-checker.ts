@@ -142,7 +142,11 @@ function getGlobalInstallPath(): string | null {
         // Found package.json, verify it's start-claude
         // We can't use require here since we're bundled, so just check the directory structure
         // If we find package.json and we're in a node_modules path, assume it's correct
-        if (currentPath.includes(path.join('node_modules', 'start-claude'))) {
+        // Use path.normalize to ensure consistent path separators
+        const normalizedPath = path.normalize(currentPath)
+        const nodeModulesPattern = path.normalize(path.join('node_modules', 'start-claude'))
+
+        if (normalizedPath.includes(nodeModulesPattern)) {
           return currentPath
         }
 
@@ -285,15 +289,115 @@ async function downloadLatestTarball(destPath: string): Promise<void> {
 }
 
 /**
+ * Verify that critical CLI files exist after installation
+ * This detects partial copies that could break the CLI
+ */
+function verifyCLIInstallation(installPath: string): { valid: boolean, missingFiles: string[] } {
+  // Use path.join for all file paths to ensure platform compatibility
+  const criticalFiles = [
+    'package.json',
+    path.join('bin', 'cli.mjs'),
+    path.join('bin', 'cli.cjs'),
+  ]
+
+  const missingFiles: string[] = []
+
+  for (const file of criticalFiles) {
+    const filePath = path.join(installPath, file)
+    try {
+      accessSync(filePath, constants.F_OK)
+    }
+    catch {
+      missingFiles.push(file)
+    }
+  }
+
+  return {
+    valid: missingFiles.length === 0,
+    missingFiles,
+  }
+}
+
+/**
+ * Perform a safe file copy with error detection
+ * Returns { success: true } or { success: false, error: string }
+ */
+function safeCopy(sourcePath: string, destPath: string): { success: boolean, error?: string } {
+  try {
+    let result: { stdout: Buffer, stderr: Buffer }
+
+    // Normalize paths to ensure correct separators for the platform
+    const normalizedSource = path.normalize(sourcePath)
+    const normalizedDest = path.normalize(destPath)
+
+    if (process.platform === 'win32') {
+      // Windows: xcopy with error checking
+      // /E = copy subdirectories including empty ones
+      // /I = destination is a directory
+      // /Y = suppress prompting to overwrite
+      // /C = continue copying even if errors occur (but we'll check stderr)
+      // Note: xcopy requires backslash separator and handles wildcards at the end
+      const sourceWithWildcard = `${normalizedSource + path.sep}*`
+
+      result = execSync(`xcopy /E /I /Y /C "${sourceWithWildcard}" "${normalizedDest}"`, {
+        encoding: 'buffer',
+        stdio: ['ignore', 'pipe', 'pipe'], // capture stdout and stderr
+      }) as any
+
+      // Check stderr for errors/warnings
+      const stderr = result.stderr?.toString() || ''
+      if (stderr.includes('File not found') || stderr.includes('Access denied') || stderr.includes('denied')) {
+        return {
+          success: false,
+          error: `xcopy reported errors: ${stderr.trim()}`,
+        }
+      }
+    }
+    else {
+      // Unix: cp with verbose output to detect partial failures
+      // Use normalized path with forward slashes and wildcard
+      const sourceWithWildcard = `${normalizedSource + path.sep}*`
+      const destWithSeparator = normalizedDest + path.sep
+
+      result = execSync(`cp -rf "${sourceWithWildcard}" "${destWithSeparator}"`, {
+        encoding: 'buffer',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }) as any
+
+      // Check stderr for errors
+      const stderr = result.stderr?.toString() || ''
+      if (stderr.length > 0 && (stderr.includes('cannot') || stderr.includes('denied') || stderr.includes('error'))) {
+        return {
+          success: false,
+          error: `cp reported errors: ${stderr.trim()}`,
+        }
+      }
+    }
+
+    return { success: true }
+  }
+  catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown copy error',
+    }
+  }
+}
+
+/**
  * Perform silent upgrade by extracting tarball to the installation directory
  * This method doesn't require sudo and should work in most cases
+ * Uses atomic operations with rollback to ensure CLI is never left in broken state
  */
 async function performSilentUpgrade(): Promise<UpdateResult> {
   const cache = CacheManager.getInstance()
   const tmpDir = path.join(os.tmpdir(), `start-claude-upgrade-${Date.now()}`)
+  let backupPath: string | null = null
+  let needsRollback = false
+  let installPath: string | null = null
 
   try {
-    const installPath = getGlobalInstallPath()
+    installPath = getGlobalInstallPath()
     if (!installPath) {
       cache.set('upgrade.silentFailed', true)
       return {
@@ -309,6 +413,17 @@ async function performSilentUpgrade(): Promise<UpdateResult> {
       return {
         success: false,
         error: 'No write permission to installation directory',
+        shouldRetryWithPackageManager: true,
+      }
+    }
+
+    // Verify current installation is valid before attempting upgrade
+    const preUpgradeCheck = verifyCLIInstallation(installPath)
+    if (!preUpgradeCheck.valid) {
+      cache.set('upgrade.silentFailed', true)
+      return {
+        success: false,
+        error: `Current installation is invalid (missing: ${preUpgradeCheck.missingFiles.join(', ')}). Please reinstall manually.`,
         shouldRetryWithPackageManager: true,
       }
     }
@@ -330,18 +445,59 @@ async function performSilentUpgrade(): Promise<UpdateResult> {
       cwd: tmpDir,
     })
 
-    // Copy files from extracted package to installation directory
-    // This is safer than extracting directly
-    if (process.platform === 'win32') {
-      // Windows - use robocopy or xcopy
-      execSync(`xcopy /E /I /Y "${path.join(extractPath, '*')}" "${installPath}"`, { stdio: 'ignore' })
-    }
-    else {
-      // Unix - use cp
-      execSync(`cp -rf "${extractPath}"/* "${installPath}/"`, { stdio: 'ignore' })
+    // Verify extracted package is valid before proceeding
+    const extractedCheck = verifyCLIInstallation(extractPath)
+    if (!extractedCheck.valid) {
+      cache.set('upgrade.silentFailed', true)
+      return {
+        success: false,
+        error: `Downloaded package is invalid (missing: ${extractedCheck.missingFiles.join(', ')}). Aborting upgrade.`,
+        shouldRetryWithPackageManager: true,
+      }
     }
 
-    // Clear the failed flag on success
+    // CRITICAL: Create backup before modifying installation
+    // This ensures we can rollback if upgrade fails
+    backupPath = path.join(tmpDir, 'backup')
+    mkdirSync(backupPath, { recursive: true })
+
+    const backupResult = safeCopy(installPath, backupPath)
+    if (!backupResult.success) {
+      // If backup fails, abort upgrade - don't risk breaking the CLI
+      cache.set('upgrade.silentFailed', true)
+      return {
+        success: false,
+        error: `Failed to create backup: ${backupResult.error}`,
+        shouldRetryWithPackageManager: true,
+      }
+    }
+
+    // Verify backup is complete
+    const backupCheck = verifyCLIInstallation(backupPath)
+    if (!backupCheck.valid) {
+      cache.set('upgrade.silentFailed', true)
+      return {
+        success: false,
+        error: `Backup verification failed (missing: ${backupCheck.missingFiles.join(', ')}). Aborting upgrade.`,
+        shouldRetryWithPackageManager: true,
+      }
+    }
+
+    // Now attempt to copy new files over existing installation
+    const upgradeResult = safeCopy(extractPath, installPath)
+    if (!upgradeResult.success) {
+      needsRollback = true
+      throw new Error(`File copy failed: ${upgradeResult.error}`)
+    }
+
+    // CRITICAL: Verify installation is complete and valid after upgrade
+    const postUpgradeCheck = verifyCLIInstallation(installPath)
+    if (!postUpgradeCheck.valid) {
+      needsRollback = true
+      throw new Error(`Post-upgrade verification failed - installation incomplete (missing: ${postUpgradeCheck.missingFiles.join(', ')})`)
+    }
+
+    // Upgrade successful - clear the failed flag
     cache.delete('upgrade.silentFailed')
 
     return {
@@ -350,6 +506,41 @@ async function performSilentUpgrade(): Promise<UpdateResult> {
     }
   }
   catch (error) {
+    // Any error during upgrade requires rollback
+    if (needsRollback && backupPath && installPath) {
+      // CRITICAL: Restore from backup
+      try {
+        // Use the already-validated installPath instead of calling getGlobalInstallPath() again
+        const rollbackResult = safeCopy(backupPath, installPath)
+        if (!rollbackResult.success) {
+          throw new Error(`Rollback copy failed: ${rollbackResult.error}`)
+        }
+
+        // Verify rollback was successful
+        const rollbackCheck = verifyCLIInstallation(installPath)
+        if (!rollbackCheck.valid) {
+          throw new Error(`Rollback verification failed (missing: ${rollbackCheck.missingFiles.join(', ')})`)
+        }
+
+        // Rollback successful
+        cache.set('upgrade.silentFailed', true)
+        return {
+          success: false,
+          error: `Upgrade failed, successfully rolled back to previous version: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          shouldRetryWithPackageManager: true,
+        }
+      }
+      catch (rollbackError) {
+        // CRITICAL: Both upgrade and rollback failed
+        cache.set('upgrade.silentFailed', true)
+        return {
+          success: false,
+          error: `CRITICAL: Upgrade and rollback both failed. Backup preserved at: ${backupPath}. Please restore manually. Original error: ${error instanceof Error ? error.message : 'Unknown error'}. Rollback error: ${rollbackError instanceof Error ? rollbackError.message : 'Unknown'}`,
+          shouldRetryWithPackageManager: true,
+        }
+      }
+    }
+
     // Set flag to try package manager next time
     cache.set('upgrade.silentFailed', true)
 
@@ -360,14 +551,15 @@ async function performSilentUpgrade(): Promise<UpdateResult> {
     }
   }
   finally {
-    // Clean up temp directory
+    // Clean up temp directory (including backup if upgrade was successful)
+    // Only clean up if we don't need the backup for manual recovery
     try {
-      if (tmpDir) {
+      if (tmpDir && !needsRollback) {
         rmSync(tmpDir, { recursive: true, force: true })
       }
     }
     catch {
-      // Ignore cleanup errors
+      // Ignore cleanup errors - backup may still be needed
     }
   }
 }
@@ -455,41 +647,49 @@ export async function performAutoUpdate(usePackageManager: boolean = false, useS
  * The upgrade happens silently, and results are saved to cache for next startup
  */
 export async function performBackgroundUpgrade(): Promise<void> {
-  const cache = CacheManager.getInstance()
+  // Wrap everything in try-catch to ensure this never crashes the CLI
+  try {
+    const cache = CacheManager.getInstance()
 
-  // Don't start another background upgrade if one is already running
-  if (cache.get('upgrade.backgroundRunning')) {
-    return
+    // Don't start another background upgrade if one is already running
+    if (cache.get('upgrade.backgroundRunning')) {
+      return
+    }
+
+    // Mark that a background upgrade is running
+    cache.set('upgrade.backgroundRunning', true, 5 * 60 * 1000) // 5 minute TTL
+
+    // Run the upgrade asynchronously without blocking
+    // Using setTimeout to ensure it runs after the CLI starts
+    setTimeout(() => {
+      void (async () => {
+        try {
+          const result = await performSilentUpgrade()
+
+          // Save the result to cache
+          cache.set('upgrade.backgroundResult', {
+            ...result,
+            timestamp: Date.now(),
+          })
+        }
+        catch (error) {
+          // Catch any unexpected errors (performSilentUpgrade should return errors, not throw)
+          cache.set('upgrade.backgroundResult', {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: Date.now(),
+          })
+        }
+        finally {
+          cache.delete('upgrade.backgroundRunning')
+        }
+      })()
+    }, 100) // Small delay to ensure CLI has started
   }
-
-  // Mark that a background upgrade is running
-  cache.set('upgrade.backgroundRunning', true, 5 * 60 * 1000) // 5 minute TTL
-
-  // Run the upgrade asynchronously without blocking
-  // Using setTimeout to ensure it runs after the CLI starts
-  setTimeout(() => {
-    void (async () => {
-      try {
-        const result = await performSilentUpgrade()
-
-        // Save the result to cache
-        cache.set('upgrade.backgroundResult', {
-          ...result,
-          timestamp: Date.now(),
-        })
-      }
-      catch (error) {
-        cache.set('upgrade.backgroundResult', {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          timestamp: Date.now(),
-        })
-      }
-      finally {
-        cache.delete('upgrade.backgroundRunning')
-      }
-    })()
-  }, 100) // Small delay to ensure CLI has started
+  catch {
+    // Silently fail if there's any error in the synchronous setup code
+    // This ensures the CLI never crashes due to upgrade logic
+  }
 }
 
 /**
@@ -497,23 +697,30 @@ export async function performBackgroundUpgrade(): Promise<void> {
  * Call this on CLI startup to show results from previous background upgrade
  */
 export function checkBackgroundUpgradeResult(): { result: UpdateResult, latestVersion?: string } | null {
-  const cache = CacheManager.getInstance()
-  const result = cache.get('upgrade.backgroundResult')
+  try {
+    const cache = CacheManager.getInstance()
+    const result = cache.get('upgrade.backgroundResult')
 
-  if (result) {
-    // Get the latest version from the last update check
-    const latestVersion = cache.get('updateCheck.lastVersion')
+    if (result) {
+      // Get the latest version from the last update check
+      const latestVersion = cache.get('updateCheck.lastVersion')
 
-    // Clear the result after reading it
-    cache.delete('upgrade.backgroundResult')
+      // Clear the result after reading it
+      cache.delete('upgrade.backgroundResult')
 
-    return {
-      result,
-      latestVersion,
+      return {
+        result,
+        latestVersion,
+      }
     }
-  }
 
-  return null
+    return null
+  }
+  catch {
+    // Silently fail if there's any error reading the cache
+    // This ensures the CLI never crashes due to upgrade result checking
+    return null
+  }
 }
 
 /**

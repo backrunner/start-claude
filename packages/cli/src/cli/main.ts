@@ -228,22 +228,29 @@ program
     ui.verbose('Verbose mode enabled')
 
     // Check if there's a background upgrade result from previous run
-    const backgroundUpgradeInfo = checkBackgroundUpgradeResult()
-    if (backgroundUpgradeInfo) {
-      const { result, latestVersion } = backgroundUpgradeInfo
-      if (result.success) {
-        ui.success(`✅ Update completed successfully${latestVersion ? ` to version ${latestVersion}` : ''}!`)
-        if (result.method === 'silent-upgrade') {
-          ui.info('ℹ️ The update was installed silently in the background')
+    // Wrapped in try-catch to ensure upgrade checking never crashes CLI startup
+    try {
+      const backgroundUpgradeInfo = checkBackgroundUpgradeResult()
+      if (backgroundUpgradeInfo) {
+        const { result, latestVersion } = backgroundUpgradeInfo
+        if (result.success) {
+          ui.success(`✅ Update completed successfully${latestVersion ? ` to version ${latestVersion}` : ''}!`)
+          if (result.method === 'silent-upgrade') {
+            ui.info('ℹ️ The update was installed silently in the background')
+          }
+          ui.info('💡 The new version will be used on your next start-claude session')
         }
-        ui.info('💡 The new version will be used on your next start-claude session')
-      }
-      else if (result.shouldRetryWithPackageManager) {
-        ui.warning('⚠️ Background upgrade encountered an issue. You may need to update manually.')
-        if (result.error) {
-          ui.verbose(`Error: ${result.error}`)
+        else if (result.shouldRetryWithPackageManager) {
+          ui.warning('⚠️ Background upgrade encountered an issue. You may need to update manually.')
+          if (result.error) {
+            ui.verbose(`Error: ${result.error}`)
+          }
         }
       }
+    }
+    catch (error) {
+      // Silently fail - upgrade result checking should never crash the CLI
+      ui.verbose(`Failed to check upgrade result: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
 
     let systemSettings: unknown = null
@@ -348,10 +355,17 @@ program
 
       if (updateAnswer.updateChoice === 'background') {
         ui.info('⏳ Starting background upgrade...')
-        // Start background upgrade asynchronously
-        performBackgroundUpgrade()
-        ui.success('✅ Upgrade started in background. Results will be shown on next startup.')
-        ui.info('💡 You can continue using the CLI while the upgrade happens.')
+        // Start background upgrade asynchronously with error handling
+        try {
+          void performBackgroundUpgrade()
+          ui.success('✅ Upgrade started in background. Results will be shown on next startup.')
+          ui.info('💡 You can continue using the CLI while the upgrade happens.')
+        }
+        catch (error) {
+          ui.error('❌ Failed to start background upgrade')
+          ui.verbose(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+          ui.warning('⚠️ Continuing with current version...')
+        }
       }
       else if (updateAnswer.updateChoice === 'now') {
         ui.info('⏳ Updating start-claude...')
