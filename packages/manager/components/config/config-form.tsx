@@ -403,7 +403,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   id="isDefault"
                   checked={formData.isDefault ?? false}
                   onCheckedChange={checked => handleChange('isDefault', checked)}
-                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-purple-600"
+                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-purple-600 data-[state=unchecked]:bg-purple-200 dark:data-[state=unchecked]:bg-purple-900/30 border-transparent"
                 />
               </div>
 
@@ -418,7 +418,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   id="transformerEnabled"
                   checked={formData.transformerEnabled ?? false}
                   onCheckedChange={checked => handleChange('transformerEnabled', checked)}
-                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-purple-600"
+                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-purple-600 data-[state=unchecked]:bg-purple-200 dark:data-[state=unchecked]:bg-purple-900/30 border-transparent"
                 />
               </div>
 
@@ -460,7 +460,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   id="enabled"
                   checked={formData.enabled ?? true}
                   onCheckedChange={checked => handleChange('enabled', checked)}
-                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-purple-600"
+                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-purple-500 data-[state=checked]:to-purple-600 data-[state=unchecked]:bg-purple-200 dark:data-[state=unchecked]:bg-purple-900/30 border-transparent"
                 />
               </div>
             </div>

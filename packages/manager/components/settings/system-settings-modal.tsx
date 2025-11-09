@@ -461,7 +461,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                     id="enableByDefault"
                     checked={settings.balanceMode?.enableByDefault || false}
                     onCheckedChange={checked => handleBalanceModeChange('enableByDefault', checked)}
-                    className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600"
+                    className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 data-[state=unchecked]:bg-blue-200 dark:data-[state=unchecked]:bg-blue-900/30 border-transparent"
                   />
                 </div>
 
@@ -589,7 +589,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       id="healthCheckEnabled"
                       checked={settings.balanceMode?.healthCheck?.enabled !== false}
                       onCheckedChange={checked => handleHealthCheckChange('enabled', checked)}
-                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-green-500 data-[state=checked]:to-green-600"
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-green-500 data-[state=checked]:to-green-600 data-[state=unchecked]:bg-green-200 dark:data-[state=unchecked]:bg-green-900/30 border-transparent"
                     />
                   </div>
 
@@ -861,7 +861,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       id="enableS3"
                       checked={!!settings.s3Sync}
                       onCheckedChange={checked => checked ? enableS3() : disableS3()}
-                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-orange-500 data-[state=checked]:to-orange-600"
+                      className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-orange-500 data-[state=checked]:to-orange-600 data-[state=unchecked]:bg-orange-200 dark:data-[state=unchecked]:bg-orange-900/30 border-transparent"
                     />
                   </div>
                 </div>
