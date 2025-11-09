@@ -88,7 +88,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
               </div>
             </div>
 
-            {(cleanBaseUrl || config.model) && (
+            {(cleanBaseUrl || config.model || config.smallFastModel) && (
               <div className="flex flex-col gap-1.5">
                 {cleanBaseUrl && (
                   <code className="text-xs px-2 py-1 rounded bg-muted/70 font-mono text-muted-foreground truncate">
@@ -98,6 +98,11 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                 {config.model && (
                   <code className="text-xs px-2 py-1 rounded bg-primary/10 font-mono text-primary truncate">
                     {config.model}
+                  </code>
+                )}
+                {config.smallFastModel && (
+                  <code className="text-xs px-2 py-1 rounded bg-purple/10 font-mono text-purple-600 dark:text-purple-400 truncate">
+                    Fast: {config.smallFastModel}
                   </code>
                 )}
               </div>
@@ -195,6 +200,11 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                 {config.model && (
                   <code className="text-xs px-2.5 py-1 rounded bg-primary/10 font-mono text-primary truncate max-w-sm">
                     {config.model}
+                  </code>
+                )}
+                {config.smallFastModel && (
+                  <code className="text-xs px-2.5 py-1 rounded bg-purple/10 font-mono text-purple-600 dark:text-purple-400 truncate max-w-sm">
+                    Fast: {config.smallFastModel}
                   </code>
                 )}
                 <VSCodeStartButton configName={config.name} className="text-xs" />

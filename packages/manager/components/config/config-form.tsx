@@ -352,6 +352,24 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="smallFastModel" className="font-medium flex items-center gap-2">
+                <Brain className="h-3 w-3" />
+                Small Fast Model
+                <Badge variant="outline" className="text-xs">Optional</Badge>
+              </Label>
+              <Input
+                id="smallFastModel"
+                value={formData.smallFastModel ?? ''}
+                onChange={e => handleChange('smallFastModel', e.target.value)}
+                placeholder="claude-3-5-haiku-20241022"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Model used for quick non-essential tasks (ANTHROPIC_SMALL_FAST_MODEL)
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="permissionMode" className="font-medium">Permission Mode</Label>
               <Select
                 value={formData.permissionMode ?? 'default'}
