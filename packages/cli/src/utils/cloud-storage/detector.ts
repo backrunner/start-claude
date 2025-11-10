@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
+import { getWindowsUserPath, isWSL } from '../system/path-utils'
 
 export interface CloudStorageInfo {
   isAvailable: boolean
@@ -14,6 +15,7 @@ export interface CloudStorageInfo {
 export interface CloudStorageStatus {
   oneDrive: CloudStorageInfo
   iCloud: CloudStorageInfo
+  windowsHost?: CloudStorageInfo // Available when running in WSL
 }
 
 /**
@@ -22,12 +24,17 @@ export interface CloudStorageStatus {
 export function detectOneDrive(): CloudStorageInfo {
   const isWindows = process.platform === 'win32'
   const isMacOS = process.platform === 'darwin'
+  const isWSLEnv = isWSL()
 
   if (isWindows) {
     return detectOneDriveWindows()
   }
   else if (isMacOS) {
     return detectOneDriveMacOS()
+  }
+  else if (isWSLEnv) {
+    // In WSL, check if OneDrive is available via Windows host
+    return detectOneDriveWSL()
   }
   else {
     return {
@@ -177,17 +184,82 @@ function detectOneDriveMacOS(): CloudStorageInfo {
 }
 
 /**
+ * Detect OneDrive in WSL (via Windows host)
+ */
+function detectOneDriveWSL(): CloudStorageInfo {
+  try {
+    const windowsUserPath = getWindowsUserPath()
+    if (!windowsUserPath) {
+      return {
+        isAvailable: false,
+        isEnabled: false,
+        error: 'Could not detect Windows user directory',
+      }
+    }
+
+    // Check for OneDrive folder in Windows user directory
+    const oneDrivePaths = [
+      join(windowsUserPath, 'OneDrive'),
+      join(windowsUserPath, 'OneDrive - Personal'),
+      join(windowsUserPath, 'OneDrive - Business'),
+    ]
+
+    // Also try to find any directory starting with "OneDrive"
+    try {
+      const dirs = readdirSync(windowsUserPath, { withFileTypes: true })
+        .filter(d => d.isDirectory() && d.name.startsWith('OneDrive'))
+        .map(d => join(windowsUserPath, d.name))
+      oneDrivePaths.push(...dirs)
+    }
+    catch {
+      // If we can't read the directory, continue with the default paths
+    }
+
+    for (const path of oneDrivePaths) {
+      if (existsSync(path)) {
+        const stats = statSync(path)
+        if (stats.isDirectory()) {
+          return {
+            isAvailable: true,
+            isEnabled: true,
+            path,
+          }
+        }
+      }
+    }
+
+    return {
+      isAvailable: false,
+      isEnabled: false,
+      error: 'OneDrive folder not found in Windows user directory',
+    }
+  }
+  catch (error) {
+    return {
+      isAvailable: false,
+      isEnabled: false,
+      error: `Error detecting OneDrive in WSL: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    }
+  }
+}
+
+/**
  * Detect if iCloud is set up and enabled on the system
  */
 export function detectiCloud(): CloudStorageInfo {
   const isWindows = process.platform === 'win32'
   const isMacOS = process.platform === 'darwin'
+  const isWSLEnv = isWSL()
 
   if (isMacOS) {
     return detectiCloudMacOS()
   }
   else if (isWindows) {
     return detectiCloudWindows()
+  }
+  else if (isWSLEnv) {
+    // In WSL, check if iCloud is available via Windows host
+    return detectiCloudWSL()
   }
   else {
     return {
@@ -330,13 +402,219 @@ function detectiCloudWindows(): CloudStorageInfo {
 }
 
 /**
+ * Detect iCloud in WSL (via Windows host)
+ */
+function detectiCloudWSL(): CloudStorageInfo {
+  try {
+    const windowsUserPath = getWindowsUserPath()
+    if (!windowsUserPath) {
+      return {
+        isAvailable: false,
+        isEnabled: false,
+        error: 'Could not detect Windows user directory',
+      }
+    }
+
+    // Check for iCloud Drive folder in Windows user directory
+    const iCloudDrivePaths = [
+      join(windowsUserPath, 'iCloudDrive'),
+      join(windowsUserPath, 'iCloud Drive'),
+    ]
+
+    for (const path of iCloudDrivePaths) {
+      if (existsSync(path)) {
+        const stats = statSync(path)
+        if (stats.isDirectory()) {
+          return {
+            isAvailable: true,
+            isEnabled: true,
+            path,
+          }
+        }
+      }
+    }
+
+    return {
+      isAvailable: false,
+      isEnabled: false,
+      error: 'iCloud Drive folder not found in Windows user directory',
+    }
+  }
+  catch (error) {
+    return {
+      isAvailable: false,
+      isEnabled: false,
+      error: `Error detecting iCloud in WSL: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    }
+  }
+}
+
+/**
+ * Detect Windows host config directory when running in WSL
+ */
+export function detectWindowsHostFromWSL(): CloudStorageInfo {
+  if (!isWSL()) {
+    return {
+      isAvailable: false,
+      isEnabled: false,
+      error: 'Not running in WSL',
+    }
+  }
+
+  try {
+    const windowsUserPath = getWindowsUserPath()
+
+    if (!windowsUserPath) {
+      return {
+        isAvailable: false,
+        isEnabled: false,
+        error: 'Could not detect Windows user directory',
+      }
+    }
+
+    // Check for .start-claude config in Windows user home directory
+    const windowsConfigDir = join(windowsUserPath, '.start-claude')
+    const windowsConfigFile = join(windowsConfigDir, 'config.json')
+    const windowsSyncFile = join(windowsConfigDir, 'sync.json')
+
+    // First, check if Windows has cloud sync configured
+    if (existsSync(windowsSyncFile)) {
+      try {
+        const syncData = readFileSync(windowsSyncFile, 'utf-8')
+        const syncConfig = JSON.parse(syncData)
+
+        // If Windows is using cloud sync (not local), don't offer wsl-host option
+        // Instead, the WSL user should use the same cloud sync provider
+        if (syncConfig.enabled && syncConfig.provider !== 'wsl-host') {
+          return {
+            isAvailable: false,
+            isEnabled: false,
+            path: windowsUserPath,
+            error: `Windows is using ${syncConfig.provider} sync. Please use the same sync provider in WSL.`,
+          }
+        }
+      }
+      catch {
+        // Invalid sync.json, continue checking for config.json
+      }
+    }
+
+    // Check if Windows has a local config file (not using cloud sync)
+    if (existsSync(windowsConfigFile)) {
+      try {
+        // Verify it's a valid config file
+        const configData = readFileSync(windowsConfigFile, 'utf-8')
+        const config = JSON.parse(configData)
+
+        const hasValidConfig = config
+          && typeof config.version === 'number'
+          && Array.isArray(config.configs)
+
+        if (hasValidConfig) {
+          return {
+            isAvailable: true,
+            isEnabled: true,
+            path: windowsUserPath,
+          }
+        }
+        else {
+          return {
+            isAvailable: true,
+            isEnabled: false,
+            path: windowsUserPath,
+            error: 'Windows config file exists but is invalid',
+          }
+        }
+      }
+      catch {
+        return {
+          isAvailable: true,
+          isEnabled: false,
+          path: windowsUserPath,
+          error: 'Windows config file exists but could not be parsed',
+        }
+      }
+    }
+
+    // Windows user path exists but no config yet
+    return {
+      isAvailable: true,
+      isEnabled: false,
+      path: windowsUserPath,
+      error: 'Windows user directory found but no config exists',
+    }
+  }
+  catch (error) {
+    return {
+      isAvailable: false,
+      isEnabled: false,
+      error: `Error detecting Windows host: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    }
+  }
+}
+
+/**
+ * Detect if Windows host is using cloud sync and return the sync config
+ */
+export interface WindowsSyncInfo {
+  hasSync: boolean
+  provider?: 'icloud' | 'onedrive' | 'custom' | 's3'
+  cloudPath?: string
+}
+
+export function detectWindowsCloudSync(): WindowsSyncInfo {
+  if (!isWSL()) {
+    return { hasSync: false }
+  }
+
+  try {
+    const windowsUserPath = getWindowsUserPath()
+    if (!windowsUserPath) {
+      return { hasSync: false }
+    }
+
+    const windowsSyncFile = join(windowsUserPath, '.start-claude', 'sync.json')
+
+    if (existsSync(windowsSyncFile)) {
+      try {
+        const syncData = readFileSync(windowsSyncFile, 'utf-8')
+        const syncConfig = JSON.parse(syncData)
+
+        if (syncConfig.enabled && syncConfig.provider !== 'wsl-host') {
+          return {
+            hasSync: true,
+            provider: syncConfig.provider,
+            cloudPath: syncConfig.cloudPath || syncConfig.customPath,
+          }
+        }
+      }
+      catch {
+        // Invalid sync.json
+      }
+    }
+
+    return { hasSync: false }
+  }
+  catch {
+    return { hasSync: false }
+  }
+}
+
+/**
  * Get comprehensive cloud storage status for the system
  */
 export function getCloudStorageStatus(): CloudStorageStatus {
-  return {
+  const status: CloudStorageStatus = {
     oneDrive: detectOneDrive(),
     iCloud: detectiCloud(),
   }
+
+  // Add Windows host detection if running in WSL
+  if (isWSL()) {
+    status.windowsHost = detectWindowsHostFromWSL()
+  }
+
+  return status
 }
 
 /**
@@ -345,6 +623,15 @@ export function getCloudStorageStatus(): CloudStorageStatus {
 export function getAvailableCloudServices(): Array<{ name: string, path?: string, isEnabled: boolean }> {
   const status = getCloudStorageStatus()
   const services: Array<{ name: string, path?: string, isEnabled: boolean }> = []
+
+  // Add Windows host first if running in WSL and config is available
+  if (status.windowsHost && status.windowsHost.isEnabled) {
+    services.push({
+      name: 'Windows Host',
+      path: status.windowsHost.path,
+      isEnabled: status.windowsHost.isEnabled,
+    })
+  }
 
   if (status.oneDrive.isAvailable || status.oneDrive.isEnabled) {
     services.push({
@@ -366,7 +653,7 @@ export function getAvailableCloudServices(): Array<{ name: string, path?: string
 }
 
 export interface CloudStorageConfigInfo {
-  provider: 'icloud' | 'onedrive'
+  provider: 'icloud' | 'onedrive' | 'wsl-host'
   path: string
   configPath: string
   hasValidConfig: boolean
@@ -378,6 +665,41 @@ export interface CloudStorageConfigInfo {
 export function detectExistingCloudStorageConfigs(): CloudStorageConfigInfo[] {
   const results: CloudStorageConfigInfo[] = []
   const cloudStatus = getCloudStorageStatus()
+
+  // Check Windows host first if running in WSL
+  if (cloudStatus.windowsHost && cloudStatus.windowsHost.isEnabled && cloudStatus.windowsHost.path) {
+    const windowsConfigDir = join(cloudStatus.windowsHost.path, '.start-claude')
+    const windowsConfigFile = join(windowsConfigDir, 'config.json')
+
+    if (existsSync(windowsConfigFile)) {
+      try {
+        // Validate that it's a proper config file
+        const configData = readFileSync(windowsConfigFile, 'utf-8')
+        const config = JSON.parse(configData)
+
+        // Basic validation - should have version and configs array
+        const hasValidConfig = config
+          && typeof config.version === 'number'
+          && Array.isArray(config.configs)
+
+        results.push({
+          provider: 'wsl-host',
+          path: cloudStatus.windowsHost.path,
+          configPath: windowsConfigFile,
+          hasValidConfig,
+        })
+      }
+      catch {
+        // Invalid JSON or other error - still report it but mark as invalid
+        results.push({
+          provider: 'wsl-host',
+          path: cloudStatus.windowsHost.path,
+          configPath: windowsConfigFile,
+          hasValidConfig: false,
+        })
+      }
+    }
+  }
 
   // Check iCloud for existing config
   if (cloudStatus.iCloud.isEnabled && cloudStatus.iCloud.path) {

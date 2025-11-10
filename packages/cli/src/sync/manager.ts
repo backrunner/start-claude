@@ -4,11 +4,12 @@ import { join, resolve } from 'node:path'
 import inquirer from 'inquirer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { UILogger } from '../utils/cli/ui'
-import { getAvailableCloudServices, getCloudStorageStatus } from '../utils/cloud-storage/detector'
+import { detectWindowsCloudSync, getAvailableCloudServices, getCloudStorageStatus } from '../utils/cloud-storage/detector'
+import { isWSL } from '../utils/system/path-utils'
 
 export interface SyncConfig {
   enabled: boolean
-  provider: 'icloud' | 'onedrive' | 'custom' | 's3'
+  provider: 'icloud' | 'onedrive' | 'custom' | 's3' | 'wsl-host'
   cloudPath?: string
   customPath?: string
   s3Config?: {
@@ -51,6 +52,45 @@ export class SyncManager {
   async setupSync(): Promise<boolean> {
     try {
       this.ui.displayInfo('🔄 Setting up configuration synchronization...\n')
+
+      // Special handling for WSL: Check if Windows has cloud sync configured
+      if (isWSL()) {
+        const windowsSync = detectWindowsCloudSync()
+        if (windowsSync.hasSync) {
+          this.ui.displayInfo(`🪟 Detected that Windows is using ${windowsSync.provider} sync`)
+
+          const { useWindowsSync } = await inquirer.prompt([{
+            type: 'confirm',
+            name: 'useWindowsSync',
+            message: `Would you like to use the same ${windowsSync.provider} sync in WSL?`,
+            default: true,
+          }])
+
+          if (useWindowsSync) {
+            // Auto-setup the same cloud sync provider as Windows
+            if (windowsSync.provider === 'icloud' || windowsSync.provider === 'onedrive') {
+              return await this.setupCloudSync(windowsSync.provider)
+            }
+            else if (windowsSync.provider === 'custom' && windowsSync.cloudPath) {
+              // Set up custom sync pointing to the same path
+              const syncConfig: SyncConfig = {
+                enabled: true,
+                provider: 'custom',
+                customPath: windowsSync.cloudPath,
+                linkedAt: new Date().toISOString(),
+              }
+              this.saveSyncConfig(syncConfig)
+              await this.updateS3Settings(true)
+
+              this.ui.displaySuccess(`✅ Successfully configured custom folder sync (same as Windows)!`)
+              this.ui.displayInfo(`📂 Custom path: ${windowsSync.cloudPath}`)
+              return true
+            }
+          }
+          // User declined, continue with normal setup flow
+          this.ui.displayInfo('Continuing with sync setup...\n')
+        }
+      }
 
       // Check current sync status
       const currentStatus = await this.getSyncStatus()
@@ -102,6 +142,8 @@ export class SyncManager {
           return await this.setupCloudSync('icloud')
         case 'onedrive':
           return await this.setupCloudSync('onedrive')
+        case 'wsl-host':
+          return await this.setupWSLHostSync()
         case 'custom':
           return await this.setupCustomSync()
         case 's3':
@@ -128,7 +170,13 @@ export class SyncManager {
 
     for (const service of cloudServices) {
       if (service.isEnabled) {
-        if (service.name === 'iCloud') {
+        if (service.name === 'Windows Host') {
+          options.push({
+            name: '🪟 Windows Host - Sync with Windows host config (WSL)',
+            value: 'wsl-host',
+          })
+        }
+        else if (service.name === 'iCloud') {
           options.push({
             name: '☁️  iCloud Drive - Sync via iCloud Drive',
             value: 'icloud',
@@ -253,6 +301,115 @@ export class SyncManager {
     }
     catch (error) {
       this.ui.displayError(`❌ Failed to setup ${provider} sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      return false
+    }
+  }
+
+  /**
+   * Setup WSL Host sync (sync with Windows host config)
+   */
+  private async setupWSLHostSync(): Promise<boolean> {
+    try {
+      const cloudStatus = getCloudStorageStatus()
+      const windowsHostInfo = cloudStatus.windowsHost
+
+      if (!windowsHostInfo || !windowsHostInfo.isEnabled || !windowsHostInfo.path) {
+        this.ui.displayError('❌ Windows host config is not accessible')
+        return false
+      }
+
+      const windowsConfigDir = join(windowsHostInfo.path, '.start-claude')
+      const windowsConfigFile = join(windowsConfigDir, 'config.json')
+
+      this.ui.displayInfo('🪟 Setting up sync with Windows host...')
+      this.ui.displayInfo(`Windows path: ${windowsHostInfo.path}`)
+      this.ui.displayInfo(`Config path: ${windowsConfigFile}`)
+
+      // Handle different scenarios
+      const localExists = existsSync(this.configFile)
+      const windowsExists = existsSync(windowsConfigFile)
+
+      if (!localExists && windowsExists) {
+        // Scenario 1: Windows has config, WSL doesn't - use Windows config directly
+        this.ui.displaySuccess('📥 Found existing configuration on Windows host')
+        this.ui.displayInfo('Will use Windows host configuration')
+      }
+      else if (localExists && !windowsExists) {
+        // Scenario 2: WSL has config, Windows doesn't - ask user what to do
+        this.ui.displayWarning('⚠️  WSL has a local config but Windows host does not')
+
+        const { action } = await inquirer.prompt([{
+          type: 'list',
+          name: 'action',
+          message: 'What would you like to do?',
+          choices: [
+            {
+              name: '📤 Copy WSL config to Windows host',
+              value: 'copy',
+            },
+            {
+              name: '❌ Cancel setup',
+              value: 'cancel',
+            },
+          ],
+        }])
+
+        if (action === 'cancel') {
+          this.ui.displayInfo('Setup cancelled')
+          return false
+        }
+
+        // Create Windows config directory if it doesn't exist
+        if (!existsSync(windowsConfigDir)) {
+          mkdirSync(windowsConfigDir, { recursive: true })
+          this.ui.displayInfo(`📁 Created directory: ${windowsConfigDir}`)
+        }
+
+        // Copy local config to Windows
+        copyFileSync(this.configFile, windowsConfigFile)
+        this.ui.displaySuccess('📤 Copied WSL config to Windows host')
+      }
+      else if (localExists && windowsExists) {
+        // Scenario 3: Both exist - resolve conflict
+        const resolved = await this.resolveConfigConflict(this.configFile, windowsConfigFile)
+        if (!resolved) {
+          return false // User cancelled
+        }
+      }
+      else {
+        // Scenario 4: Neither exists - create new config on Windows
+        if (!existsSync(windowsConfigDir)) {
+          mkdirSync(windowsConfigDir, { recursive: true })
+          this.ui.displayInfo(`📁 Created directory: ${windowsConfigDir}`)
+        }
+
+        const emptyConfig = { version: 1, configs: [] }
+        writeFileSync(windowsConfigFile, JSON.stringify(emptyConfig, null, 2))
+        this.ui.displayInfo('📄 Created new config on Windows host')
+      }
+
+      // Save sync configuration
+      const syncConfig: SyncConfig = {
+        enabled: true,
+        provider: 'wsl-host',
+        cloudPath: windowsHostInfo.path,
+        linkedAt: new Date().toISOString(),
+      }
+
+      this.saveSyncConfig(syncConfig)
+
+      // Update S3 settings if S3 is configured
+      await this.updateS3Settings(true)
+
+      this.ui.displaySuccess('✅ Successfully configured WSL host sync!')
+      this.ui.displayInfo(`📂 Config file: ${windowsConfigFile}`)
+      this.ui.displayInfo(`🔗 Config is now synced with Windows host`)
+      this.ui.displayInfo(`💡 Changes on Windows will be reflected in WSL automatically`)
+
+      return true
+    }
+    catch (error) {
+      this.ui.displayError(`❌ Failed to setup WSL host sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return false
     }
   }
@@ -847,8 +1004,8 @@ export class SyncManager {
 
     // Check config file status
     if (syncProvider !== 's3') {
-      // For cloud/custom sync, verify cloud config exists
-      if (syncProvider === 'icloud' || syncProvider === 'onedrive') {
+      // For cloud/custom/wsl-host sync, verify cloud config exists
+      if (syncProvider === 'icloud' || syncProvider === 'onedrive' || syncProvider === 'wsl-host') {
         cloudPath = syncConfig.cloudPath
       }
       else if (syncProvider === 'custom') {
@@ -977,9 +1134,10 @@ export class SyncManager {
   /**
    * Automatically setup sync from an existing cloud storage configuration
    */
-  async autoSetupFromCloudConfig(provider: 'icloud' | 'onedrive', cloudPath: string, configPath: string): Promise<boolean> {
+  async autoSetupFromCloudConfig(provider: 'icloud' | 'onedrive' | 'wsl-host', cloudPath: string, configPath: string): Promise<boolean> {
     try {
-      this.ui.displayInfo(`🔍 Found existing configuration in ${provider} - Setting up automatic sync...`)
+      const providerName = provider === 'wsl-host' ? 'Windows host' : provider
+      this.ui.displayInfo(`🔍 Found existing configuration in ${providerName} - Setting up automatic sync...`)
 
       // Save sync configuration (config will be auto-read from cloud via ConfigFileManager)
       const syncConfig: SyncConfig = {
@@ -995,7 +1153,7 @@ export class SyncManager {
       // Update S3 settings if S3 is configured
       await this.updateS3Settings(true)
 
-      this.ui.displaySuccess(`✅ Automatically configured ${provider} sync!`)
+      this.ui.displaySuccess(`✅ Automatically configured ${providerName} sync!`)
       this.ui.displayInfo(`📂 Config file: ${configPath}`)
       this.ui.displayInfo(`🔗 Linked to: ${this.configFile}`)
 

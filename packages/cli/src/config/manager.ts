@@ -1,8 +1,8 @@
 import type { ClaudeConfig, ConfigFile } from './types'
 import { randomUUID } from 'node:crypto'
 import dayjs from 'dayjs'
-import { ConfigFileManager } from './file-operations'
 import { S3SyncManager } from '../storage/s3-sync'
+import { ConfigFileManager } from './file-operations'
 
 export class ConfigManager {
   private static instance: ConfigManager

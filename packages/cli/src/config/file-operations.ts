@@ -53,23 +53,23 @@ export class ConfigFileManager {
   }
 
   /**
-   * Get the actual config file path (cloud or local)
-   * If cloud sync is enabled, return the cloud path
+   * Get the actual config directory path (cloud or local)
+   * If cloud sync is enabled, return the cloud directory
    */
-  getActualConfigPath(): string {
+  getActualConfigDir(): string {
     try {
       if (fs.existsSync(SYNC_CONFIG_FILE)) {
         const syncConfigContent = fs.readFileSync(SYNC_CONFIG_FILE, 'utf-8')
         const syncConfig = JSON.parse(syncConfigContent)
 
-        // Only use cloud path for iCloud, OneDrive, or custom sync (not S3)
+        // Only use cloud path for iCloud, OneDrive, custom, or wsl-host (not S3)
         if (syncConfig.enabled && syncConfig.provider !== 's3') {
           const cloudPath = syncConfig.cloudPath || syncConfig.customPath
           if (cloudPath) {
-            const cloudConfigPath = path.join(cloudPath, '.start-claude', 'config.json')
-            // Verify cloud config exists
-            if (fs.existsSync(cloudConfigPath)) {
-              return cloudConfigPath
+            const cloudConfigDir = path.join(cloudPath, '.start-claude')
+            // Verify cloud config directory exists
+            if (fs.existsSync(cloudConfigDir)) {
+              return cloudConfigDir
             }
           }
         }
@@ -79,7 +79,16 @@ export class ConfigFileManager {
       // If any error reading sync config, fall back to local
     }
 
-    return CONFIG_FILE
+    return CONFIG_DIR
+  }
+
+  /**
+   * Get the actual config file path (cloud or local)
+   * If cloud sync is enabled, return the cloud path
+   */
+  getActualConfigPath(): string {
+    const configDir = this.getActualConfigDir()
+    return path.join(configDir, 'config.json')
   }
 
   /**
@@ -176,9 +185,12 @@ export class ConfigFileManager {
     const migratorModule = await import('@start-claude/migrator')
     const { Migrator, CURRENT_CONFIG_VERSION: TARGET } = migratorModule
 
+    // Use actual config directory (respects cloud sync and wsl-host)
+    const actualConfigDir = this.getActualConfigDir()
+
     const migrator = new Migrator({
       currentVersion: TARGET,
-      backupDirectory: path.join(CONFIG_DIR, 'backups'),
+      backupDirectory: path.join(actualConfigDir, 'backups'),
     })
 
     // Use actual config path (respects cloud sync)

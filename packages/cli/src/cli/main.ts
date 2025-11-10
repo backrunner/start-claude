@@ -20,6 +20,7 @@ import { initializeMcpPassthrough } from '../utils/mcp/passthrough'
 import { McpSyncManager } from '../utils/mcp/sync-manager'
 import { SpeedTestManager } from '../utils/network/speed-test'
 import { StatusLineManager } from '../utils/statusline/manager'
+import { handleWSLConfigDetection } from '../utils/wsl/config-detection'
 import { startClaude } from './claude'
 import {
   buildClaudeArgs,
@@ -251,6 +252,17 @@ program
     catch (error) {
       // Silently fail - upgrade result checking should never crash the CLI
       ui.verbose(`Failed to check upgrade result: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+
+    // Handle WSL config detection if needed
+    // This prompts the user to choose between WSL local and Windows host config
+    // Only runs once on first startup in WSL when both configs exist
+    try {
+      await handleWSLConfigDetection({ verbose: options.verbose })
+    }
+    catch (error) {
+      // Silently fail - config detection should never crash the CLI
+      ui.verbose(`Failed WSL config detection: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
 
     let systemSettings: unknown = null

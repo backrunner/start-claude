@@ -1,5 +1,5 @@
-import { CacheManager } from '../utils/config/cache-manager'
 import { UILogger } from '../utils/cli/ui'
+import { CacheManager } from '../utils/config/cache-manager'
 
 export async function handleCacheClearCommand(options: { verbose?: boolean } = {}): Promise<void> {
   const ui = new UILogger(options.verbose)

@@ -49,23 +49,23 @@ export class S3ConfigFileManager {
   }
 
   /**
-   * Get the actual S3 config file path (cloud or local)
-   * If cloud sync is enabled, return the cloud path
+   * Get the actual S3 config directory path (cloud or local)
+   * If cloud sync is enabled, return the cloud directory
    */
-  private getActualS3ConfigPath(): string {
+  private getActualS3ConfigDir(): string {
     try {
       if (fs.existsSync(SYNC_CONFIG_FILE)) {
         const syncConfigContent = fs.readFileSync(SYNC_CONFIG_FILE, 'utf-8')
         const syncConfig = JSON.parse(syncConfigContent)
 
-        // Only use cloud path for iCloud, OneDrive, or custom sync (not S3)
+        // Only use cloud path for iCloud, OneDrive, custom, or wsl-host (not S3)
         if (syncConfig.enabled && syncConfig.provider !== 's3') {
           const cloudPath = syncConfig.cloudPath || syncConfig.customPath
           if (cloudPath) {
-            const cloudS3ConfigPath = path.join(cloudPath, '.start-claude', 's3-config.json')
-            // Verify cloud S3 config exists
-            if (fs.existsSync(cloudS3ConfigPath)) {
-              return cloudS3ConfigPath
+            const cloudConfigDir = path.join(cloudPath, '.start-claude')
+            // Verify cloud config directory exists
+            if (fs.existsSync(cloudConfigDir)) {
+              return cloudConfigDir
             }
           }
         }
@@ -75,7 +75,16 @@ export class S3ConfigFileManager {
       // If any error reading sync config, fall back to local
     }
 
-    return S3_CONFIG_FILE
+    return CONFIG_DIR
+  }
+
+  /**
+   * Get the actual S3 config file path (cloud or local)
+   * If cloud sync is enabled, return the cloud path
+   */
+  private getActualS3ConfigPath(): string {
+    const configDir = this.getActualS3ConfigDir()
+    return path.join(configDir, 's3-config.json')
   }
 
   /**
@@ -172,15 +181,18 @@ export class S3ConfigFileManager {
 
   /**
    * Remove S3 configuration
+   * Uses actual path (respects cloud sync and wsl-host)
    */
   remove(): void {
-    if (this.exists()) {
-      fs.unlinkSync(S3_CONFIG_FILE)
+    const actualPath = this.getActualS3ConfigPath()
+    if (fs.existsSync(actualPath)) {
+      fs.unlinkSync(actualPath)
     }
   }
 
   /**
    * Create S3 config from migration (called during config migration)
+   * Uses actual path (respects cloud sync and wsl-host)
    */
   createFromMigration(s3Config: S3Config): void {
     const configFile: S3ConfigFile = {
@@ -194,8 +206,18 @@ export class S3ConfigFileManager {
     }
 
     this.ensureConfigDir()
-    fs.writeFileSync(S3_CONFIG_FILE, JSON.stringify(configFile, null, 2))
+
+    // Use actual path to respect cloud sync and wsl-host
+    const actualPath = this.getActualS3ConfigPath()
+    const actualDir = path.dirname(actualPath)
+
+    // Ensure the directory exists (for cloud paths)
+    if (!fs.existsSync(actualDir)) {
+      fs.mkdirSync(actualDir, { recursive: true })
+    }
+
+    fs.writeFileSync(actualPath, JSON.stringify(configFile, null, 2))
     const ui = new UILogger()
-    ui.displayInfo(`S3 configuration migrated to separate file: ${S3_CONFIG_FILE}`)
+    ui.displayInfo(`S3 configuration migrated to separate file: ${actualPath}`)
   }
 }

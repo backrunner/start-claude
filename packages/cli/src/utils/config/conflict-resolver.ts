@@ -421,6 +421,7 @@ function resolveFieldConflict(
     case 'disableErrorReporting':
     case 'disableNonEssentialModelCalls':
     case 'disableTelemetry':
+    case 'claudeCodeDisableNonessentialTraffic':
     case 'vertexRegionHaiku':
     case 'vertexRegionSonnet':
     case 'vertexRegion37Sonnet':
