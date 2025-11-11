@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
+import { useTranslations } from 'next-intl'
 import { AlertCircle, Brain, Globe, Key, Settings, Shield } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +21,7 @@ interface ConfigFormProps {
 }
 
 export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps): ReactNode {
+  const t = useTranslations('configForm')
   const [formData, setFormData] = useState<ClaudeConfig>(config || {
     name: '',
     profileType: 'default',
@@ -139,23 +141,23 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     const newErrors: Record<string, string> = {}
 
     if (!formData.name?.trim()) {
-      newErrors.name = 'Configuration name is required'
+      newErrors.name = t('basicInfo.nameRequired')
     }
 
     if (formData.profileType !== 'official' && !formData.baseUrl?.trim()) {
-      newErrors.baseUrl = 'Base URL is required for custom configurations'
+      newErrors.baseUrl = t('apiConfig.baseUrlRequired')
     }
     else if (formData.baseUrl?.trim()) {
       try {
         void new URL(formData.baseUrl)
       }
       catch {
-        newErrors.baseUrl = 'Invalid URL format (must start with http:// or https://)'
+        newErrors.baseUrl = t('apiConfig.baseUrlInvalid')
       }
     }
 
     if (formData.profileType !== 'official' && !formData.apiKey?.trim()) {
-      newErrors.apiKey = 'API Key is required for custom configurations'
+      newErrors.apiKey = t('apiConfig.apiKeyRequired')
     }
 
     // Validate customHeaders format
@@ -163,7 +165,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
       const lines = formData.customHeaders.split('\n').filter(line => line.trim())
       for (const line of lines) {
         if (!line.includes(':')) {
-          newErrors.customHeaders = 'Invalid format. Each line must be in format "Header: Value"'
+          newErrors.customHeaders = t('advanced.customHeadersInvalid')
           break
         }
       }
@@ -194,19 +196,19 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 <Settings className="h-5 w-5 text-white" />
               </div>
               <div>
-                <CardTitle className="text-xl font-bold">Basic Information</CardTitle>
-                <CardDescription className="text-sm mt-0.5">Configure the basic details for your Claude instance</CardDescription>
+                <CardTitle className="text-xl font-bold">{t('basicInfo.title')}</CardTitle>
+                <CardDescription className="text-sm mt-0.5">{t('basicInfo.description')}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name" className="font-medium">Configuration Name *</Label>
+              <Label htmlFor="name" className="font-medium">{t('basicInfo.name')} *</Label>
               <Input
                 id="name"
                 value={formData.name ?? ''}
                 onChange={e => handleChange('name', e.target.value)}
-                placeholder="e.g., My Claude Config"
+                placeholder={t('basicInfo.namePlaceholder')}
                 className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
               />
               {errors.name && (
@@ -218,7 +220,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="profileType" className="font-medium">Profile Type</Label>
+              <Label htmlFor="profileType" className="font-medium">{t('basicInfo.profileType')}</Label>
               <Select
                 value={formData.profileType ?? 'default'}
                 onValueChange={(value) => {
@@ -228,19 +230,19 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select profile type" />
+                  <SelectValue placeholder={t('basicInfo.profileTypePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="default">
                     <div className="flex items-center gap-2">
                       <Globe className="h-4 w-4" />
-                      Default (Custom)
+                      {t('basicInfo.profileDefault')}
                     </div>
                   </SelectItem>
                   <SelectItem value="official">
                     <div className="flex items-center gap-2">
                       <Shield className="h-4 w-4" />
-                      Official Claude
+                      {t('basicInfo.profileOfficial')}
                     </div>
                   </SelectItem>
                 </SelectContent>
@@ -258,8 +260,8 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   <Key className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl font-bold">API Configuration</CardTitle>
-                  <CardDescription className="text-sm mt-0.5">Configure the API endpoint and authentication</CardDescription>
+                  <CardTitle className="text-xl font-bold">{t('apiConfig.title')}</CardTitle>
+                  <CardDescription className="text-sm mt-0.5">{t('apiConfig.description')}</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -267,13 +269,13 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
               <div className="space-y-2">
                 <Label htmlFor="baseUrl" className="font-medium flex items-center gap-2">
                   <Globe className="h-3 w-3" />
-                  Base URL *
+                  {t('apiConfig.baseUrl')} *
                 </Label>
                 <Input
                   id="baseUrl"
                   value={formData.baseUrl ?? ''}
                   onChange={e => handleChange('baseUrl', e.target.value)}
-                  placeholder="https://api.anthropic.com"
+                  placeholder={t('apiConfig.baseUrlPlaceholder')}
                   className={errors.baseUrl ? 'border-destructive focus-visible:ring-destructive' : ''}
                 />
                 {errors.baseUrl && (
@@ -287,14 +289,14 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
               <div className="space-y-2">
                 <Label htmlFor="apiKey" className="font-medium flex items-center gap-2">
                   <Key className="h-3 w-3" />
-                  API Key *
+                  {t('apiConfig.apiKey')} *
                 </Label>
                 <Input
                   id="apiKey"
                   type="password"
                   value={formData.apiKey ?? ''}
                   onChange={e => handleChange('apiKey', e.target.value)}
-                  placeholder="sk-ant-..."
+                  placeholder={t('apiConfig.apiKeyPlaceholder')}
                   className={errors.apiKey ? 'border-destructive focus-visible:ring-destructive font-mono' : 'font-mono'}
                 />
                 {errors.apiKey && (
@@ -307,9 +309,9 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   <div className="flex items-start gap-2">
                     <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                     <div className="text-sm">
-                      <p className="font-medium text-blue-900 dark:text-blue-100">Security Note</p>
+                      <p className="font-medium text-blue-900 dark:text-blue-100">{t('apiConfig.securityNote')}</p>
                       <p className="text-blue-700 dark:text-blue-300 mt-1">
-                        API keys are stored securely and encrypted locally.
+                        {t('apiConfig.securityNoteText')}
                       </p>
                     </div>
                   </div>
@@ -327,8 +329,8 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 <Brain className="h-5 w-5 text-white" />
               </div>
               <div>
-                <CardTitle className="text-xl font-bold">Model & Permissions</CardTitle>
-                <CardDescription className="text-sm mt-0.5">Configure the model and permission settings</CardDescription>
+                <CardTitle className="text-xl font-bold">{t('modelPermissions.title')}</CardTitle>
+                <CardDescription className="text-sm mt-0.5">{t('modelPermissions.description')}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -336,41 +338,41 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             <div className="space-y-2">
               <Label htmlFor="model" className="font-medium flex items-center gap-2">
                 <Brain className="h-3 w-3" />
-                Model
+                {t('modelPermissions.model')}
                 <Badge variant="outline" className="text-xs">Optional</Badge>
               </Label>
               <Input
                 id="model"
                 value={formData.model ?? ''}
                 onChange={e => handleChange('model', e.target.value)}
-                placeholder="claude-sonnet-4-5-20250929"
+                placeholder={t('modelPermissions.modelPlaceholder')}
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                Leave empty to use the default model for this configuration
+                {t('modelPermissions.modelHelpText')}
               </p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="smallFastModel" className="font-medium flex items-center gap-2">
                 <Brain className="h-3 w-3" />
-                Small Fast Model
+                {t('modelPermissions.smallModel')}
                 <Badge variant="outline" className="text-xs">Optional</Badge>
               </Label>
               <Input
                 id="smallFastModel"
                 value={formData.smallFastModel ?? ''}
                 onChange={e => handleChange('smallFastModel', e.target.value)}
-                placeholder="claude-3-5-haiku-20241022"
+                placeholder={t('modelPermissions.smallModelPlaceholder')}
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                Model used for quick non-essential tasks (ANTHROPIC_SMALL_FAST_MODEL)
+                {t('modelPermissions.smallModelHelpText')}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="permissionMode" className="font-medium">Permission Mode</Label>
+              <Label htmlFor="permissionMode" className="font-medium">{t('modelPermissions.permissionMode')}</Label>
               <Select
                 value={formData.permissionMode ?? 'default'}
                 onValueChange={(value) => {
@@ -380,13 +382,13 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select permission mode" />
+                  <SelectValue placeholder={t('modelPermissions.permissionModePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">Default</SelectItem>
-                  <SelectItem value="acceptEdits">Accept Edits</SelectItem>
-                  <SelectItem value="plan">Plan Mode</SelectItem>
-                  <SelectItem value="bypassPermissions">Bypass Permissions</SelectItem>
+                  <SelectItem value="default">{t('modelPermissions.permissionDefault')}</SelectItem>
+                  <SelectItem value="acceptEdits">{t('modelPermissions.permissionAcceptEdits')}</SelectItem>
+                  <SelectItem value="plan">{t('modelPermissions.permissionPlanMode')}</SelectItem>
+                  <SelectItem value="bypassPermissions">{t('modelPermissions.permissionBypass')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -394,9 +396,9 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             <div className="space-y-4 pt-2">
               <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                 <div className="flex-1">
-                  <Label htmlFor="isDefault" className="font-semibold text-base cursor-pointer">Default Configuration</Label>
+                  <Label htmlFor="isDefault" className="font-semibold text-base cursor-pointer">{t('modelPermissions.defaultConfig')}</Label>
                   <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                    Use this as the default configuration when starting Claude
+                    {t('modelPermissions.defaultConfigDescription')}
                   </p>
                 </div>
                 <Switch
@@ -409,9 +411,9 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
               <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                 <div className="flex-1">
-                  <Label htmlFor="transformerEnabled" className="font-semibold text-base cursor-pointer">Transformer</Label>
+                  <Label htmlFor="transformerEnabled" className="font-semibold text-base cursor-pointer">{t('modelPermissions.transformer')}</Label>
                   <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                    Transform API requests to match different provider formats
+                    {t('modelPermissions.transformerDescription')}
                   </p>
                 </div>
                 <Switch
@@ -425,9 +427,9 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
               {formData.transformerEnabled && (
                 <div className="p-5 rounded-xl border-2 bg-gradient-to-br from-orange-50/50 via-transparent to-transparent dark:from-orange-950/20 border-orange-200/50 dark:border-orange-800/50">
                   <div className="flex flex-col space-y-3">
-                    <Label htmlFor="transformer" className="font-medium">Transformer Type</Label>
+                    <Label htmlFor="transformer" className="font-medium">{t('modelPermissions.transformerType')}</Label>
                     <p className="text-sm text-muted-foreground">
-                      Select which transformer to use. &quot;Auto&quot; automatically detects based on the API endpoint domain.
+                      {t('modelPermissions.transformerHelpText')}
                     </p>
                     <Select
                       value={formData.transformer || 'auto'}
@@ -435,7 +437,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                       disabled={loadingTransformers}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder={loadingTransformers ? 'Loading transformers...' : 'Select transformer'} />
+                        <SelectValue placeholder={loadingTransformers ? t('modelPermissions.transformerLoading') : t('modelPermissions.transformerPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
                         {transformers.map(transformer => (
@@ -451,9 +453,9 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
               <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                 <div className="flex-1">
-                  <Label htmlFor="enabled" className="font-semibold text-base cursor-pointer">Enabled</Label>
+                  <Label htmlFor="enabled" className="font-semibold text-base cursor-pointer">{t('modelPermissions.enabled')}</Label>
                   <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                    Configuration is active and can be used
+                    {t('modelPermissions.enabledDescription')}
                   </p>
                 </div>
                 <Switch
@@ -475,8 +477,8 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 <Settings className="h-5 w-5 text-white" />
               </div>
               <div>
-                <CardTitle className="text-xl font-bold">Advanced Settings</CardTitle>
-                <CardDescription className="text-sm mt-0.5">Configure advanced environment variables and settings</CardDescription>
+                <CardTitle className="text-xl font-bold">{t('advanced.title')}</CardTitle>
+                <CardDescription className="text-sm mt-0.5">{t('advanced.description')}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -484,7 +486,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             <div className="space-y-2">
               <Label htmlFor="authToken" className="font-medium flex items-center gap-2">
                 <Key className="h-3 w-3" />
-                Auth Token
+                {t('advanced.authToken')}
                 <Badge variant="outline" className="text-xs">Optional</Badge>
               </Label>
               <Input
@@ -492,18 +494,18 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 type="password"
                 value={formData.authToken ?? ''}
                 onChange={e => handleChange('authToken', e.target.value)}
-                placeholder="Bearer token for authentication"
+                placeholder={t('advanced.authTokenPlaceholder')}
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                Additional authentication token for Claude Code operations
+                {t('advanced.authTokenHelpText')}
               </p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="authorization" className="font-medium flex items-center gap-2">
                 <Key className="h-3 w-3" />
-                Authorization Header
+                {t('advanced.authHeader')}
                 <Badge variant="outline" className="text-xs">Optional</Badge>
               </Label>
               <Input
@@ -511,25 +513,25 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 type="password"
                 value={formData.authorization ?? ''}
                 onChange={e => handleChange('authorization', e.target.value)}
-                placeholder="Bearer your-token-here"
+                placeholder={t('advanced.authHeaderPlaceholder')}
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                Convenience field for Authorization header (e.g., &quot;Bearer token&quot;)
+                {t('advanced.authHeaderHelpText')}
               </p>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="customHeaders" className="font-medium flex items-center gap-2">
                 <Key className="h-3 w-3" />
-                Custom Headers
+                {t('advanced.customHeaders')}
                 <Badge variant="outline" className="text-xs">Optional</Badge>
               </Label>
               <Textarea
                 id="customHeaders"
                 value={formData.customHeaders ?? ''}
                 onChange={e => handleChange('customHeaders', e.target.value)}
-                placeholder="X-Custom-Header: value1&#10;Another-Header: value2"
+                placeholder={t('advanced.customHeadersPlaceholder')}
                 className={errors.customHeaders ? 'border-destructive focus-visible:ring-destructive font-mono' : 'font-mono'}
                 rows={3}
               />
@@ -540,7 +542,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                Additional HTTP headers in format: Header1: Value1\nHeader2: Value2
+                {t('advanced.customHeadersHelpText')}
               </p>
             </div>
           </CardContent>

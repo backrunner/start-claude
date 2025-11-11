@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { useTranslations } from 'next-intl'
 import { FolderOpen, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,6 +13,9 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({ type, onAddConfig, onClearSearch }: EmptyStateProps): ReactNode {
+  const tSearch = useTranslations('search')
+  const tEmpty = useTranslations('emptyState')
+
   if (type === 'no-search-results') {
     return (
       <Card className="border-dashed">
@@ -20,16 +24,16 @@ export function EmptyState({ type, onAddConfig, onClearSearch }: EmptyStateProps
             <Search className="w-8 h-8 text-muted-foreground" />
           </div>
           <h3 className="text-lg font-semibold mb-2">
-            No configurations found
+            {tSearch('noResults')}
           </h3>
           <p className="text-sm text-muted-foreground mb-6 max-w-sm">
-            Try adjusting your search terms or clear the filter to see all configurations
+            {tSearch('noResultsDescription')}
           </p>
           <Button
             variant="outline"
             onClick={onClearSearch}
           >
-            Clear Search
+            {tSearch('clearSearch')}
           </Button>
         </CardContent>
       </Card>
@@ -42,16 +46,16 @@ export function EmptyState({ type, onAddConfig, onClearSearch }: EmptyStateProps
         <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
           <FolderOpen className="w-10 h-10 text-primary" />
         </div>
-        <h3 className="text-xl font-bold mb-2">No Configurations Yet</h3>
+        <h3 className="text-xl font-bold mb-2">{tEmpty('title')}</h3>
         <p className="text-sm text-muted-foreground mb-8 max-w-md">
-          Get started by creating your first Claude configuration. You can manage multiple configurations for different use cases.
+          {tEmpty('description')}
         </p>
         <Button
           onClick={onAddConfig}
           size="lg"
         >
           <Plus className="w-4 h-4 mr-2" />
-          Create Your First Configuration
+          {tEmpty('createButton')}
         </Button>
       </CardContent>
     </Card>

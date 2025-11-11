@@ -1,39 +1,48 @@
-'use client'
-
 import type { ReactNode } from 'react'
-import { useEffect } from 'react'
+import { NextIntlClientProvider } from 'next-intl'
+import { getLocale, getMessages } from 'next-intl/server'
 import { Toaster } from '@/components/ui/toaster'
+import { Providers } from '@/components/providers'
 import './globals.css'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 
-export default function RootLayout({
+export async function generateMetadata() {
+  return {
+    title: 'Start Claude Manager',
+  }
+}
+
+export default async function RootLayout({
   children,
 }: {
   children: ReactNode
-}): ReactNode {
-  useEffect(() => {
-    document.title = 'Start Claude Manager'
-  }, [])
+}): Promise<ReactNode> {
+  const locale = await getLocale()
+  const messages = await getMessages()
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning className="dark">
       <head>
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
-                const theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                document.documentElement.classList.toggle('dark', theme === 'dark');
+                // Force dark mode for all users
+                document.documentElement.classList.add('dark');
               })();
             `,
           }}
         />
       </head>
       <body className="min-h-screen bg-background font-sans antialiased">
-        {children}
-        <Toaster />
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <Providers>
+            {children}
+            <Toaster />
+          </Providers>
+        </NextIntlClientProvider>
       </body>
     </html>
   )

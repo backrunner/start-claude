@@ -1,6 +1,7 @@
 'use client'
 
 import type { ProxyStatus } from '@/hooks/use-proxy-status'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 
@@ -13,6 +14,8 @@ interface ProxyStatusCardProps {
 }
 
 export function ProxyStatusCard({ isRunning, status, loading, error, onSwitchClick }: ProxyStatusCardProps): JSX.Element | null {
+  const t = useTranslations('proxyStatus')
+
   // Only show the card when we're sure the proxy server is running
   if (!isRunning || error || loading) {
     return null
@@ -26,28 +29,28 @@ export function ProxyStatusCard({ isRunning, status, loading, error, onSwitchCli
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-sm font-semibold">Proxy</span>
+            <span className="text-sm font-semibold">{t('title')}</span>
           </div>
           <Button variant="ghost" size="sm" onClick={onSwitchClick} className="h-7 px-2 text-xs">
-            Switch
+            {t('switch')}
           </Button>
         </div>
 
         {/* Compact status metrics */}
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
-            <span className="text-green-600 font-medium">{status?.healthy || 0}</span>
-            <span>healthy</span>
+            <span className="text-green-600 dark:text-green-400 font-medium">{status?.healthy || 0}</span>
+            <span>{t('healthy')}</span>
           </div>
           {(status?.unhealthy || 0) > 0 && (
             <div className="flex items-center gap-1">
-              <span className="text-red-500 font-medium">{status?.unhealthy}</span>
-              <span>unhealthy</span>
+              <span className="text-red-600 dark:text-red-400 font-medium">{status?.unhealthy}</span>
+              <span>{t('unhealthy')}</span>
             </div>
           )}
           <div className="flex items-center gap-1">
             <span className="font-medium">{status?.total || 0}</span>
-            <span>total</span>
+            <span>{t('total')}</span>
           </div>
           {status?.strategy && (
             <div className="flex items-center gap-1">
@@ -96,10 +99,7 @@ export function ProxyStatusCard({ isRunning, status, loading, error, onSwitchCli
               {/* Show "+X more" if there are more endpoints */}
               {status.endpoints.length > 3 && (
                 <div className="text-xs text-muted-foreground text-center py-1">
-                  +
-                  {status.endpoints.length - 3}
-                  {' '}
-                  more
+                  {t('moreCount', { count: status.endpoints.length - 3 })}
                 </div>
               )}
             </div>

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { SystemSettings } from '@/config/types'
+import { useTranslations } from 'next-intl'
 import { Activity, AlertCircle, Cloud, CloudOff, Database, FolderSync, Globe, HardDrive, Key, Lock, RefreshCw, Settings2, Timer, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
@@ -55,6 +56,7 @@ interface SystemSettingsModalProps {
 }
 
 export function SystemSettingsModal({ open, onClose, initialSettings, onSave, onConfigsChange }: SystemSettingsModalProps): ReactNode {
+  const t = useTranslations('settings')
   const [settings, setSettings] = useState<SystemSettings>({
     overrideClaudeCommand: initialSettings?.overrideClaudeCommand || false,
     balanceMode: {
@@ -424,10 +426,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
             </div>
             <div className="flex-1">
               <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                System Settings
+                {t('title')}
               </DialogTitle>
               <DialogDescription className="text-base mt-1.5 text-muted-foreground">
-                Configure advanced features and integrations for Start Claude
+                {t('description')}
               </DialogDescription>
             </div>
           </div>
@@ -444,17 +446,17 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                     <Zap className="h-5 w-5 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-xl font-bold">Proxy Server</CardTitle>
-                    <CardDescription className="text-sm mt-0.5">Configure proxy server and load balancing behavior</CardDescription>
+                    <CardTitle className="text-xl font-bold">{t('proxyServer.title')}</CardTitle>
+                    <CardDescription className="text-sm mt-0.5">{t('proxyServer.description')}</CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                   <div className="flex-1">
-                    <Label htmlFor="enableByDefault" className="font-semibold text-base cursor-pointer">Enable by Default</Label>
+                    <Label htmlFor="enableByDefault" className="font-semibold text-base cursor-pointer">{t('proxyServer.enableByDefault')}</Label>
                     <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                      Automatically start proxy server for multi-endpoint configurations
+                      {t('proxyServer.enableByDefaultDescription')}
                     </p>
                   </div>
                   <Switch
@@ -468,9 +470,9 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                 {/* Load Balancing Strategy */}
                 <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                   <div className="flex-1">
-                    <Label htmlFor="loadBalancerStrategy" className="font-semibold text-base">Load Balancing Strategy</Label>
+                    <Label htmlFor="loadBalancerStrategy" className="font-semibold text-base">{t('proxyServer.loadBalancingStrategy')}</Label>
                     <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                      Determines how requests are distributed across multiple endpoints
+                      {t('proxyServer.loadBalancingDescription')}
                     </p>
                   </div>
                   <Select
@@ -481,9 +483,9 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={LoadBalancerStrategy.Fallback}>Fallback</SelectItem>
-                      <SelectItem value={LoadBalancerStrategy.Polling}>Polling</SelectItem>
-                      <SelectItem value={LoadBalancerStrategy.SpeedFirst}>Speed First</SelectItem>
+                      <SelectItem value={LoadBalancerStrategy.Fallback}>{t('proxyServer.strategyFallback')}</SelectItem>
+                      <SelectItem value={LoadBalancerStrategy.Polling}>{t('proxyServer.strategyPolling')}</SelectItem>
+                      <SelectItem value={LoadBalancerStrategy.SpeedFirst}>{t('proxyServer.strategySpeedFirst')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -495,11 +497,11 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 shadow-md shadow-orange-500/30">
                         <Timer className="h-4 w-4 text-white" />
                       </div>
-                      <Label className="font-bold text-lg">Speed First Configuration</Label>
+                      <Label className="font-bold text-lg">{t('speedFirst.title')}</Label>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="speedFirstWindow" className="text-sm font-medium">Response Time Window</Label>
+                        <Label htmlFor="speedFirstWindow" className="text-sm font-medium">{t('speedFirst.responseTimeWindow')}</Label>
                         <div className="flex items-center gap-2 mt-1">
                           <Input
                             id="speedFirstWindow"
@@ -510,14 +512,14 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                             value={Math.floor((settings.balanceMode?.speedFirst?.responseTimeWindowMs || 300000) / 60000)}
                             onChange={e => handleSpeedFirstChange('responseTimeWindowMs', Number(e.target.value) * 60000)}
                           />
-                          <span className="text-sm text-muted-foreground">minutes</span>
+                          <span className="text-sm text-muted-foreground">{t('speedFirst.responseTimeWindowUnit')}</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Time window for averaging response times (1-60 minutes)
+                          {t('speedFirst.responseTimeWindowHelpText')}
                         </p>
                       </div>
                       <div>
-                        <Label htmlFor="speedFirstSamples" className="text-sm font-medium">Minimum Samples</Label>
+                        <Label htmlFor="speedFirstSamples" className="text-sm font-medium">{t('speedFirst.minSamples')}</Label>
                         <Input
                           id="speedFirstSamples"
                           type="number"
@@ -528,13 +530,13 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                           onChange={e => handleSpeedFirstChange('minSamples', Number(e.target.value))}
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Required samples before speed-based routing activates (1-20)
+                          {t('speedFirst.minSamplesHelpText')}
                         </p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="speedTestInterval" className="text-sm font-medium">Speed Test Interval</Label>
+                        <Label htmlFor="speedTestInterval" className="text-sm font-medium">{t('speedFirst.speedTestInterval')}</Label>
                         <div className="flex items-center gap-2 mt-1">
                           <Input
                             id="speedTestInterval"
@@ -545,14 +547,14 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                             value={settings.balanceMode?.speedFirst?.speedTestIntervalSeconds || 300}
                             onChange={e => handleSpeedFirstChange('speedTestIntervalSeconds', Number(e.target.value))}
                           />
-                          <span className="text-sm text-muted-foreground">seconds</span>
+                          <span className="text-sm text-muted-foreground">{t('speedFirst.speedTestIntervalUnit')}</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Frequency of periodic endpoint speed tests (30-3600 seconds)
+                          {t('speedFirst.speedTestIntervalHelpText')}
                         </p>
                       </div>
                       <div>
-                        <Label htmlFor="speedTestStrategy" className="text-sm font-medium">Speed Test Method</Label>
+                        <Label htmlFor="speedTestStrategy" className="text-sm font-medium">{t('speedFirst.speedTestMethod')}</Label>
                         <Select
                           value={settings.balanceMode?.speedFirst?.speedTestStrategy || SpeedTestStrategy.ResponseTime}
                           onValueChange={(value: SpeedTestStrategy) => handleSpeedFirstChange('speedTestStrategy', value)}
@@ -561,13 +563,13 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={SpeedTestStrategy.ResponseTime}>Response Time</SelectItem>
-                            <SelectItem value={SpeedTestStrategy.HeadRequest}>Head Request</SelectItem>
-                            <SelectItem value={SpeedTestStrategy.Ping}>Ping</SelectItem>
+                            <SelectItem value={SpeedTestStrategy.ResponseTime}>{t('speedFirst.speedTestMethodResponseTime')}</SelectItem>
+                            <SelectItem value={SpeedTestStrategy.HeadRequest}>{t('speedFirst.speedTestMethodHeadRequest')}</SelectItem>
+                            <SelectItem value={SpeedTestStrategy.Ping}>{t('speedFirst.speedTestMethodPing')}</SelectItem>
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Technique used to measure endpoint latency and speed
+                          {t('speedFirst.speedTestMethodHelpText')}
                         </p>
                       </div>
                     </div>
@@ -580,9 +582,9 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600 shadow-md shadow-green-500/30">
                         <Activity className="h-4 w-4 text-white" />
                       </div>
-                      <Label htmlFor="healthCheckEnabled" className="font-bold text-base">Endpoint Health Checks</Label>
+                      <Label htmlFor="healthCheckEnabled" className="font-bold text-base">{t('healthCheck.title')}</Label>
                       <Badge variant={settings.balanceMode?.healthCheck?.enabled !== false ? 'default' : 'secondary'} className="text-xs ml-1">
-                        {settings.balanceMode?.healthCheck?.enabled !== false ? 'Enabled' : 'Disabled'}
+                        {settings.balanceMode?.healthCheck?.enabled !== false ? t('healthCheck.enabled') : t('healthCheck.disabled')}
                       </Badge>
                     </div>
                     <Switch
@@ -598,7 +600,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       <div>
                         <Label htmlFor="healthCheckInterval" className="text-sm font-medium flex items-center gap-2">
                           <Timer className="h-3 w-3" />
-                          Health Check Interval
+                          {t('healthCheck.healthCheckInterval')}
                         </Label>
                         <div className="flex items-center gap-2 mt-1">
                           <Input
@@ -610,9 +612,9 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                             value={Math.floor((settings.balanceMode?.healthCheck?.intervalMs || 30000) / 1000)}
                             onChange={e => handleHealthCheckChange('intervalMs', Number(e.target.value) * 1000)}
                           />
-                          <span className="text-sm text-muted-foreground">seconds</span>
+                          <span className="text-sm text-muted-foreground">{t('speedFirst.speedTestIntervalUnit')}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">Frequency of periodic endpoint health verification (10-300 seconds)</p>
+                        <p className="text-xs text-muted-foreground mt-1">{t('healthCheck.healthCheckIntervalHelpText')}</p>
                       </div>
                     </div>
                   )}
@@ -620,7 +622,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                   <div>
                     <Label htmlFor="banDuration" className="text-sm font-medium flex items-center gap-2">
                       <AlertCircle className="h-3 w-3" />
-                      Failed Endpoint Ban Duration
+                      {t('healthCheck.failedEndpointBanDuration')}
                     </Label>
                     <div className="flex items-center gap-2 mt-1">
                       <Input
@@ -632,10 +634,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                         value={settings.balanceMode?.failedEndpoint?.banDurationSeconds || 300}
                         onChange={e => handleFailedEndpointChange('banDurationSeconds', Number(e.target.value))}
                       />
-                      <span className="text-sm text-muted-foreground">seconds</span>
+                      <span className="text-sm text-muted-foreground">{t('speedFirst.speedTestIntervalUnit')}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Time to exclude failed endpoints before retry (60-3600 seconds)
+                      {t('healthCheck.failedEndpointBanDurationHelpText')}
                     </p>
                   </div>
                 </div>
@@ -651,15 +653,13 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       <RefreshCw className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <CardTitle className="text-xl font-bold">Cloud Storage Sync</CardTitle>
-                      <CardDescription className="text-sm mt-0.5">Sync configurations across devices using iCloud, OneDrive, or custom folder</CardDescription>
+                      <CardTitle className="text-xl font-bold">{t('cloudSync.title')}</CardTitle>
+                      <CardDescription className="text-sm mt-0.5">{t('cloudSync.description')}</CardDescription>
                     </div>
                   </div>
                   {syncConfig?.enabled && (
                     <Badge className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 shadow-lg shadow-green-500/30 px-3 py-1">
-                      Active -
-                      {' '}
-                      {getProviderDisplayName(syncConfig.provider)}
+                      {t('cloudSync.activeBadge', { provider: getProviderDisplayName(syncConfig.provider) })}
                     </Badge>
                   )}
                 </div>
@@ -678,19 +678,17 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                             })()}
                             <div className="flex-1">
                               <div className="font-medium">
-                                {getProviderDisplayName(syncConfig.provider)}
-                                {' '}
-                                Sync Active
+                                {t('cloudSync.syncActive', { provider: getProviderDisplayName(syncConfig.provider) })}
                               </div>
                               <p className="text-sm text-muted-foreground mt-1">
-                                Syncing enabled
+                                {t('cloudSync.syncingEnabled')}
                               </p>
                               {syncStatus && !syncStatus.isValid && (
                                 <div className="mt-2 p-2 rounded bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800">
                                   <div className="flex items-start gap-2">
                                     <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
                                     <div className="text-sm">
-                                      <p className="font-medium text-yellow-900 dark:text-yellow-100">Sync Issues Detected</p>
+                                      <p className="font-medium text-yellow-900 dark:text-yellow-100">{t('cloudSync.syncIssuesDetected')}</p>
                                       <ul className="text-yellow-700 dark:text-yellow-300 mt-1 list-disc list-inside">
                                         {syncStatus.issues.map((issue, idx) => (
                                           <li key={idx}>{issue}</li>
@@ -702,9 +700,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                               )}
                               {syncConfig.linkedAt && (
                                 <p className="text-xs text-muted-foreground mt-2">
-                                  Linked:
-                                  {' '}
-                                  {new Date(syncConfig.linkedAt).toLocaleString()}
+                                  {t('cloudSync.linked', { date: new Date(syncConfig.linkedAt).toLocaleString() })}
                                 </p>
                               )}
                             </div>
@@ -713,13 +709,9 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
 
                         <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
                           <div className="flex-1">
-                            <Label className="font-medium">Migrate to Different Provider</Label>
+                            <Label className="font-medium">{t('cloudSync.migrateToDifferent')}</Label>
                             <p className="text-sm text-muted-foreground mt-1">
-                              Switch from
-                              {' '}
-                              {getProviderDisplayName(syncConfig.provider)}
-                              {' '}
-                              to another cloud provider
+                              {t('cloudSync.migrateDescription', { provider: getProviderDisplayName(syncConfig.provider) })}
                             </p>
                           </div>
                           <Button
@@ -732,13 +724,13 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                               ? (
                                   <div className="flex items-center gap-2">
                                     <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                    Processing...
+                                    {t('cloudSync.processing')}
                                   </div>
                                 )
                               : (
                                   <>
                                     <CloudOff className="h-4 w-4 mr-2" />
-                                    Disable & Reconfigure
+                                    {t('cloudSync.disableReconfigure')}
                                   </>
                                 )}
                           </Button>
@@ -752,10 +744,9 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                           <div className="flex items-start gap-2">
                             <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                             <div className="text-sm">
-                              <p className="font-medium text-blue-900 dark:text-blue-100">Cloud Storage Sync</p>
+                              <p className="font-medium text-blue-900 dark:text-blue-100">{t('cloudSync.infoTitle')}</p>
                               <p className="text-blue-700 dark:text-blue-300 mt-1">
-                                Automatically sync your configurations across multiple devices using cloud storage.
-                                Choose your preferred provider below.
+                                {t('cloudSync.infoDescription')}
                               </p>
                             </div>
                           </div>
@@ -764,7 +755,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                         {/* Available Cloud Providers */}
                         {cloudProviders.length > 0 && (
                           <div className="space-y-2">
-                            <Label className="text-sm font-medium">Available Cloud Providers</Label>
+                            <Label className="text-sm font-medium">{t('cloudSync.availableProviders')}</Label>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {cloudProviders.map(provider => (
                                 <Button
@@ -787,22 +778,20 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                                           ? (provider.hasConfigs
                                               ? (
                                                   <>
-                                                    Configs Detected
+                                                    {t('cloudSync.configsDetected')}
                                                     {provider.configModifiedDate && (
                                                       <span className="block text-[10px] mt-0.5 opacity-75">
-                                                        Modified:
-                                                        {' '}
-                                                        {new Date(provider.configModifiedDate).toLocaleString()}
+                                                        {t('cloudSync.modified', { date: new Date(provider.configModifiedDate).toLocaleString() })}
                                                       </span>
                                                     )}
                                                   </>
                                                 )
-                                              : 'Available')
-                                          : 'Not available on this system'}
+                                              : t('cloudSync.available'))
+                                          : t('cloudSync.notAvailable')}
                                       </p>
                                     </div>
                                     {provider.isEnabled && (
-                                      <Badge variant="secondary" className="text-xs">Ready</Badge>
+                                      <Badge variant="secondary" className="text-xs">{t('cloudSync.ready')}</Badge>
                                     )}
                                   </div>
                                 </Button>
@@ -813,10 +802,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
 
                         {/* Custom Folder Option */}
                         <div className="space-y-2">
-                          <Label className="text-sm font-medium">Custom Folder</Label>
+                          <Label className="text-sm font-medium">{t('cloudSync.customFolder')}</Label>
                           <div className="flex gap-2">
                             <Input
-                              placeholder="/path/to/sync/folder"
+                              placeholder={t('cloudSync.customFolderPlaceholder')}
                               value={customSyncPath}
                               onChange={e => setCustomSyncPath(e.target.value)}
                               disabled={loadingSync}
@@ -826,11 +815,11 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                               disabled={!customSyncPath.trim() || loadingSync}
                             >
                               <FolderSync className="h-4 w-4 mr-2" />
-                              Enable
+                              {t('cloudSync.enable')}
                             </Button>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            Use a custom directory for syncing (e.g., a network drive or manually synced folder)
+                            {t('cloudSync.customFolderHelpText')}
                           </p>
                         </div>
                       </div>
@@ -847,14 +836,14 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       <Cloud className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <CardTitle className="text-xl font-bold">S3 Cloud Sync</CardTitle>
-                      <CardDescription className="text-sm mt-0.5">Sync configurations across devices using AWS S3 or compatible storage</CardDescription>
+                      <CardTitle className="text-xl font-bold">{t('s3Sync.title')}</CardTitle>
+                      <CardDescription className="text-sm mt-0.5">{t('s3Sync.description')}</CardDescription>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     {settings.s3Sync && (
                       <Badge className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 shadow-lg shadow-green-500/30 px-3 py-1">
-                        Active
+                        {t('s3Sync.active')}
                       </Badge>
                     )}
                     <Switch
@@ -874,52 +863,52 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
                         <Database className="h-4 w-4" />
-                        Storage Configuration
+                        {t('s3Sync.storageConfig')}
                       </div>
 
                       <div>
-                        <Label htmlFor="bucket" className="font-medium">Bucket Name</Label>
+                        <Label htmlFor="bucket" className="font-medium">{t('s3Sync.bucketName')}</Label>
                         <Input
                           id="bucket"
                           type="text"
                           className="mt-1"
                           value={settings.s3Sync.bucket}
                           onChange={e => handleS3Change('bucket', e.target.value)}
-                          placeholder="my-claude-configs"
+                          placeholder={t('s3Sync.bucketNamePlaceholder')}
                         />
                       </div>
 
                       <div>
-                        <Label htmlFor="region" className="font-medium">Region</Label>
+                        <Label htmlFor="region" className="font-medium">{t('s3Sync.region')}</Label>
                         <Input
                           id="region"
                           type="text"
                           className="mt-1"
                           value={settings.s3Sync.region}
                           onChange={e => handleS3Change('region', e.target.value)}
-                          placeholder="us-east-1"
+                          placeholder={t('s3Sync.regionPlaceholder')}
                         />
                       </div>
 
                       <div>
-                        <Label htmlFor="key" className="font-medium">S3 Object Key</Label>
+                        <Label htmlFor="key" className="font-medium">{t('s3Sync.s3ObjectKey')}</Label>
                         <Input
                           id="key"
                           type="text"
                           className="mt-1"
                           value={settings.s3Sync.key}
                           onChange={e => handleS3Change('key', e.target.value)}
-                          placeholder="start-claude.json"
+                          placeholder={t('s3Sync.s3ObjectKeyPlaceholder')}
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          The path within your S3 bucket where config will be stored
+                          {t('s3Sync.s3ObjectKeyHelpText')}
                         </p>
                       </div>
 
                       <div>
                         <Label htmlFor="endpointUrl" className="font-medium flex items-center gap-2">
                           <Globe className="h-3 w-3" />
-                          Custom Endpoint
+                          {t('s3Sync.customEndpoint')}
                           <Badge variant="outline" className="text-xs">Optional</Badge>
                         </Label>
                         <Input
@@ -928,10 +917,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                           className="mt-1"
                           value={settings.s3Sync.endpointUrl}
                           onChange={e => handleS3Change('endpointUrl', e.target.value)}
-                          placeholder="https://example.r2.cloudflarestorage.com"
+                          placeholder={t('s3Sync.customEndpointPlaceholder')}
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          Leave empty for AWS S3. Use for Cloudflare R2, MinIO, etc.
+                          {t('s3Sync.customEndpointHelpText')}
                         </p>
                       </div>
                     </div>
@@ -940,25 +929,25 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
                         <Key className="h-4 w-4" />
-                        Authentication
+                        {t('s3Sync.authentication')}
                       </div>
 
                       <div>
-                        <Label htmlFor="accessKeyId" className="font-medium">Access Key ID</Label>
+                        <Label htmlFor="accessKeyId" className="font-medium">{t('s3Sync.accessKeyId')}</Label>
                         <Input
                           id="accessKeyId"
                           type="text"
                           className="mt-1 font-mono"
                           value={settings.s3Sync.accessKeyId}
                           onChange={e => handleS3Change('accessKeyId', e.target.value)}
-                          placeholder="AKIA..."
+                          placeholder={t('s3Sync.accessKeyIdPlaceholder')}
                         />
                       </div>
 
                       <div>
                         <Label htmlFor="secretAccessKey" className="font-medium flex items-center gap-2">
                           <Lock className="h-3 w-3" />
-                          Secret Access Key
+                          {t('s3Sync.secretAccessKey')}
                         </Label>
                         <Input
                           id="secretAccessKey"
@@ -966,27 +955,15 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                           className="mt-1 font-mono"
                           value={settings.s3Sync.secretAccessKey}
                           onChange={e => handleS3Change('secretAccessKey', e.target.value)}
-                          placeholder="••••••••••••••••••••••••••••••••••••••••"
+                          placeholder={t('s3Sync.secretAccessKeyPlaceholder')}
                         />
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                          <div className="text-sm">
-                            <p className="font-medium text-blue-900 dark:text-blue-100">Security Note</p>
-                            <p className="text-blue-700 dark:text-blue-300 mt-1">
-                              Credentials are stored locally and never transmitted except to your S3 endpoint.
-                            </p>
-                          </div>
-                        </div>
                       </div>
 
                       {/* Remote Check Interval */}
                       <div>
                         <Label htmlFor="checkInterval" className="font-medium flex items-center gap-2">
                           <Timer className="h-3 w-3" />
-                          Check Interval
+                          {t('s3Sync.checkInterval')}
                         </Label>
                         <div className="flex items-center gap-2 mt-1">
                           <Input
@@ -998,11 +975,24 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                             value={settings.s3Sync.remoteConfigCheckIntervalMinutes || 60}
                             onChange={e => handleS3Change('remoteConfigCheckIntervalMinutes', Number(e.target.value))}
                           />
-                          <span className="text-sm text-muted-foreground">minutes</span>
+                          <span className="text-sm text-muted-foreground">{t('speedFirst.responseTimeWindowUnit')}</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          How often to check for remote configuration updates (5-1440 minutes)
+                          {t('s3Sync.checkIntervalHelpText')}
                         </p>
+                      </div>
+
+                      {/* Security Note - at the end */}
+                      <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                          <div className="text-sm">
+                            <p className="font-medium text-blue-900 dark:text-blue-100">{t('configForm.apiConfig.securityNote')}</p>
+                            <p className="text-blue-700 dark:text-blue-300 mt-1">
+                              {t('s3Sync.securityNote')}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1020,7 +1010,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
               disabled={saving}
               className="min-w-[100px] h-11 font-medium hover:bg-muted/80 transition-colors"
             >
-              Cancel
+              {t('cancel')}
             </Button>
             <Button
               onClick={(): void => { void handleSave() }}
@@ -1031,11 +1021,11 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                 ? (
                     <div className="flex items-center gap-2">
                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      Saving...
+                      {t('saving')}
                     </div>
                   )
                 : (
-                    'Save Settings'
+                    t('saveSettings')
                   )}
             </Button>
           </div>
@@ -1058,10 +1048,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0" />
-              <span className="truncate">Configuration Conflict Detected</span>
+              <span className="truncate">{t('conflict.title')}</span>
             </DialogTitle>
             <DialogDescription className="text-base leading-relaxed">
-              Both local and cloud storage contain configuration files. Choose how to proceed.
+              {t('conflict.description')}
             </DialogDescription>
           </DialogHeader>
 
@@ -1071,15 +1061,10 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                 <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
                 <div className="text-sm min-w-0 flex-1">
                   <p className="font-medium text-orange-900 dark:text-orange-100">
-                    {conflicts.length}
-                    {' '}
-                    conflict
-                    {conflicts.length !== 1 ? 's' : ''}
-                    {' '}
-                    detected
+                    {t('conflict.conflictCount', { count: conflicts.length })}
                   </p>
                   <p className="text-orange-700 dark:text-orange-300 mt-1">
-                    Choose how to resolve the differences.
+                    {t('conflict.resolveDescription')}
                   </p>
                 </div>
               </div>
@@ -1089,19 +1074,15 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
             {conflictDates && (
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-2 rounded bg-muted/50 border">
-                  <div className="font-medium text-muted-foreground mb-1">Local Configuration</div>
+                  <div className="font-medium text-muted-foreground mb-1">{t('conflict.localConfig')}</div>
                   <div className="truncate">
-                    Modified:
-                    {' '}
-                    {conflictDates.local ? new Date(conflictDates.local).toLocaleString() : 'Unknown'}
+                    {t('conflict.modified', { date: conflictDates.local ? new Date(conflictDates.local).toLocaleString() : 'Unknown' })}
                   </div>
                 </div>
                 <div className="p-2 rounded bg-muted/50 border">
-                  <div className="font-medium text-muted-foreground mb-1">Cloud Configuration</div>
+                  <div className="font-medium text-muted-foreground mb-1">{t('conflict.cloudConfig')}</div>
                   <div className="truncate">
-                    Modified:
-                    {' '}
-                    {conflictDates.cloud ? new Date(conflictDates.cloud).toLocaleString() : 'Unknown'}
+                    {t('conflict.modified', { date: conflictDates.cloud ? new Date(conflictDates.cloud).toLocaleString() : 'Unknown' })}
                   </div>
                 </div>
               </div>
@@ -1116,11 +1097,11 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                 disabled={resolvingConflict}
               >
                 <div className="flex items-center gap-3 w-full">
-                  <HardDrive className="h-5 w-5 flex-shrink-0 text-blue-600" />
+                  <HardDrive className="h-5 w-5 flex-shrink-0 text-blue-600 dark:text-blue-400" />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium">Use Local Configuration</div>
+                    <div className="font-medium">{t('conflict.useLocal')}</div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Upload to cloud, replace remote
+                      {t('conflict.useLocalDescription')}
                     </p>
                   </div>
                 </div>
@@ -1133,11 +1114,11 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                 disabled={resolvingConflict}
               >
                 <div className="flex items-center gap-3 w-full">
-                  <Cloud className="h-5 w-5 flex-shrink-0 text-blue-600" />
+                  <Cloud className="h-5 w-5 flex-shrink-0 text-blue-600 dark:text-blue-400" />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium">Use Cloud Configuration</div>
+                    <div className="font-medium">{t('conflict.useCloud')}</div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Download from cloud, replace local
+                      {t('conflict.useCloudDescription')}
                     </p>
                   </div>
                 </div>
@@ -1150,11 +1131,11 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                 disabled={resolvingConflict}
               >
                 <div className="flex items-center gap-3 w-full">
-                  <RefreshCw className="h-5 w-5 flex-shrink-0 text-green-600" />
+                  <RefreshCw className="h-5 w-5 flex-shrink-0 text-green-600 dark:text-green-400" />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium">Smart Merge (Recommended)</div>
+                    <div className="font-medium">{t('conflict.smartMerge')}</div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Combine intelligently, keep local keys
+                      {t('conflict.smartMergeDescription')}
                     </p>
                   </div>
                 </div>
@@ -1164,7 +1145,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
             {resolvingConflict && (
               <div className="flex items-center justify-center gap-2 p-4">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                <span className="text-sm text-muted-foreground">Resolving conflicts...</span>
+                <span className="text-sm text-muted-foreground">{t('conflict.resolving')}</span>
               </div>
             )}
           </div>
@@ -1180,7 +1161,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
               }}
               disabled={resolvingConflict}
             >
-              Cancel
+              {t('cancel')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { useTranslations } from 'next-intl'
 import { AlertTriangle, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ interface ConfirmDeleteModalProps {
 }
 
 export function ConfirmDeleteModal({ open, onClose, configName, onConfirm }: ConfirmDeleteModalProps): ReactNode {
+  const t = useTranslations('deleteModal')
   const [deleting, setDeleting] = useState(false)
 
   const handleDelete = async (): Promise<void> => {
@@ -41,9 +43,9 @@ export function ConfirmDeleteModal({ open, onClose, configName, onConfirm }: Con
               <AlertTriangle className="h-5 w-5 text-destructive" />
             </div>
             <div className="flex-1">
-              <DialogTitle className="text-xl font-semibold text-foreground">Delete Configuration</DialogTitle>
+              <DialogTitle className="text-xl font-semibold text-foreground">{t('title')}</DialogTitle>
               <DialogDescription className="text-base mt-1">
-                This action cannot be undone
+                {t('description')}
               </DialogDescription>
             </div>
           </div>
@@ -52,37 +54,30 @@ export function ConfirmDeleteModal({ open, onClose, configName, onConfirm }: Con
         <div className="py-4">
           <div className="rounded-lg border border-destructive/20 bg-destructive/5 dark:bg-destructive/10 p-4">
             <p className="text-sm text-foreground">
-              Are you sure you want to delete the configuration
-              {' '}
-              <span className="font-semibold text-destructive">
-                &quot;
-                {configName}
-                &quot;
-              </span>
-              ?
+              {t('confirmMessage', { configName: configName ?? '' })}
             </p>
             <p className="text-xs text-muted-foreground mt-2">
-              All associated settings and data will be permanently removed.
+              {t('additionalNote')}
             </p>
           </div>
         </div>
 
         <DialogFooter className="pt-6 border-t">
           <Button variant="outline" onClick={onClose} disabled={deleting} className="min-w-[80px]">
-            Cancel
+            {t('cancel')}
           </Button>
           <Button variant="destructive" onClick={() => void handleDelete()} disabled={deleting} className="min-w-[100px]">
             {deleting
               ? (
                   <div className="flex items-center gap-2">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    Deleting...
+                    {t('deleting')}
                   </div>
                 )
               : (
                   <>
                     <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
+                    {t('delete')}
                   </>
                 )}
           </Button>

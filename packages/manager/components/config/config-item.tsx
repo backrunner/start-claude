@@ -2,9 +2,10 @@
 
 import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
+import { useTranslations } from 'next-intl'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Edit, GripVertical, Shield, Star, Trash2 } from 'lucide-react'
+import { Edit, GripVertical, Shield, ShieldCheck, ShieldOff, Star, Trash2, FileCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -21,6 +22,8 @@ interface ConfigItemProps {
 }
 
 export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDefault }: ConfigItemProps): ReactNode {
+  const t = useTranslations('configItem')
+
   const {
     attributes,
     listeners,
@@ -85,7 +88,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                 <h3 className="text-base font-bold mb-1 truncate">{config.name}</h3>
                 <Badge variant="outline" className="text-xs">
                   {config.profileType === 'official' && <Shield className="h-3 w-3 mr-1" />}
-                  {config.profileType === 'official' ? 'Official' : 'Custom'}
+                  {config.profileType === 'official' ? t('officialBadge') : t('customApiBadge')}
                 </Badge>
               </div>
             </div>
@@ -106,11 +109,26 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
             )}
 
             {(config.permissionMode ?? 'default') !== 'default' && (
-              <Badge variant="secondary" className="text-xs w-fit">
-                {config.permissionMode === 'acceptEdits' && '✓ Accept Edits'}
-                {config.permissionMode === 'plan' && '📋 Plan'}
-                {config.permissionMode === 'bypassPermissions' && '⚡ Bypass'}
-              </Badge>
+              <>
+                {config.permissionMode === 'acceptEdits' && (
+                  <Badge variant="secondary" className="text-xs w-fit bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 hover:bg-green-500/20">
+                    <ShieldCheck className="h-3 w-3 mr-1" />
+                    {t('acceptEditsBadge')}
+                  </Badge>
+                )}
+                {config.permissionMode === 'plan' && (
+                  <Badge variant="secondary" className="text-xs w-fit bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20">
+                    <FileCheck className="h-3 w-3 mr-1" />
+                    {t('planModeBadge')}
+                  </Badge>
+                )}
+                {config.permissionMode === 'bypassPermissions' && (
+                  <Badge variant="destructive" className="text-xs w-fit bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
+                    <ShieldOff className="h-3 w-3 mr-1" />
+                    {t('bypassBadge')}
+                  </Badge>
+                )}
+              </>
             )}
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t">
@@ -126,7 +144,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                       <Star className={`h-4 w-4 ${isDefault ? 'fill-amber-500 text-amber-500' : ''}`} />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent><p>Set default</p></TooltipContent>
+                  <TooltipContent><p>{t('setDefault')}</p></TooltipContent>
                 </Tooltip>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
@@ -134,7 +152,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                       <Edit className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent><p>Edit</p></TooltipContent>
+                  <TooltipContent><p>{t('edit')}</p></TooltipContent>
                 </Tooltip>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
@@ -142,7 +160,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent><p>Delete</p></TooltipContent>
+                  <TooltipContent><p>{t('delete')}</p></TooltipContent>
                 </Tooltip>
               </div>
               <VSCodeStartButton configName={config.name} className="text-xs px-3 h-8" />
@@ -178,14 +196,29 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                 <h3 className="text-lg font-bold truncate">{config.name}</h3>
                 <Badge variant="outline" className="text-xs flex-shrink-0">
                   {config.profileType === 'official' && <Shield className="h-3 w-3 mr-1" />}
-                  {config.profileType === 'official' ? 'Official Account' : 'Custom API'}
+                  {config.profileType === 'official' ? t('officialBadge') : t('customApiBadge')}
                 </Badge>
                 {(config.permissionMode ?? 'default') !== 'default' && (
-                  <Badge variant="secondary" className="text-xs flex-shrink-0">
-                    {config.permissionMode === 'acceptEdits' && '✓ Accept Edits'}
-                    {config.permissionMode === 'plan' && '📋 Plan Mode'}
-                    {config.permissionMode === 'bypassPermissions' && '⚡ Bypass'}
-                  </Badge>
+                  <>
+                    {config.permissionMode === 'acceptEdits' && (
+                      <Badge variant="secondary" className="text-xs flex-shrink-0 bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 hover:bg-green-500/20">
+                        <ShieldCheck className="h-3 w-3 mr-1" />
+                        {t('acceptEditsBadge')}
+                      </Badge>
+                    )}
+                    {config.permissionMode === 'plan' && (
+                      <Badge variant="secondary" className="text-xs flex-shrink-0 bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20">
+                        <FileCheck className="h-3 w-3 mr-1" />
+                        {t('planModeBadge')}
+                      </Badge>
+                    )}
+                    {config.permissionMode === 'bypassPermissions' && (
+                      <Badge variant="destructive" className="text-xs flex-shrink-0 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
+                        <ShieldOff className="h-3 w-3 mr-1" />
+                        {t('bypassBadge')}
+                      </Badge>
+                    )}
+                  </>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -216,7 +249,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                       <Star className={`h-4 w-4 ${isDefault ? 'fill-amber-500 text-amber-500' : ''}`} />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent><p>Set as default</p></TooltipContent>
+                  <TooltipContent><p>{t('setAsDefault')}</p></TooltipContent>
                 </Tooltip>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
@@ -224,7 +257,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                       <Edit className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent><p>Edit</p></TooltipContent>
+                  <TooltipContent><p>{t('edit')}</p></TooltipContent>
                 </Tooltip>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
@@ -232,7 +265,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent><p>Delete</p></TooltipContent>
+                  <TooltipContent><p>{t('delete')}</p></TooltipContent>
                 </Tooltip>
               </div>
             </div>
