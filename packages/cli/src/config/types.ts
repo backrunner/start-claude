@@ -57,6 +57,30 @@ export interface ClaudeConfig {
   vertexRegion40Opus?: string
   vertexRegion40Sonnet?: string
   vertexRegion45Sonnet?: string
+
+  // Extensions configuration - which extensions are enabled for this profile
+  enabledExtensions?: {
+    useGlobalDefaults?: boolean // If true, use global defaults with overrides
+    overrides?: {
+      // Additions and removals from global defaults
+      mcpServers?: {
+        add?: string[]
+        remove?: string[]
+      }
+      skills?: {
+        add?: string[]
+        remove?: string[]
+      }
+      subagents?: {
+        add?: string[]
+        remove?: string[]
+      }
+    }
+    // Legacy explicit lists (used when useGlobalDefaults is false)
+    mcpServers?: string[] // IDs of enabled MCP servers
+    skills?: string[] // IDs of enabled skills
+    subagents?: string[] // IDs of enabled subagents
+  }
 }
 
 /**
@@ -110,6 +134,55 @@ export interface McpSyncConfig {
 }
 
 /**
+ * MCP server definition in the global extensions library (supports both stdio and HTTP)
+ */
+export interface McpServerDefinition {
+  id: string // Unique identifier
+  name: string // Display name
+  description?: string // Description of what this server does
+  type: 'stdio' | 'http' // Transport type
+  // For stdio transport
+  command?: string // Executable path or command
+  args?: string[] // Command arguments
+  env?: Record<string, string> // Environment variables
+  // For HTTP transport
+  url?: string // HTTP endpoint URL
+  headers?: Record<string, string> // HTTP headers
+}
+
+/**
+ * Skill definition in the global extensions library
+ */
+export interface SkillDefinition {
+  id: string // Unique identifier
+  name: string // Skill name (lowercase, hyphens only)
+  description: string // When this skill should be used
+  content: string // Complete SKILL.md file content
+  allowedTools?: string[] // Optional: restrict tools when skill is active
+}
+
+/**
+ * Subagent definition in the global extensions library
+ */
+export interface SubagentDefinition {
+  id: string // Unique identifier
+  name: string // Agent name (lowercase, hyphens only)
+  description: string // When this agent should be invoked
+  systemPrompt: string // The agent's system prompt (markdown body)
+  tools?: string[] // Optional: specific tools list (omit to inherit all)
+  model?: 'sonnet' | 'opus' | 'haiku' | 'inherit' // Model to use
+}
+
+/**
+ * Extensions library - global repository of all available extensions
+ */
+export interface ExtensionsLibrary {
+  mcpServers: Record<string, McpServerDefinition> // Key is the ID
+  skills: Record<string, SkillDefinition> // Key is the ID
+  subagents: Record<string, SubagentDefinition> // Key is the ID
+}
+
+/**
  * System settings interface
  */
 export interface SystemSettings {
@@ -156,6 +229,14 @@ export interface SystemSettings {
     remoteConfigCheckIntervalMinutes?: number // Default: 60 (1 hour)
   }
   mcpSync?: McpSyncConfig
+  // Extensions library - global repository of all available MCP servers, skills, and subagents
+  extensionsLibrary?: ExtensionsLibrary
+  // Global defaults - which extensions are enabled by default for all profiles
+  defaultEnabledExtensions?: {
+    mcpServers: string[] // IDs of MCP servers enabled by default
+    skills: string[] // IDs of skills enabled by default
+    subagents: string[] // IDs of subagents enabled by default
+  }
 }
 
 /**

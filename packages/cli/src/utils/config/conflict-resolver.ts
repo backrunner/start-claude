@@ -486,6 +486,49 @@ function resolveFieldConflict(
       resolutionDetails.push(`Preserving local ID: ${localValue}`)
       return localValue
 
+    case 'enabledExtensions': {
+      // For enabled extensions, merge both with local taking precedence
+      // This preserves user's local extension choices while incorporating remote additions
+      const localExt = localValue || {}
+      const remoteExt = remoteValue || {}
+
+      // Merge useGlobalDefaults preference (prefer local)
+      const useGlobalDefaults = localExt.useGlobalDefaults ?? remoteExt.useGlobalDefaults ?? true
+
+      // Merge overrides (if using global defaults mode)
+      let overrides
+      if (useGlobalDefaults) {
+        overrides = {
+          mcpServers: {
+            add: [...new Set([...(localExt.overrides?.mcpServers?.add || []), ...(remoteExt.overrides?.mcpServers?.add || [])])],
+            remove: [...new Set([...(localExt.overrides?.mcpServers?.remove || []), ...(remoteExt.overrides?.mcpServers?.remove || [])])],
+          },
+          skills: {
+            add: [...new Set([...(localExt.overrides?.skills?.add || []), ...(remoteExt.overrides?.skills?.add || [])])],
+            remove: [...new Set([...(localExt.overrides?.skills?.remove || []), ...(remoteExt.overrides?.skills?.remove || [])])],
+          },
+          subagents: {
+            add: [...new Set([...(localExt.overrides?.subagents?.add || []), ...(remoteExt.overrides?.subagents?.add || [])])],
+            remove: [...new Set([...(localExt.overrides?.subagents?.remove || []), ...(remoteExt.overrides?.subagents?.remove || [])])],
+          },
+        }
+      }
+
+      // Merge explicit lists (if not using global defaults mode)
+      const mcpServers = useGlobalDefaults ? undefined : [...new Set([...(localExt.mcpServers || []), ...(remoteExt.mcpServers || [])])]
+      const skills = useGlobalDefaults ? undefined : [...new Set([...(localExt.skills || []), ...(remoteExt.skills || [])])]
+      const subagents = useGlobalDefaults ? undefined : [...new Set([...(localExt.subagents || []), ...(remoteExt.subagents || [])])]
+
+      resolutionDetails.push(`Merged enabled extensions with local preferences taking precedence`)
+      return {
+        useGlobalDefaults,
+        overrides,
+        mcpServers,
+        skills,
+        subagents,
+      }
+    }
+
     default: {
       // For other fields, prefer remote (newer configuration)
       if (options.verbose) {

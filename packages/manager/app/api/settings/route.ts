@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server'
+import { ClaudeConfigSyncer } from '@start-claude/cli/src/extensions/claude-config-syncer'
 import { ConfigManager } from '@start-claude/cli/src/config/manager'
 import { S3ConfigFileManager } from '@start-claude/cli/src/config/s3-config'
 import { NextResponse } from 'next/server'
@@ -13,10 +14,72 @@ export const revalidate = 0
 const configManager = ConfigManager.getInstance()
 const s3ConfigManager = S3ConfigFileManager.getInstance()
 
+// Track if we've already synced in this session to avoid repeated syncs
+let hasSyncedThisSession = false
+
 async function getSettings(): Promise<any> {
   try {
     const configFile = await configManager.load()
     const settings = configFile.settings || { overrideClaudeCommand: false }
+
+    // Sync Claude Code config files on first load
+    if (!hasSyncedThisSession) {
+      try {
+        // Initialize library if it doesn't exist
+        let library = settings.extensionsLibrary || {
+          mcpServers: {},
+          skills: {},
+          subagents: {},
+        }
+
+        // Initialize defaultEnabledExtensions if it doesn't exist
+        let defaultEnabled = settings.defaultEnabledExtensions || {
+          mcpServers: [],
+          skills: [],
+          subagents: [],
+        }
+
+        // Sync Claude Code's native config files
+        const syncer = new ClaudeConfigSyncer()
+        const syncResult = await syncer.syncClaudeConfig(library)
+
+        if (syncResult.result.totalAdded > 0) {
+          console.log(`[Settings API] Synced ${syncResult.result.totalAdded} extensions from Claude Code config:`)
+          if (syncResult.result.mcpServersAdded > 0) {
+            console.log(`  - ${syncResult.result.mcpServersAdded} MCP servers`)
+          }
+          if (syncResult.result.skillsAdded > 0) {
+            console.log(`  - ${syncResult.result.skillsAdded} skills`)
+          }
+          if (syncResult.result.subagentsAdded > 0) {
+            console.log(`  - ${syncResult.result.subagentsAdded} subagents`)
+          }
+
+          // Update library and defaults
+          library = syncResult.library
+
+          // Merge with existing defaults (keep existing + add new)
+          defaultEnabled = {
+            mcpServers: [...new Set([...defaultEnabled.mcpServers, ...syncResult.defaultEnabled.mcpServers])],
+            skills: [...new Set([...defaultEnabled.skills, ...syncResult.defaultEnabled.skills])],
+            subagents: [...new Set([...defaultEnabled.subagents, ...syncResult.defaultEnabled.subagents])],
+          }
+
+          // Save updated library and defaults back to config
+          settings.extensionsLibrary = library
+          settings.defaultEnabledExtensions = defaultEnabled
+
+          configFile.settings = settings
+          await configManager.save(configFile)
+        }
+
+        hasSyncedThisSession = true
+      }
+      catch (syncError) {
+        console.error('[Settings API] Error syncing Claude config:', syncError)
+        // Continue even if sync fails
+      }
+    }
 
     // Ensure balanceMode structure exists with defaults
     if (!settings.balanceMode) {

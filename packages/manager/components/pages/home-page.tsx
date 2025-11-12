@@ -2,8 +2,8 @@
 
 import type { DragEndEvent } from '@dnd-kit/core'
 import type { ReactNode } from 'react'
-import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import type { SwitchResult } from '@/components/proxy/config-switch-modal'
+import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -12,6 +12,7 @@ import { useRef, useState } from 'react'
 import { ConfigFormModal } from '@/components/config/config-form-modal'
 import { ConfigList } from '@/components/config/config-list'
 import { ConfirmDeleteModal } from '@/components/config/confirm-delete-modal'
+import { ExtensionsModal } from '@/components/extensions/extensions-modal'
 import { EmptyState } from '@/components/layout/empty-state'
 import { Header } from '@/components/layout/header'
 import { SearchBar } from '@/components/layout/search-bar'
@@ -49,6 +50,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
   const [editingConfig, setEditingConfig] = useState<ClaudeConfig | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSystemSettingsOpen, setIsSystemSettingsOpen] = useState(false)
+  const [isExtensionsOpen, setIsExtensionsOpen] = useState(false)
   const [isConfigSwitchOpen, setIsConfigSwitchOpen] = useState(false)
   const [deleteConfig, setDeleteConfig] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -227,7 +229,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     })
 
     // Refresh proxy status to update the card
-    proxyStatus.refetch()
+    void proxyStatus.refetch()
   }
 
   return (
@@ -242,6 +244,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
               setIsFormOpen(true)
             }}
             onOpenSettings={() => setIsSystemSettingsOpen(true)}
+            onOpenExtensions={() => setIsExtensionsOpen(true)}
           />
 
           {error && (
@@ -326,6 +329,19 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
             initialSettings={settings}
             onSave={async newSettings => saveSettings(newSettings, notifyConfigChange)}
             onConfigsChange={refetchConfigs}
+          />
+
+          <ExtensionsModal
+            open={isExtensionsOpen}
+            onClose={() => setIsExtensionsOpen(false)}
+            initialLibrary={settings.extensionsLibrary}
+            onSave={async (library) => {
+              const updatedSettings = {
+                ...settings,
+                extensionsLibrary: library,
+              }
+              await saveSettings(updatedSettings, notifyConfigChange)
+            }}
           />
 
           <ConfirmDeleteModal

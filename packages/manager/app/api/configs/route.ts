@@ -13,6 +13,142 @@ export const revalidate = 0
 const configManager = ConfigManager.getInstance()
 const s3ConfigManager = S3ConfigFileManager.getInstance()
 
+/**
+ * Validate that all enabled extension IDs exist in the extensions library
+ */
+async function validateEnabledExtensions(config: ClaudeConfig): Promise<{ valid: boolean, errors: string[] }> {
+  const errors: string[] = []
+
+  if (!config.enabledExtensions) {
+    return { valid: true, errors: [] }
+  }
+
+  try {
+    const configFile = await configManager.load()
+    const library = configFile.settings.extensionsLibrary
+
+    if (!library) {
+      // No library exists yet, check if any extensions are enabled
+      const hasExplicitLists = (
+        (config.enabledExtensions.mcpServers && config.enabledExtensions.mcpServers.length > 0)
+        || (config.enabledExtensions.skills && config.enabledExtensions.skills.length > 0)
+        || (config.enabledExtensions.subagents && config.enabledExtensions.subagents.length > 0)
+      )
+
+      const hasOverrides = config.enabledExtensions.overrides && (
+        (config.enabledExtensions.overrides.mcpServers?.add && config.enabledExtensions.overrides.mcpServers.add.length > 0)
+        || (config.enabledExtensions.overrides.skills?.add && config.enabledExtensions.overrides.skills.add.length > 0)
+        || (config.enabledExtensions.overrides.subagents?.add && config.enabledExtensions.overrides.subagents.add.length > 0)
+      )
+
+      if (hasExplicitLists || hasOverrides) {
+        errors.push('Extensions library not initialized. Cannot enable extensions.')
+      }
+      return { valid: errors.length === 0, errors }
+    }
+
+    // Check if using override model or legacy explicit lists
+    if (config.enabledExtensions.useGlobalDefaults && config.enabledExtensions.overrides) {
+      // Validate override model: additions and removals
+      const overrides = config.enabledExtensions.overrides
+      const defaults = configFile.settings.defaultEnabledExtensions || {
+        mcpServers: [],
+        skills: [],
+        subagents: [],
+      }
+
+      // Validate MCP server additions
+      if (overrides.mcpServers?.add) {
+        for (const id of overrides.mcpServers.add) {
+          if (!library.mcpServers[id]) {
+            errors.push(`MCP server "${id}" not found in extensions library`)
+          }
+        }
+      }
+
+      // Validate MCP server removals (must exist in defaults)
+      if (overrides.mcpServers?.remove) {
+        for (const id of overrides.mcpServers.remove) {
+          if (!defaults.mcpServers.includes(id)) {
+            errors.push(`Cannot remove MCP server "${id}" - not in global defaults`)
+          }
+        }
+      }
+
+      // Validate skill additions
+      if (overrides.skills?.add) {
+        for (const id of overrides.skills.add) {
+          if (!library.skills[id]) {
+            errors.push(`Skill "${id}" not found in extensions library`)
+          }
+        }
+      }
+
+      // Validate skill removals
+      if (overrides.skills?.remove) {
+        for (const id of overrides.skills.remove) {
+          if (!defaults.skills.includes(id)) {
+            errors.push(`Cannot remove skill "${id}" - not in global defaults`)
+          }
+        }
+      }
+
+      // Validate subagent additions
+      if (overrides.subagents?.add) {
+        for (const id of overrides.subagents.add) {
+          if (!library.subagents[id]) {
+            errors.push(`Subagent "${id}" not found in extensions library`)
+          }
+        }
+      }
+
+      // Validate subagent removals
+      if (overrides.subagents?.remove) {
+        for (const id of overrides.subagents.remove) {
+          if (!defaults.subagents.includes(id)) {
+            errors.push(`Cannot remove subagent "${id}" - not in global defaults`)
+          }
+        }
+      }
+    }
+    else {
+      // Validate legacy explicit lists
+      // Validate MCP servers
+      if (config.enabledExtensions.mcpServers) {
+        for (const id of config.enabledExtensions.mcpServers) {
+          if (!library.mcpServers[id]) {
+            errors.push(`MCP server "${id}" not found in extensions library`)
+          }
+        }
+      }
+
+      // Validate skills
+      if (config.enabledExtensions.skills) {
+        for (const id of config.enabledExtensions.skills) {
+          if (!library.skills[id]) {
+            errors.push(`Skill "${id}" not found in extensions library`)
+          }
+        }
+      }
+
+      // Validate subagents
+      if (config.enabledExtensions.subagents) {
+        for (const id of config.enabledExtensions.subagents) {
+          if (!library.subagents[id]) {
+            errors.push(`Subagent "${id}" not found in extensions library`)
+          }
+        }
+      }
+    }
+
+    return { valid: errors.length === 0, errors }
+  }
+  catch (error) {
+    console.error('[Configs API] Error validating enabled extensions:', error)
+    return { valid: false, errors: ['Failed to validate extensions'] }
+  }
+}
+
 async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
     const configFile = await configManager.load()
@@ -130,10 +266,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (existingIndex >= 0) {
       // Validate the updated config before saving
-      const updatedConfigResult = claudeConfigSchema.safeParse({
+      const updatedConfig = {
         ...configs[existingIndex],
         ...config,
-      })
+      }
+
+      // Validate enabled extensions
+      const extensionsValidation = await validateEnabledExtensions(updatedConfig)
+      if (!extensionsValidation.valid) {
+        return NextResponse.json({
+          error: 'Invalid enabled extensions',
+          details: extensionsValidation.errors,
+        }, { status: 400 })
+      }
+
+      const updatedConfigResult = claudeConfigSchema.safeParse(updatedConfig)
 
       if (!updatedConfigResult.success) {
         return NextResponse.json({
@@ -150,11 +297,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const maxOrder = configs.length === 0 ? 0 : Math.max(...configs.map(c => c.order ?? 0))
 
       // Validate new config
-      const newConfigResult = claudeConfigSchema.safeParse({
+      const newConfig = {
         ...config,
         order: config.order ?? (maxOrder + 1),
         enabled: config.enabled ?? true,
-      })
+      }
+
+      // Validate enabled extensions
+      const extensionsValidation = await validateEnabledExtensions(newConfig)
+      if (!extensionsValidation.valid) {
+        return NextResponse.json({
+          error: 'Invalid enabled extensions',
+          details: extensionsValidation.errors,
+        }, { status: 400 })
+      }
+
+      const newConfigResult = claudeConfigSchema.safeParse(newConfig)
 
       if (!newConfigResult.success) {
         return NextResponse.json({
@@ -198,6 +356,14 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     // Validate each config individually
     const validatedConfigs: ClaudeConfig[] = []
     for (const config of configs) {
+      // Validate enabled extensions
+      const extensionsValidation = await validateEnabledExtensions(config)
+      if (!extensionsValidation.valid) {
+        return NextResponse.json({
+          error: `Invalid enabled extensions for "${config.name}": ${extensionsValidation.errors.join(', ')}`,
+        }, { status: 400 })
+      }
+
       const configValidation = claudeConfigSchema.safeParse(config)
       if (!configValidation.success) {
         return NextResponse.json({

@@ -4,6 +4,9 @@ import type { CliOverrides } from './common'
 import { spawn } from 'node:child_process'
 import process from 'node:process'
 import inquirer from 'inquirer'
+import { ConfigManager } from '../config/manager'
+import { ClaudeConfigSyncer } from '../extensions/claude-config-syncer'
+import { ExtensionsWriter } from '../extensions/writer'
 import { UILogger } from '../utils/cli/ui'
 import { findExecutable } from '../utils/system/path-utils'
 
@@ -13,6 +16,16 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
   // Set environment variables from config (if config exists)
   if (config) {
     setEnvFromConfig(env, config)
+
+    // Write extensions configuration before starting Claude Code
+    try {
+      await writeExtensionsConfig(config)
+    }
+    catch (error) {
+      const ui = new UILogger()
+      ui.warning(`Failed to write extensions configuration: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      // Don't fail the entire startup, just log warning
+    }
   }
 
   // Apply CLI overrides
@@ -285,6 +298,72 @@ function applyCliOverrides(env: NodeJS.ProcessEnv, overrides: CliOverrides): voi
 
   if (overrides.model) {
     env.ANTHROPIC_MODEL = overrides.model
+  }
+}
+
+/**
+ * Write extensions configuration files before starting Claude Code
+ * Also syncs Claude Code's native config files (.mcp.json, .claude/skills/, .claude/agents/)
+ */
+async function writeExtensionsConfig(config: ClaudeConfig, isProxyMode: boolean = false): Promise<void> {
+  try {
+    // Load the config file to get extensions library and settings
+    const configManager = ConfigManager.getInstance()
+    const configFile = await configManager.load()
+
+    // Initialize library if it doesn't exist
+    let library = configFile.settings.extensionsLibrary || {
+      mcpServers: {},
+      skills: {},
+      subagents: {},
+    }
+
+    // Initialize defaultEnabledExtensions if it doesn't exist
+    let defaultEnabled = configFile.settings.defaultEnabledExtensions || {
+      mcpServers: [],
+      skills: [],
+      subagents: [],
+    }
+
+    // Sync Claude Code's native config files
+    const syncer = new ClaudeConfigSyncer()
+    const syncResult = await syncer.syncClaudeConfig(library)
+
+    if (syncResult.result.totalAdded > 0) {
+      console.log(`[Extensions] Synced ${syncResult.result.totalAdded} extensions from Claude Code config:`)
+      if (syncResult.result.mcpServersAdded > 0) {
+        console.log(`  - ${syncResult.result.mcpServersAdded} MCP servers`)
+      }
+      if (syncResult.result.skillsAdded > 0) {
+        console.log(`  - ${syncResult.result.skillsAdded} skills`)
+      }
+      if (syncResult.result.subagentsAdded > 0) {
+        console.log(`  - ${syncResult.result.subagentsAdded} subagents`)
+      }
+
+      // Update library and defaults
+      library = syncResult.library
+
+      // Merge with existing defaults (keep existing + add new)
+      defaultEnabled = {
+        mcpServers: [...new Set([...defaultEnabled.mcpServers, ...syncResult.defaultEnabled.mcpServers])],
+        skills: [...new Set([...defaultEnabled.skills, ...syncResult.defaultEnabled.skills])],
+        subagents: [...new Set([...defaultEnabled.subagents, ...syncResult.defaultEnabled.subagents])],
+      }
+
+      // Save updated library and defaults back to config
+      configFile.settings.extensionsLibrary = library
+      configFile.settings.defaultEnabledExtensions = defaultEnabled
+      await configManager.save(configFile)
+    }
+
+    // Create writer and generate config files
+    // The resolver will determine which extensions to actually enable
+    const writer = new ExtensionsWriter()
+    await writer.writeExtensions(config, library, configFile.settings, isProxyMode)
+  }
+  catch (error) {
+    throw new Error(`Failed to write extensions: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 

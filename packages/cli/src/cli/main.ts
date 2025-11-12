@@ -639,6 +639,138 @@ s3Cmd
     (await import('../commands/s3')).handleS3StatusCommand(options),
   )
 
+// MCP command group with subcommands
+const mcpCmd = program.command('mcp').description('Manage MCP servers')
+
+mcpCmd
+  .command('list')
+  .description('List all MCP servers')
+  .option('--verbose', 'Show detailed information')
+  .action(async options =>
+    (await import('../commands/mcp')).handleMcpListCommand(options),
+  )
+
+mcpCmd
+  .command('show <server-id>')
+  .description('Show details of a specific MCP server')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (serverId, options) =>
+    (await import('../commands/mcp')).handleMcpShowCommand(serverId, options),
+  )
+
+mcpCmd
+  .command('add')
+  .description('Add a new MCP server')
+  .option('--verbose', 'Enable verbose output')
+  .action(async options =>
+    (await import('../commands/mcp')).handleMcpAddCommand(options),
+  )
+
+mcpCmd
+  .command('edit <server-id>')
+  .description('Edit an existing MCP server')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (serverId, options) =>
+    (await import('../commands/mcp')).handleMcpEditCommand(serverId, options),
+  )
+
+mcpCmd
+  .command('delete <server-id>')
+  .description('Delete an MCP server')
+  .option('-y, --yes', 'Skip confirmation prompt')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (serverId, options) =>
+    (await import('../commands/mcp')).handleMcpDeleteCommand(serverId, options),
+  )
+
+// Skill command group with subcommands
+const skillCmd = program.command('skill').description('Manage skills')
+
+skillCmd
+  .command('list')
+  .description('List all skills')
+  .option('--verbose', 'Show detailed information')
+  .action(async options =>
+    (await import('../commands/skill')).handleSkillListCommand(options),
+  )
+
+skillCmd
+  .command('show <skill-id>')
+  .description('Show details of a specific skill')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (skillId, options) =>
+    (await import('../commands/skill')).handleSkillShowCommand(skillId, options),
+  )
+
+skillCmd
+  .command('add')
+  .description('Add a new skill')
+  .option('--verbose', 'Enable verbose output')
+  .action(async options =>
+    (await import('../commands/skill')).handleSkillAddCommand(options),
+  )
+
+skillCmd
+  .command('edit <skill-id>')
+  .description('Edit an existing skill')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (skillId, options) =>
+    (await import('../commands/skill')).handleSkillEditCommand(skillId, options),
+  )
+
+skillCmd
+  .command('delete <skill-id>')
+  .description('Delete a skill')
+  .option('-y, --yes', 'Skip confirmation prompt')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (skillId, options) =>
+    (await import('../commands/skill')).handleSkillDeleteCommand(skillId, options),
+  )
+
+// Agent command group with subcommands
+const agentCmd = program.command('agent').description('Manage subagents')
+
+agentCmd
+  .command('list')
+  .description('List all subagents')
+  .option('--verbose', 'Show detailed information')
+  .action(async options =>
+    (await import('../commands/agent')).handleAgentListCommand(options),
+  )
+
+agentCmd
+  .command('show <agent-id>')
+  .description('Show details of a specific subagent')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (agentId, options) =>
+    (await import('../commands/agent')).handleAgentShowCommand(agentId, options),
+  )
+
+agentCmd
+  .command('add')
+  .description('Add a new subagent')
+  .option('--verbose', 'Enable verbose output')
+  .action(async options =>
+    (await import('../commands/agent')).handleAgentAddCommand(options),
+  )
+
+agentCmd
+  .command('edit <agent-id>')
+  .description('Edit an existing subagent')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (agentId, options) =>
+    (await import('../commands/agent')).handleAgentEditCommand(agentId, options),
+  )
+
+agentCmd
+  .command('delete <agent-id>')
+  .description('Delete a subagent')
+  .option('-y, --yes', 'Skip confirmation prompt')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (agentId, options) =>
+    (await import('../commands/agent')).handleAgentDeleteCommand(agentId, options),
+  )
+
 // Statusline command group
 const statuslineCmd = program
   .command('statusline')
