@@ -116,7 +116,11 @@ export class ClaudeConfigSyncer {
         }
 
         // Determine server type
-        const type = serverConfig.type === 'http' ? 'http' : 'stdio'
+        const type = serverConfig.type === 'sse'
+          ? 'sse'
+          : serverConfig.type === 'http'
+            ? 'http'
+            : 'stdio'
 
         const server: McpServerDefinition = {
           id,

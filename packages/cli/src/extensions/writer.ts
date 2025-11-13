@@ -92,8 +92,8 @@ export class ExtensionsWriter {
           }
         }
       }
-      else if (server.type === 'http') {
-        serverConfig.type = 'http'
+      else if (server.type === 'http' || server.type === 'sse') {
+        serverConfig.type = server.type
         serverConfig.url = this.expandEnvVars(server.url || '', profile)
         if (server.headers && Object.keys(server.headers).length > 0) {
           serverConfig.headers = {}

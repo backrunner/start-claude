@@ -140,14 +140,15 @@ export interface McpServerDefinition {
   id: string // Unique identifier
   name: string // Display name
   description?: string // Description of what this server does
-  type: 'stdio' | 'http' // Transport type
+  type: 'stdio' | 'http' | 'sse' // Transport type
+  scope?: 'local' | 'user' | 'project' // Configuration scope
   // For stdio transport
   command?: string // Executable path or command
   args?: string[] // Command arguments
   env?: Record<string, string> // Environment variables
-  // For HTTP transport
-  url?: string // HTTP endpoint URL
-  headers?: Record<string, string> // HTTP headers
+  // For HTTP and SSE transports
+  url?: string // HTTP/SSE endpoint URL
+  headers?: Record<string, string> // HTTP/SSE headers
 }
 
 /**

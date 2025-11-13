@@ -16,7 +16,6 @@ import {
 } from '../utils/cli/detection'
 import { UILogger } from '../utils/cli/ui'
 import { checkBackgroundUpgradeResult, checkForUpdates, performAutoUpdate, performBackgroundUpgrade, relaunchCLI } from '../utils/config/update-checker'
-import { initializeMcpPassthrough } from '../utils/mcp/passthrough'
 import { McpSyncManager } from '../utils/mcp/sync-manager'
 import { SpeedTestManager } from '../utils/network/speed-test'
 import { StatusLineManager } from '../utils/statusline/manager'
@@ -29,9 +28,6 @@ import {
   resolveConfig,
 } from './common'
 import { handleProxyMode } from './proxy'
-
-// CRITICAL: Handle MCP commands before Commander.js processes arguments
-const isMcpCommand = initializeMcpPassthrough()
 
 const program = new Command()
 
@@ -121,6 +117,7 @@ program
   .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
   .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
   .option('--disallowedTools <tools>', 'Comma-separated list of disallowed tools', value => value.split(','))
+  .option('--agents <json>', 'Define custom subagents via JSON string')
   .option('-p, --print [query]', 'Print output to stdout with optional query')
   .option('--output-format <format>', 'Output format')
   .option('--input-format <format>', 'Input format')
@@ -643,6 +640,27 @@ s3Cmd
 const mcpCmd = program.command('mcp').description('Manage MCP servers')
 
 mcpCmd
+  .command('add <name> [args...]')
+  .description('Add a new MCP server')
+  .option('--transport <type>', 'Transport type: stdio, http, or sse', 'stdio')
+  .option('--scope <scope>', 'Configuration scope: local or user', 'user')
+  .option('--env <key=value>', 'Environment variable (stdio only)', (value, previous: string[] = []) => [...previous, value])
+  .option('--header <header>', 'HTTP header (http/sse only)', (value, previous: string[] = []) => [...previous, value])
+  .option('--verbose', 'Enable verbose output')
+  .allowUnknownOption()
+  .action(async (name, args, options) =>
+    (await import('../commands/mcp')).handleMcpAddCommand(name, args, options),
+  )
+
+mcpCmd
+  .command('remove <name>')
+  .description('Remove an MCP server')
+  .option('--verbose', 'Enable verbose output')
+  .action(async (name, options) =>
+    (await import('../commands/mcp')).handleMcpRemoveCommand(name, options),
+  )
+
+mcpCmd
   .command('list')
   .description('List all MCP servers')
   .option('--verbose', 'Show detailed information')
@@ -651,36 +669,20 @@ mcpCmd
   )
 
 mcpCmd
-  .command('show <server-id>')
-  .description('Show details of a specific MCP server')
+  .command('get <name>')
+  .description('Get details of a specific MCP server')
   .option('--verbose', 'Enable verbose output')
-  .action(async (serverId, options) =>
-    (await import('../commands/mcp')).handleMcpShowCommand(serverId, options),
+  .action(async (name, options) =>
+    (await import('../commands/mcp')).handleMcpGetCommand(name, options),
   )
 
 mcpCmd
-  .command('add')
-  .description('Add a new MCP server')
+  .command('add-json <name> <json>')
+  .description('Add MCP server from JSON string')
+  .option('--scope <scope>', 'Configuration scope: local or user', 'user')
   .option('--verbose', 'Enable verbose output')
-  .action(async options =>
-    (await import('../commands/mcp')).handleMcpAddCommand(options),
-  )
-
-mcpCmd
-  .command('edit <server-id>')
-  .description('Edit an existing MCP server')
-  .option('--verbose', 'Enable verbose output')
-  .action(async (serverId, options) =>
-    (await import('../commands/mcp')).handleMcpEditCommand(serverId, options),
-  )
-
-mcpCmd
-  .command('delete <server-id>')
-  .description('Delete an MCP server')
-  .option('-y, --yes', 'Skip confirmation prompt')
-  .option('--verbose', 'Enable verbose output')
-  .action(async (serverId, options) =>
-    (await import('../commands/mcp')).handleMcpDeleteCommand(serverId, options),
+  .action(async (name, json, options) =>
+    (await import('../commands/mcp')).handleMcpAddJsonCommand(name, json, options),
   )
 
 // Skill command group with subcommands
@@ -923,14 +925,11 @@ cacheCmd
     (await import('../commands/cache')).handleCacheStatusCommand(options),
   )
 
-// Only parse with Commander.js if not an MCP command
-if (!isMcpCommand) {
-  // Ensure migrations run before parsing commands
-  ensureMigrationsRun().then(() => {
-    program.parse()
-  }).catch((error) => {
-    const ui = new UILogger()
-    ui.displayError(`Fatal error during initialization: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    process.exit(1)
-  })
-}
+// Ensure migrations run before parsing commands
+ensureMigrationsRun().then(() => {
+  program.parse()
+}).catch((error) => {
+  const ui = new UILogger()
+  ui.displayError(`Fatal error during initialization: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  process.exit(1)
+})

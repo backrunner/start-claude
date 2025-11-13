@@ -1,9 +1,21 @@
-import type { McpServerDefinition } from '../config/types'
-import inquirer from 'inquirer'
+import type { ExtensionsLibrary, McpServerDefinition } from '../config/types'
 import { ConfigManager } from '../config/manager'
 import { UILogger } from '../utils/cli/ui'
 
 const configManager = ConfigManager.getInstance()
+
+/**
+ * Server config from JSON input
+ */
+interface ServerConfigJson {
+  type: string
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+  description?: string
+}
 
 /**
  * Generate ID from name (lowercase, hyphenated)
@@ -35,6 +47,249 @@ function getUniqueId(baseId: string, existing: Record<string, McpServerDefinitio
 }
 
 /**
+ * Parse environment variables from --env options
+ */
+function parseEnvVars(envOptions: string[]): Record<string, string> {
+  const env: Record<string, string> = {}
+
+  for (const envStr of envOptions) {
+    const match = envStr.match(/^([^=]+)=(.*)$/)
+    if (match) {
+      env[match[1]] = match[2]
+    }
+  }
+
+  return env
+}
+
+/**
+ * Parse headers from --header options
+ */
+function parseHeaders(headerOptions: string[]): Record<string, string> {
+  const headers: Record<string, string> = {}
+
+  for (const headerStr of headerOptions) {
+    const colonIndex = headerStr.indexOf(':')
+    if (colonIndex !== -1) {
+      const key = headerStr.slice(0, colonIndex).trim()
+      const value = headerStr.slice(colonIndex + 1).trim()
+      headers[key] = value
+    }
+  }
+
+  return headers
+}
+
+/**
+ * Find -- separator in args
+ */
+function findSeparator(args: string[]): number {
+  return args.indexOf('--')
+}
+
+/**
+ * Add MCP server with command-line arguments
+ */
+export async function handleMcpAddCommand(
+  name: string,
+  args: string[],
+  options: {
+    transport?: string
+    scope?: string
+    env?: string[]
+    header?: string[]
+    verbose?: boolean
+  } = {},
+): Promise<void> {
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
+
+  const transport = options.transport || 'stdio'
+  const scope = options.scope || 'user'
+
+  // Validate transport type
+  if (!['stdio', 'http', 'sse'].includes(transport)) {
+    ui.displayError(`Invalid transport type: ${transport}. Must be stdio, http, or sse.`)
+    return
+  }
+
+  // Validate scope
+  if (!['local', 'user'].includes(scope)) {
+    ui.displayError(`Invalid scope: ${scope}. Must be local or user.`)
+    return
+  }
+
+  const configFile = await configManager.load()
+  const library: ExtensionsLibrary = configFile.settings.extensionsLibrary || {
+    mcpServers: {},
+    skills: {},
+    subagents: {},
+  }
+
+  const baseId = generateId(name)
+  const id = getUniqueId(baseId, library.mcpServers)
+
+  const server: McpServerDefinition = {
+    id,
+    name,
+    type: transport as 'stdio' | 'http' | 'sse',
+    scope: scope as 'local' | 'user' | 'project',
+  }
+
+  if (transport === 'stdio') {
+    // For stdio, args should contain: [url-or-command, ...remaining-args]
+    // Or with -- separator: [-- command, ...args]
+    const separatorIndex = findSeparator(args)
+
+    if (separatorIndex !== -1) {
+      // Everything after -- is the command and args
+      const commandArgs = args.slice(separatorIndex + 1)
+      if (commandArgs.length === 0) {
+        ui.displayError('No command specified after -- separator')
+        return
+      }
+      server.command = commandArgs[0]
+      server.args = commandArgs.slice(1)
+    }
+    else {
+      // First arg is command, rest are args
+      if (args.length === 0) {
+        ui.displayError('No command specified for stdio transport')
+        return
+      }
+      server.command = args[0]
+      server.args = args.slice(1)
+    }
+
+    // Parse environment variables
+    if (options.env && options.env.length > 0) {
+      server.env = parseEnvVars(options.env)
+    }
+  }
+  else if (transport === 'http' || transport === 'sse') {
+    // For HTTP/SSE, first arg should be the URL
+    if (args.length === 0) {
+      ui.displayError(`No URL specified for ${transport} transport`)
+      return
+    }
+
+    server.url = args[0]
+
+    // Parse headers
+    if (options.header && options.header.length > 0) {
+      server.headers = parseHeaders(options.header)
+    }
+  }
+
+  // Add to library
+  library.mcpServers[id] = server
+
+  // Handle scope
+  if (scope === 'user') {
+    // Add to defaultEnabledExtensions
+    const defaultEnabled = configFile.settings.defaultEnabledExtensions || {
+      mcpServers: [],
+      skills: [],
+      subagents: [],
+    }
+
+    if (!defaultEnabled.mcpServers.includes(id)) {
+      defaultEnabled.mcpServers.push(id)
+    }
+
+    configFile.settings.defaultEnabledExtensions = defaultEnabled
+  }
+  else if (scope === 'local') {
+    // For local scope, we would add to the current profile's overrides
+    // But since we don't have a current profile context in this command,
+    // we'll just add to the library and let the user enable it per profile
+    ui.displayInfo(`Server added to library with scope: ${scope}`)
+    ui.displayInfo('To enable for a specific profile, use the manager UI or modify the profile config.')
+  }
+
+  // Save config
+  configFile.settings.extensionsLibrary = library
+  await configManager.save(configFile)
+
+  ui.displaySuccess(`✅ MCP server "${name}" added successfully!`)
+  ui.displayInfo(`   ID: ${id}`)
+  ui.displayInfo(`   Type: ${transport}`)
+  ui.displayInfo(`   Scope: ${scope}`)
+
+  if (server.type === 'stdio') {
+    ui.displayInfo(`   Command: ${server.command}`)
+    if (server.args && server.args.length > 0) {
+      ui.displayInfo(`   Args: ${server.args.join(' ')}`)
+    }
+  }
+  else {
+    ui.displayInfo(`   URL: ${server.url}`)
+  }
+}
+
+/**
+ * Remove MCP server
+ */
+export async function handleMcpRemoveCommand(
+  name: string,
+  options: { verbose?: boolean } = {},
+): Promise<void> {
+  const ui = new UILogger(options.verbose)
+  ui.displayWelcome()
+
+  const configFile = await configManager.load()
+  const library = configFile.settings.extensionsLibrary || {
+    mcpServers: {},
+    skills: {},
+    subagents: {},
+  }
+
+  // Find server by name or ID
+  let serverId: string | null = null
+  let server: McpServerDefinition | null = null
+
+  // Check if it's an exact ID match
+  if (library.mcpServers[name]) {
+    serverId = name
+    server = library.mcpServers[name]
+  }
+  else {
+    // Search by name
+    for (const [id, srv] of Object.entries(library.mcpServers)) {
+      if (srv.name === name || srv.name.toLowerCase() === name.toLowerCase()) {
+        serverId = id
+        server = srv
+        break
+      }
+    }
+  }
+
+  if (!serverId || !server) {
+    ui.displayError(`MCP server "${name}" not found.`)
+    ui.displayInfo('Use "start-claude mcp list" to see available servers.')
+    return
+  }
+
+  // Remove from library
+  delete library.mcpServers[serverId]
+
+  // Remove from defaultEnabledExtensions if present
+  const defaultEnabled = configFile.settings.defaultEnabledExtensions
+  if (defaultEnabled?.mcpServers) {
+    const index = defaultEnabled.mcpServers.indexOf(serverId)
+    if (index !== -1) {
+      defaultEnabled.mcpServers.splice(index, 1)
+    }
+  }
+
+  // Save config
+  configFile.settings.extensionsLibrary = library
+  await configManager.save(configFile)
+
+  ui.displaySuccess(`✅ MCP server "${server.name}" removed successfully!`)
+}
+
+/**
  * List all MCP servers
  */
 export async function handleMcpListCommand(options: { verbose?: boolean } = {}): Promise<void> {
@@ -42,7 +297,11 @@ export async function handleMcpListCommand(options: { verbose?: boolean } = {}):
   ui.displayWelcome()
 
   const configFile = await configManager.load()
-  const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
+  const library = configFile.settings.extensionsLibrary || {
+    mcpServers: {},
+    skills: {},
+    subagents: {},
+  }
   const mcpServers = library.mcpServers
 
   if (Object.keys(mcpServers).length === 0) {
@@ -59,6 +318,9 @@ export async function handleMcpListCommand(options: { verbose?: boolean } = {}):
       ui.displayInfo(`    ${server.description}`)
     }
     ui.displayInfo(`    Type: ${server.type}`)
+    if (server.scope) {
+      ui.displayInfo(`    Scope: ${server.scope}`)
+    }
 
     if (options.verbose) {
       if (server.type === 'stdio') {
@@ -70,7 +332,7 @@ export async function handleMcpListCommand(options: { verbose?: boolean } = {}):
           ui.displayVerbose(`    Env vars: ${Object.keys(server.env).join(', ')}`)
         }
       }
-      else if (server.type === 'http') {
+      else if (server.type === 'http' || server.type === 'sse') {
         ui.displayVerbose(`    URL: ${server.url}`)
         if (server.headers && Object.keys(server.headers).length > 0) {
           ui.displayVerbose(`    Headers: ${Object.keys(server.headers).join(', ')}`)
@@ -82,42 +344,72 @@ export async function handleMcpListCommand(options: { verbose?: boolean } = {}):
 }
 
 /**
- * Show details of a specific MCP server
+ * Get details of a specific MCP server
  */
-export async function handleMcpShowCommand(serverId: string, options: { verbose?: boolean } = {}): Promise<void> {
+export async function handleMcpGetCommand(
+  name: string,
+  options: { verbose?: boolean } = {},
+): Promise<void> {
   const ui = new UILogger(options.verbose)
   ui.displayWelcome()
 
   const configFile = await configManager.load()
-  const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
-  const server = library.mcpServers[serverId]
+  const library = configFile.settings.extensionsLibrary || {
+    mcpServers: {},
+    skills: {},
+    subagents: {},
+  }
+
+  // Find server by name or ID
+  let server: McpServerDefinition | null = null
+
+  // Check if it's an exact ID match
+  if (library.mcpServers[name]) {
+    server = library.mcpServers[name]
+  }
+  else {
+    // Search by name
+    for (const srv of Object.values(library.mcpServers)) {
+      if (srv.name === name || srv.name.toLowerCase() === name.toLowerCase()) {
+        server = srv
+        break
+      }
+    }
+  }
 
   if (!server) {
-    ui.displayError(`MCP server "${serverId}" not found.`)
+    ui.displayError(`MCP server "${name}" not found.`)
+    ui.displayInfo('Use "start-claude mcp list" to see available servers.')
     return
   }
 
   ui.displayInfo(`\n📦 MCP Server: ${server.name}\n`)
-  ui.displayInfo(`  ID: ${server.id}`)
-  ui.displayInfo(`  Name: ${server.name}`)
-  if (server.description) {
-    ui.displayInfo(`  Description: ${server.description}`)
+  ui.displayInfo(`ID: ${server.id}`)
+  ui.displayInfo(`Type: ${server.type}`)
+
+  if (server.scope) {
+    ui.displayInfo(`Scope: ${server.scope}`)
   }
-  ui.displayInfo(`  Type: ${server.type}`)
+
+  if (server.description) {
+    ui.displayInfo(`Description: ${server.description}`)
+  }
 
   if (server.type === 'stdio') {
+    ui.displayInfo(`\nCommand Configuration:`)
     ui.displayInfo(`  Command: ${server.command}`)
     if (server.args && server.args.length > 0) {
       ui.displayInfo(`  Args: ${server.args.join(' ')}`)
     }
     if (server.env && Object.keys(server.env).length > 0) {
-      ui.displayInfo(`  Environment variables:`)
+      ui.displayInfo(`  Environment Variables:`)
       for (const [key, value] of Object.entries(server.env)) {
         ui.displayInfo(`    ${key}=${value}`)
       }
     }
   }
-  else if (server.type === 'http') {
+  else if (server.type === 'http' || server.type === 'sse') {
+    ui.displayInfo(`\n${server.type.toUpperCase()} Configuration:`)
     ui.displayInfo(`  URL: ${server.url}`)
     if (server.headers && Object.keys(server.headers).length > 0) {
       ui.displayInfo(`  Headers:`)
@@ -129,506 +421,113 @@ export async function handleMcpShowCommand(serverId: string, options: { verbose?
 }
 
 /**
- * Add a new MCP server
+ * Add MCP server from JSON string
  */
-export async function handleMcpAddCommand(options: { verbose?: boolean } = {}): Promise<void> {
+export async function handleMcpAddJsonCommand(
+  name: string,
+  jsonStr: string,
+  options: {
+    scope?: string
+    verbose?: boolean
+  } = {},
+): Promise<void> {
   const ui = new UILogger(options.verbose)
   ui.displayWelcome()
 
+  const scope = options.scope || 'user'
+
+  // Validate scope
+  if (!['local', 'user'].includes(scope)) {
+    ui.displayError(`Invalid scope: ${scope}. Must be local or user.`)
+    return
+  }
+
+  // Parse JSON
+  let serverConfig: ServerConfigJson
+  try {
+    serverConfig = JSON.parse(jsonStr) as ServerConfigJson
+  }
+  catch (error) {
+    ui.displayError(`Invalid JSON: ${error instanceof Error ? error.message : 'Parse error'}`)
+    return
+  }
+
+  // Validate server config
+  if (!serverConfig.type || !['stdio', 'http', 'sse'].includes(serverConfig.type)) {
+    ui.displayError('Invalid or missing "type" field in JSON. Must be stdio, http, or sse.')
+    return
+  }
+
   const configFile = await configManager.load()
-  const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
-
-  // Ask for server type first
-  const typeAnswer = await inquirer.prompt([
-    {
-      type: 'list',
-      name: 'type',
-      message: 'Server type:',
-      choices: [
-        { name: 'Stdio (process-based)', value: 'stdio' },
-        { name: 'HTTP (web-based)', value: 'http' },
-      ],
-      default: 'stdio',
-    },
-  ])
-
-  const questions: any[] = [
-    {
-      type: 'input',
-      name: 'name',
-      message: 'Server name:',
-      validate: (input: string) => {
-        const name = input.trim()
-        if (!name)
-          return 'Name is required'
-
-        const id = generateId(name)
-        if (library.mcpServers[id]) {
-          return `An MCP server with ID "${id}" already exists. Please use a different name.`
-        }
-        return true
-      },
-    },
-    {
-      type: 'input',
-      name: 'description',
-      message: 'Description (optional):',
-    },
-  ]
-
-  if (typeAnswer.type === 'stdio') {
-    questions.push(
-      {
-        type: 'input',
-        name: 'command',
-        message: 'Command:',
-        validate: (input: string) => input.trim() ? true : 'Command is required',
-      },
-      {
-        type: 'input',
-        name: 'args',
-        message: 'Arguments (space-separated, optional):',
-      },
-      {
-        type: 'confirm',
-        name: 'hasEnv',
-        message: 'Add environment variables?',
-        default: false,
-      },
-    )
-  }
-  else {
-    questions.push(
-      {
-        type: 'input',
-        name: 'url',
-        message: 'URL:',
-        validate: (input: string) => {
-          if (!input.trim())
-            return 'URL is required'
-          try {
-            void new URL(input.trim())
-            return true
-          }
-          catch {
-            return 'Invalid URL format'
-          }
-        },
-      },
-      {
-        type: 'confirm',
-        name: 'hasHeaders',
-        message: 'Add HTTP headers?',
-        default: false,
-      },
-    )
+  const library: ExtensionsLibrary = configFile.settings.extensionsLibrary || {
+    mcpServers: {},
+    skills: {},
+    subagents: {},
   }
 
-  const answers = await inquirer.prompt(questions)
+  const baseId = generateId(name)
+  const id = getUniqueId(baseId, library.mcpServers)
 
-  // Build the server object
   const server: McpServerDefinition = {
-    id: getUniqueId(generateId(answers.name), library.mcpServers),
-    name: answers.name.trim(),
-    description: answers.description?.trim() || undefined,
-    type: typeAnswer.type,
+    id,
+    name,
+    type: serverConfig.type as 'stdio' | 'http' | 'sse',
+    scope: scope as 'local' | 'user' | 'project',
   }
 
-  if (typeAnswer.type === 'stdio') {
-    server.command = answers.command.trim()
-    server.args = answers.args?.trim() ? answers.args.trim().split(/\s+/) : []
-
-    // Handle environment variables
-    if (answers.hasEnv) {
-      const env: Record<string, string> = {}
-      let addMore = true
-
-      while (addMore) {
-        const envAnswer = await inquirer.prompt([
-          {
-            type: 'input',
-            name: 'key',
-            message: 'Environment variable name:',
-            validate: (input: string) => input.trim() ? true : 'Name is required',
-          },
-          {
-            type: 'input',
-            name: 'value',
-            message: 'Environment variable value:',
-            validate: (input: string) => input.trim() ? true : 'Value is required',
-          },
-          {
-            type: 'confirm',
-            name: 'more',
-            message: 'Add another environment variable?',
-            default: false,
-          },
-        ])
-
-        env[envAnswer.key.trim()] = envAnswer.value.trim()
-        addMore = envAnswer.more
-      }
-
-      if (Object.keys(env).length > 0) {
-        server.env = env
-      }
-    }
-  }
-  else {
-    server.url = answers.url.trim()
-
-    // Handle headers
-    if (answers.hasHeaders) {
-      const headers: Record<string, string> = {}
-      let addMore = true
-
-      while (addMore) {
-        const headerAnswer = await inquirer.prompt([
-          {
-            type: 'input',
-            name: 'key',
-            message: 'Header name:',
-            validate: (input: string) => input.trim() ? true : 'Name is required',
-          },
-          {
-            type: 'input',
-            name: 'value',
-            message: 'Header value:',
-            validate: (input: string) => input.trim() ? true : 'Value is required',
-          },
-          {
-            type: 'confirm',
-            name: 'more',
-            message: 'Add another header?',
-            default: false,
-          },
-        ])
-
-        headers[headerAnswer.key.trim()] = headerAnswer.value.trim()
-        addMore = headerAnswer.more
-      }
-
-      if (Object.keys(headers).length > 0) {
-        server.headers = headers
-      }
-    }
-  }
-
-  // Save to config
-  library.mcpServers[server.id] = server
-  configFile.settings.extensionsLibrary = library
-  await configManager.save(configFile)
-
-  ui.displaySuccess(`✅ MCP server "${server.name}" added successfully!`)
-  ui.displayInfo(`   ID: ${server.id}`)
-}
-
-/**
- * Edit an existing MCP server
- */
-export async function handleMcpEditCommand(serverId: string, options: { verbose?: boolean } = {}): Promise<void> {
-  const ui = new UILogger(options.verbose)
-  ui.displayWelcome()
-
-  const configFile = await configManager.load()
-  const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
-  const server = library.mcpServers[serverId]
-
-  if (!server) {
-    ui.displayError(`MCP server "${serverId}" not found.`)
-    return
-  }
-
-  ui.displayInfo(`\n✏️  Editing MCP server: ${server.name}\n`)
-
-  // Ask which field to edit
-  const editChoices = [
-    { name: 'Name', value: 'name' },
-    { name: 'Description', value: 'description' },
-  ]
-
-  if (server.type === 'stdio') {
-    editChoices.push(
-      { name: 'Command', value: 'command' },
-      { name: 'Arguments', value: 'args' },
-      { name: 'Environment variables', value: 'env' },
-    )
-  }
-  else {
-    editChoices.push(
-      { name: 'URL', value: 'url' },
-      { name: 'Headers', value: 'headers' },
-    )
-  }
-
-  editChoices.push({ name: 'Cancel', value: 'cancel' })
-
-  const fieldAnswer = await inquirer.prompt([
-    {
-      type: 'list',
-      name: 'field',
-      message: 'What would you like to edit?',
-      choices: editChoices,
-    },
-  ])
-
-  if (fieldAnswer.field === 'cancel')
-    return
-
-  // Edit the selected field
-  switch (fieldAnswer.field) {
-    case 'name': {
-      const nameAnswer = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'name',
-          message: 'New name:',
-          default: server.name,
-          validate: (input: string) => input.trim() ? true : 'Name is required',
-        },
-      ])
-      server.name = nameAnswer.name.trim()
-      break
-    }
-
-    case 'description': {
-      const descAnswer = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'description',
-          message: 'New description:',
-          default: server.description || '',
-        },
-      ])
-      server.description = descAnswer.description.trim() || undefined
-      break
-    }
-
-    case 'command': {
-      const cmdAnswer = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'command',
-          message: 'New command:',
-          default: server.command || '',
-          validate: (input: string) => input.trim() ? true : 'Command is required',
-        },
-      ])
-      server.command = cmdAnswer.command.trim()
-      break
-    }
-
-    case 'args': {
-      const argsAnswer = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'args',
-          message: 'New arguments (space-separated):',
-          default: server.args?.join(' ') || '',
-        },
-      ])
-      server.args = argsAnswer.args.trim() ? argsAnswer.args.trim().split(/\s+/) : []
-      break
-    }
-
-    case 'env': {
-      ui.displayInfo('Current environment variables:')
-      if (server.env && Object.keys(server.env).length > 0) {
-        for (const [key, value] of Object.entries(server.env)) {
-          ui.displayInfo(`  ${key}=${value}`)
-        }
-      }
-      else {
-        ui.displayInfo('  (none)')
-      }
-
-      const envActionAnswer = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'action',
-          message: 'What would you like to do?',
-          choices: [
-            { name: 'Add new variable', value: 'add' },
-            { name: 'Remove variable', value: 'remove' },
-            { name: 'Clear all', value: 'clear' },
-            { name: 'Cancel', value: 'cancel' },
-          ],
-        },
-      ])
-
-      if (envActionAnswer.action === 'add') {
-        const env = server.env || {}
-        const envAnswer = await inquirer.prompt([
-          {
-            type: 'input',
-            name: 'key',
-            message: 'Variable name:',
-            validate: (input: string) => input.trim() ? true : 'Name is required',
-          },
-          {
-            type: 'input',
-            name: 'value',
-            message: 'Variable value:',
-            validate: (input: string) => input.trim() ? true : 'Value is required',
-          },
-        ])
-        env[envAnswer.key.trim()] = envAnswer.value.trim()
-        server.env = env
-      }
-      else if (envActionAnswer.action === 'remove' && server.env && Object.keys(server.env).length > 0) {
-        const removeAnswer = await inquirer.prompt([
-          {
-            type: 'list',
-            name: 'key',
-            message: 'Which variable to remove?',
-            choices: Object.keys(server.env),
-          },
-        ])
-        delete server.env[removeAnswer.key]
-        if (Object.keys(server.env).length === 0) {
-          server.env = undefined
-        }
-      }
-      else if (envActionAnswer.action === 'clear') {
-        server.env = undefined
-      }
-      break
-    }
-
-    case 'url': {
-      const urlAnswer = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'url',
-          message: 'New URL:',
-          default: server.url || '',
-          validate: (input: string) => {
-            if (!input.trim())
-              return 'URL is required'
-            try {
-              void new URL(input.trim())
-              return true
-            }
-            catch {
-              return 'Invalid URL format'
-            }
-          },
-        },
-      ])
-      server.url = urlAnswer.url.trim()
-      break
-    }
-
-    case 'headers': {
-      ui.displayInfo('Current headers:')
-      if (server.headers && Object.keys(server.headers).length > 0) {
-        for (const [key, value] of Object.entries(server.headers)) {
-          ui.displayInfo(`  ${key}: ${value}`)
-        }
-      }
-      else {
-        ui.displayInfo('  (none)')
-      }
-
-      const headerActionAnswer = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'action',
-          message: 'What would you like to do?',
-          choices: [
-            { name: 'Add new header', value: 'add' },
-            { name: 'Remove header', value: 'remove' },
-            { name: 'Clear all', value: 'clear' },
-            { name: 'Cancel', value: 'cancel' },
-          ],
-        },
-      ])
-
-      if (headerActionAnswer.action === 'add') {
-        const headers = server.headers || {}
-        const headerAnswer = await inquirer.prompt([
-          {
-            type: 'input',
-            name: 'key',
-            message: 'Header name:',
-            validate: (input: string) => input.trim() ? true : 'Name is required',
-          },
-          {
-            type: 'input',
-            name: 'value',
-            message: 'Header value:',
-            validate: (input: string) => input.trim() ? true : 'Value is required',
-          },
-        ])
-        headers[headerAnswer.key.trim()] = headerAnswer.value.trim()
-        server.headers = headers
-      }
-      else if (headerActionAnswer.action === 'remove' && server.headers && Object.keys(server.headers).length > 0) {
-        const removeAnswer = await inquirer.prompt([
-          {
-            type: 'list',
-            name: 'key',
-            message: 'Which header to remove?',
-            choices: Object.keys(server.headers),
-          },
-        ])
-        delete server.headers[removeAnswer.key]
-        if (Object.keys(server.headers).length === 0) {
-          server.headers = undefined
-        }
-      }
-      else if (headerActionAnswer.action === 'clear') {
-        server.headers = undefined
-      }
-      break
-    }
-  }
-
-  // Save changes
-  library.mcpServers[serverId] = server
-  configFile.settings.extensionsLibrary = library
-  await configManager.save(configFile)
-
-  ui.displaySuccess(`✅ MCP server "${server.name}" updated successfully!`)
-}
-
-/**
- * Delete an MCP server
- */
-export async function handleMcpDeleteCommand(serverId: string, options: { verbose?: boolean, yes?: boolean } = {}): Promise<void> {
-  const ui = new UILogger(options.verbose)
-  ui.displayWelcome()
-
-  const configFile = await configManager.load()
-  const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
-  const server = library.mcpServers[serverId]
-
-  if (!server) {
-    ui.displayError(`MCP server "${serverId}" not found.`)
-    return
-  }
-
-  // Confirm deletion unless --yes flag is provided
-  if (!options.yes) {
-    const confirmAnswer = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: `Are you sure you want to delete MCP server "${server.name}"?`,
-        default: false,
-      },
-    ])
-
-    if (!confirmAnswer.confirm) {
-      ui.displayInfo('Deletion cancelled.')
+  // Copy relevant fields based on type
+  if (serverConfig.type === 'stdio') {
+    if (!serverConfig.command) {
+      ui.displayError('Missing "command" field for stdio transport')
       return
     }
+    server.command = serverConfig.command
+    if (serverConfig.args) {
+      server.args = serverConfig.args
+    }
+    if (serverConfig.env) {
+      server.env = serverConfig.env
+    }
+  }
+  else if (serverConfig.type === 'http' || serverConfig.type === 'sse') {
+    if (!serverConfig.url) {
+      ui.displayError(`Missing "url" field for ${serverConfig.type} transport`)
+      return
+    }
+    server.url = serverConfig.url
+    if (serverConfig.headers) {
+      server.headers = serverConfig.headers
+    }
   }
 
-  // Delete the server
-  delete library.mcpServers[serverId]
+  if (serverConfig.description) {
+    server.description = serverConfig.description
+  }
+
+  // Add to library
+  library.mcpServers[id] = server
+
+  // Handle scope
+  if (scope === 'user') {
+    const defaultEnabled = configFile.settings.defaultEnabledExtensions || {
+      mcpServers: [],
+      skills: [],
+      subagents: [],
+    }
+
+    if (!defaultEnabled.mcpServers.includes(id)) {
+      defaultEnabled.mcpServers.push(id)
+    }
+
+    configFile.settings.defaultEnabledExtensions = defaultEnabled
+  }
+
+  // Save config
   configFile.settings.extensionsLibrary = library
   await configManager.save(configFile)
 
-  ui.displaySuccess(`✅ MCP server "${server.name}" deleted successfully!`)
+  ui.displaySuccess(`✅ MCP server "${name}" added successfully!`)
+  ui.displayInfo(`   ID: ${id}`)
+  ui.displayInfo(`   Type: ${server.type}`)
+  ui.displayInfo(`   Scope: ${scope}`)
 }
