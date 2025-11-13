@@ -2,6 +2,7 @@ import type { ExtensionsLibrary, McpServerDefinition, SkillDefinition, SubagentD
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import process from 'node:process'
+import { UILogger } from '../utils/cli/ui'
 
 /**
  * Result of syncing Claude configuration files
@@ -22,9 +23,11 @@ export interface SyncResult {
  */
 export class ClaudeConfigSyncer {
   private projectRoot: string
+  private ui: UILogger
 
-  constructor(projectRoot: string = process.cwd()) {
+  constructor(projectRoot: string = process.cwd(), ui?: UILogger) {
     this.projectRoot = projectRoot
+    this.ui = ui || new UILogger(false)
   }
 
   /**
@@ -139,7 +142,7 @@ export class ClaudeConfigSyncer {
       return addedIds
     }
     catch (error) {
-      console.error('[ClaudeConfigSyncer] Error syncing MCP servers:', error)
+      this.ui.error(`Error syncing MCP servers: ${error instanceof Error ? error.message : String(error)}`)
       return []
     }
   }
@@ -199,7 +202,7 @@ export class ClaudeConfigSyncer {
       return addedIds
     }
     catch (error) {
-      console.error('[ClaudeConfigSyncer] Error syncing skills:', error)
+      this.ui.error(`Error syncing skills: ${error instanceof Error ? error.message : String(error)}`)
       return []
     }
   }
@@ -255,7 +258,7 @@ export class ClaudeConfigSyncer {
       return addedIds
     }
     catch (error) {
-      console.error('[ClaudeConfigSyncer] Error syncing subagents:', error)
+      this.ui.error(`Error syncing subagents: ${error instanceof Error ? error.message : String(error)}`)
       return []
     }
   }

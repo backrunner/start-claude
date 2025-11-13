@@ -6,9 +6,13 @@ import process from 'node:process'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
 import { ClaudeConfigSyncer } from '../extensions/claude-config-syncer'
+import { ClaudeConfigWatcher } from '../extensions/claude-config-watcher'
 import { ExtensionsWriter } from '../extensions/writer'
 import { UILogger } from '../utils/cli/ui'
 import { findExecutable } from '../utils/system/path-utils'
+
+// Global watcher instance to clean up on exit
+let configWatcher: ClaudeConfigWatcher | null = null
 
 export async function startClaude(config: ClaudeConfig | undefined, args: string[] = [], cliOverrides?: CliOverrides): Promise<number> {
   const env: NodeJS.ProcessEnv = { ...process.env }
@@ -55,7 +59,7 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
       }
 
       // Start claude with the newly installed version
-      return startClaudeProcess(newClaudePath, args, env)
+      return startClaudeProcess(newClaudePath, args, env, config)
     }
     else {
       const ui = new UILogger()
@@ -66,7 +70,7 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
   }
   else {
     // Claude is available, start it
-    return startClaudeProcess(claudePath, args, env)
+    return startClaudeProcess(claudePath, args, env, config)
   }
 }
 
@@ -123,22 +127,49 @@ async function startClaudeProcess(
   executablePath: string,
   args: string[],
   env: NodeJS.ProcessEnv,
+  config?: ClaudeConfig,
 ): Promise<number> {
   return new Promise((resolve) => {
+    // Start config file watcher if config exists
+    if (config) {
+      void startConfigWatcher(config)
+    }
+
     const claude: ChildProcess = spawn(executablePath, args, {
       stdio: 'inherit',
       env,
       shell: process.platform === 'win32',
     })
 
+    // Handle process exit
+    const cleanup = (): void => {
+      if (configWatcher) {
+        configWatcher.stop()
+        configWatcher = null
+      }
+    }
+
     claude.on('close', (code: number | null) => {
+      cleanup()
       resolve(code ?? 0)
     })
 
     claude.on('error', (error: Error) => {
+      cleanup()
       const ui = new UILogger()
       ui.error(`Failed to start Claude: ${error.message}`)
       resolve(1)
+    })
+
+    // Handle process termination signals
+    process.on('SIGINT', () => {
+      cleanup()
+      claude.kill('SIGINT')
+    })
+
+    process.on('SIGTERM', () => {
+      cleanup()
+      claude.kill('SIGTERM')
     })
   })
 }
@@ -305,8 +336,10 @@ function applyCliOverrides(env: NodeJS.ProcessEnv, overrides: CliOverrides): voi
  * Write extensions configuration files before starting Claude Code
  * Also syncs Claude Code's native config files (.mcp.json, .claude/skills/, .claude/agents/)
  */
-async function writeExtensionsConfig(config: ClaudeConfig, isProxyMode: boolean = false): Promise<void> {
+async function writeExtensionsConfig(config: ClaudeConfig, isProxyMode: boolean = false, ui?: UILogger): Promise<void> {
   try {
+    const logger = ui || new UILogger(false)
+
     // Load the config file to get extensions library and settings
     const configManager = ConfigManager.getInstance()
     const configFile = await configManager.load()
@@ -326,19 +359,19 @@ async function writeExtensionsConfig(config: ClaudeConfig, isProxyMode: boolean 
     }
 
     // Sync Claude Code's native config files
-    const syncer = new ClaudeConfigSyncer()
+    const syncer = new ClaudeConfigSyncer(process.cwd(), logger)
     const syncResult = await syncer.syncClaudeConfig(library)
 
     if (syncResult.result.totalAdded > 0) {
-      console.log(`[Extensions] Synced ${syncResult.result.totalAdded} extensions from Claude Code config:`)
+      logger.verbose(`Synced ${syncResult.result.totalAdded} extensions from Claude Code config:`)
       if (syncResult.result.mcpServersAdded > 0) {
-        console.log(`  - ${syncResult.result.mcpServersAdded} MCP servers`)
+        logger.verbose(`  - ${syncResult.result.mcpServersAdded} MCP servers`)
       }
       if (syncResult.result.skillsAdded > 0) {
-        console.log(`  - ${syncResult.result.skillsAdded} skills`)
+        logger.verbose(`  - ${syncResult.result.skillsAdded} skills`)
       }
       if (syncResult.result.subagentsAdded > 0) {
-        console.log(`  - ${syncResult.result.subagentsAdded} subagents`)
+        logger.verbose(`  - ${syncResult.result.subagentsAdded} subagents`)
       }
 
       // Update library and defaults
@@ -359,11 +392,46 @@ async function writeExtensionsConfig(config: ClaudeConfig, isProxyMode: boolean 
 
     // Create writer and generate config files
     // The resolver will determine which extensions to actually enable
-    const writer = new ExtensionsWriter()
+    const writer = new ExtensionsWriter(process.cwd(), logger)
     await writer.writeExtensions(config, library, configFile.settings, isProxyMode)
   }
   catch (error) {
     throw new Error(`Failed to write extensions: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Start watching Claude Code config files for changes
+ */
+async function startConfigWatcher(config: ClaudeConfig): Promise<void> {
+  try {
+    const ui = new UILogger(false)
+    const configManager = ConfigManager.getInstance()
+    const configFile = await configManager.load()
+
+    const library = configFile.settings.extensionsLibrary || {
+      mcpServers: {},
+      skills: {},
+      subagents: {},
+    }
+
+    // Create and start watcher
+    configWatcher = new ClaudeConfigWatcher(process.cwd(), ui, { debounceMs: 1000 })
+
+    configWatcher.start(library, async (updatedLibrary) => {
+      // Save the updated library when changes are detected
+      configFile.settings.extensionsLibrary = updatedLibrary
+      await configManager.save(configFile)
+
+      // Re-write extensions config files
+      const writer = new ExtensionsWriter(process.cwd(), ui)
+      await writer.writeExtensions(config, updatedLibrary, configFile.settings, false)
+      ui.verbose('Extensions config updated from file changes')
+    })
+  }
+  catch (error) {
+    const ui = new UILogger()
+    ui.warning(`Failed to start config watcher: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 

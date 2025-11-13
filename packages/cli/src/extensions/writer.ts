@@ -3,6 +3,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import process from 'node:process'
+import { UILogger } from '../utils/cli/ui'
 import { resolveEnabledExtensions } from './resolver'
 
 /**
@@ -11,9 +12,11 @@ import { resolveEnabledExtensions } from './resolver'
  */
 export class ExtensionsWriter {
   private projectRoot: string
+  private ui: UILogger
 
-  constructor(projectRoot: string = process.cwd()) {
+  constructor(projectRoot: string = process.cwd(), ui?: UILogger) {
     this.projectRoot = projectRoot
+    this.ui = ui || new UILogger(false)
   }
 
   /**
@@ -25,8 +28,8 @@ export class ExtensionsWriter {
     settings: SystemSettings,
     isProxyMode: boolean = false,
   ): Promise<void> {
-    console.log(`[ExtensionsWriter] Writing extensions for profile: ${profile.name}`)
-    console.log(`[ExtensionsWriter] Proxy mode: ${isProxyMode}`)
+    this.ui.verbose(`Writing extensions for profile: ${profile.name}`)
+    this.ui.verbose(`Proxy mode: ${isProxyMode}`)
 
     // Clean up old extension files first
     await this.cleanupExtensionFiles()
@@ -34,11 +37,7 @@ export class ExtensionsWriter {
     // Resolve which extensions should actually be enabled
     const enabled = resolveEnabledExtensions(profile, settings, isProxyMode)
 
-    console.log(`[ExtensionsWriter] Resolved enabled extensions:`, {
-      mcpServers: enabled.mcpServers.length,
-      skills: enabled.skills.length,
-      subagents: enabled.subagents.length,
-    })
+    this.ui.verbose(`Resolved enabled extensions: ${enabled.mcpServers.length} MCP servers, ${enabled.skills.length} skills, ${enabled.subagents.length} subagents`)
 
     // Write MCP servers
     await this.writeMcpConfig(enabled.mcpServers, library, profile)
@@ -49,7 +48,7 @@ export class ExtensionsWriter {
     // Write Subagents
     await this.writeSubagents(enabled.subagents, library)
 
-    console.log('[ExtensionsWriter] All extensions written successfully')
+    this.ui.verbose('All extensions written successfully')
   }
 
   /**
@@ -61,7 +60,7 @@ export class ExtensionsWriter {
     profile: ClaudeConfig,
   ): Promise<void> {
     if (enabledIds.length === 0) {
-      console.log('[ExtensionsWriter] No MCP servers enabled')
+      this.ui.verbose('No MCP servers enabled')
       return
     }
 
@@ -74,7 +73,7 @@ export class ExtensionsWriter {
     for (const id of enabledIds) {
       const server = library.mcpServers[id]
       if (!server) {
-        console.warn(`[ExtensionsWriter] MCP server "${id}" not found in library, skipping`)
+        this.ui.warning(`MCP server "${id}" not found in library, skipping`)
         continue
       }
 
@@ -106,13 +105,13 @@ export class ExtensionsWriter {
 
       // Use server name as the key in mcpServers
       mcpConfig.mcpServers[server.name] = serverConfig
-      console.log(`[ExtensionsWriter] Added MCP server: ${server.name} (${server.type})`)
+      this.ui.verbose(`Added MCP server: ${server.name} (${server.type})`)
     }
 
     // Write to .mcp.json
     const mcpConfigPath = path.join(this.projectRoot, '.mcp.json')
     fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), 'utf-8')
-    console.log(`[ExtensionsWriter] MCP config written to: ${mcpConfigPath}`)
+    this.ui.verbose(`MCP config written to: ${mcpConfigPath}`)
   }
 
   /**
@@ -123,7 +122,7 @@ export class ExtensionsWriter {
     library: ExtensionsLibrary,
   ): Promise<void> {
     if (enabledIds.length === 0) {
-      console.log('[ExtensionsWriter] No skills enabled')
+      this.ui.verbose('No skills enabled')
       return
     }
 
@@ -137,7 +136,7 @@ export class ExtensionsWriter {
     for (const id of enabledIds) {
       const skill = library.skills[id]
       if (!skill) {
-        console.warn(`[ExtensionsWriter] Skill "${id}" not found in library, skipping`)
+        this.ui.warning(`Skill "${id}" not found in library, skipping`)
         continue
       }
 
@@ -160,10 +159,10 @@ export class ExtensionsWriter {
       // Write SKILL.md
       const skillFilePath = path.join(skillDir, 'SKILL.md')
       fs.writeFileSync(skillFilePath, skillContent, 'utf-8')
-      console.log(`[ExtensionsWriter] Written skill: ${skill.name}`)
+      this.ui.verbose(`Written skill: ${skill.name}`)
     }
 
-    console.log(`[ExtensionsWriter] Skills written to: ${skillsDir}`)
+    this.ui.verbose(`Skills written to: ${skillsDir}`)
   }
 
   /**
@@ -174,7 +173,7 @@ export class ExtensionsWriter {
     library: ExtensionsLibrary,
   ): Promise<void> {
     if (enabledIds.length === 0) {
-      console.log('[ExtensionsWriter] No subagents enabled')
+      this.ui.verbose('No subagents enabled')
       return
     }
 
@@ -188,7 +187,7 @@ export class ExtensionsWriter {
     for (const id of enabledIds) {
       const subagent = library.subagents[id]
       if (!subagent) {
-        console.warn(`[ExtensionsWriter] Subagent "${id}" not found in library, skipping`)
+        this.ui.warning(`Subagent "${id}" not found in library, skipping`)
         continue
       }
 
@@ -208,37 +207,37 @@ export class ExtensionsWriter {
       // Write agent file
       const agentFilePath = path.join(agentsDir, `${subagent.name}.md`)
       fs.writeFileSync(agentFilePath, agentContent, 'utf-8')
-      console.log(`[ExtensionsWriter] Written subagent: ${subagent.name}`)
+      this.ui.verbose(`Written subagent: ${subagent.name}`)
     }
 
-    console.log(`[ExtensionsWriter] Subagents written to: ${agentsDir}`)
+    this.ui.verbose(`Subagents written to: ${agentsDir}`)
   }
 
   /**
    * Clean up old extension configuration files
    */
   async cleanupExtensionFiles(): Promise<void> {
-    console.log('[ExtensionsWriter] Cleaning up old extension files...')
+    this.ui.verbose('Cleaning up old extension files...')
 
     // Remove .mcp.json
     const mcpConfigPath = path.join(this.projectRoot, '.mcp.json')
     if (fs.existsSync(mcpConfigPath)) {
       fs.unlinkSync(mcpConfigPath)
-      console.log('[ExtensionsWriter] Removed old .mcp.json')
+      this.ui.verbose('Removed old .mcp.json')
     }
 
     // Remove .claude/skills/
     const skillsDir = path.join(this.projectRoot, '.claude', 'skills')
     if (fs.existsSync(skillsDir)) {
       fs.rmSync(skillsDir, { recursive: true, force: true })
-      console.log('[ExtensionsWriter] Removed old skills directory')
+      this.ui.verbose('Removed old skills directory')
     }
 
     // Remove .claude/agents/
     const agentsDir = path.join(this.projectRoot, '.claude', 'agents')
     if (fs.existsSync(agentsDir)) {
       fs.rmSync(agentsDir, { recursive: true, force: true })
-      console.log('[ExtensionsWriter] Removed old agents directory')
+      this.ui.verbose('Removed old agents directory')
     }
   }
 

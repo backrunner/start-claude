@@ -320,7 +320,7 @@
     "saveError": "保存扩展库失败",
     "saveErrorDescription": "请重试或检查日志",
     "deleteConfirm": "删除扩展？",
-    "deleteConfirmDescription": "您确定要删除"{name}"吗？此操作无法撤消。",
+    "deleteConfirmDescription": "您确定要删除\"{name}\"吗？此操作无法撤消。",
     "deleteError": "无法删除扩展",
     "deleteErrorInUse": "此扩展当前正在被以下配置使用：{profiles}",
     "formTitle": {
