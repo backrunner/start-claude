@@ -19,7 +19,9 @@
   "module": "./bin/cli.mjs",
   "bin": {
     "start-claude": "./bin/cli.mjs",
-    "scc": "./bin/cli.mjs"
+    "scc": "./bin/cli.mjs",
+    "start-codex": "./bin/codex.mjs",
+    "scx": "./bin/codex.mjs"
   },
   "files": [
     "bin"

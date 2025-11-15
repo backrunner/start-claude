@@ -4,26 +4,55 @@ import type { ReactNode } from 'react'
 import type { ShutdownCoordinator } from '@/lib/shutdown-coordinator'
 import { Blocks, Plus, RefreshCw, Settings } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { LanguageSwitcher } from '@/components/ui/language-switcher'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface HeaderProps {
-  isVSCode: boolean
-  shutdownCoordinator: ShutdownCoordinator | null
-  onAddConfig: () => void
+  title?: string
+  isVSCode?: boolean
+  shutdownCoordinator?: ShutdownCoordinator | null
+  onAddConfig?: () => void
   onOpenSettings: () => void
-  onOpenExtensions: () => void
+  onOpenExtensions?: () => void
+  mode?: 'claude' | 'codex'
 }
 
-export function Header({ isVSCode, shutdownCoordinator, onAddConfig, onOpenSettings, onOpenExtensions }: HeaderProps): ReactNode {
+export function Header({
+  title,
+  isVSCode,
+  shutdownCoordinator,
+  onAddConfig,
+  onOpenSettings,
+  onOpenExtensions,
+  mode = 'claude',
+}: HeaderProps): ReactNode {
   const t = useTranslations('header')
+  const router = useRouter()
+
+  const handleModeChange = (newMode: string): void => {
+    if (newMode === 'claude') {
+      router.push('/')
+    }
+    else if (newMode === 'codex') {
+      router.push('/codex')
+    }
+  }
 
   return (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
       <div className="flex items-center gap-4">
         <div>
-          {/* Keep "Start Claude" in English for all languages */}
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Start Claude</h1>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            {title || (mode === 'codex' ? 'Start Codex' : 'Start Claude')}
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
         </div>
         {isVSCode && (
@@ -45,15 +74,29 @@ export function Header({ isVSCode, shutdownCoordinator, onAddConfig, onOpenSetti
       </div>
 
       <div className="flex items-center gap-2 w-full sm:w-auto">
+        <Select value={mode} onValueChange={handleModeChange}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="claude">{t('modeClaude')}</SelectItem>
+            <SelectItem value="codex">{t('modeCodex')}</SelectItem>
+          </SelectContent>
+        </Select>
+
         <LanguageSwitcher />
-        <Button
-          variant="outline"
-          onClick={onOpenExtensions}
-          className="flex-1 sm:flex-none"
-        >
-          <Blocks className="h-4 w-4 mr-2" />
-          {t('extensions')}
-        </Button>
+
+        {onOpenExtensions && mode === 'claude' && (
+          <Button
+            variant="outline"
+            onClick={onOpenExtensions}
+            className="flex-1 sm:flex-none"
+          >
+            <Blocks className="h-4 w-4 mr-2" />
+            {t('extensions')}
+          </Button>
+        )}
+
         <Button
           variant="outline"
           onClick={onOpenSettings}
@@ -62,13 +105,16 @@ export function Header({ isVSCode, shutdownCoordinator, onAddConfig, onOpenSetti
           <Settings className="h-4 w-4 mr-2" />
           {t('settings')}
         </Button>
-        <Button
-          onClick={onAddConfig}
-          className="flex-1 sm:flex-none"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          {t('addConfig')}
-        </Button>
+
+        {onAddConfig && (
+          <Button
+            onClick={onAddConfig}
+            className="flex-1 sm:flex-none"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            {t('addConfig')}
+          </Button>
+        )}
       </div>
     </div>
   )

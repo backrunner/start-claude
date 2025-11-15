@@ -5,7 +5,9 @@
     "settings": "Settings",
     "extensions": "Extensions",
     "addConfig": "Add Config",
-    "reloadPage": "Reload page"
+    "reloadPage": "Reload page",
+    "modeClaude": "Claude",
+    "modeCodex": "Codex"
   },
   "search": {
     "placeholder": "Search configurations...",
@@ -402,5 +404,87 @@
       "confirm": "Delete",
       "cancel": "Cancel"
     }
+  },
+  "codex": {
+    "title": "Codex Configurations",
+    "addNew": "Add Codex Config",
+    "empty": {
+      "noResults": "No Configurations Found",
+      "noResultsDescription": "Try adjusting your search terms or clear the filter",
+      "noConfigs": "No Codex Configurations Yet",
+      "noConfigsDescription": "Get started by creating your first Codex configuration"
+    },
+    "success": {
+      "saved": "Configuration Saved",
+      "savedDescription": "Codex configuration \"{name}\" has been saved successfully",
+      "deleted": "Configuration Deleted",
+      "deletedDescription": "Codex configuration \"{name}\" has been deleted"
+    },
+    "error": {
+      "save": "Save Failed",
+      "saveDescription": "Failed to save Codex configuration. Please try again.",
+      "delete": "Delete Failed",
+      "deleteDescription": "Failed to delete Codex configuration. Please try again.",
+      "reorder": "Reorder Failed",
+      "reorderDescription": "Failed to save new order. Please try again."
+    }
+  },
+  "codexForm": {
+    "addTitle": "Add Codex Configuration",
+    "editTitle": "Edit Codex Configuration",
+    "description": "Configure your OpenAI Codex CLI settings",
+    "tabs": {
+      "basic": "Basic Settings",
+      "advanced": "Advanced Settings"
+    },
+    "name": {
+      "label": "Configuration Name",
+      "placeholder": "e.g., My Codex Config"
+    },
+    "apiKey": {
+      "label": "OpenAI API Key",
+      "placeholder": "sk-..."
+    },
+    "baseUrl": {
+      "label": "Base URL",
+      "placeholder": "https://api.openai.com",
+      "help": "Optional: Use for custom API endpoints (e.g., Azure OpenAI)"
+    },
+    "model": {
+      "label": "Model",
+      "placeholder": "gpt-4o",
+      "help": "Optional: Specify the model to use"
+    },
+    "isDefault": {
+      "label": "Set as Default",
+      "help": "Use this configuration by default when starting Codex"
+    },
+    "enabled": {
+      "label": "Enabled",
+      "help": "Configuration is active and can be used"
+    },
+    "cancel": "Cancel",
+    "save": "Save Configuration",
+    "saving": "Saving..."
+  },
+  "codexItem": {
+    "default": "Default",
+    "baseUrl": "Base URL",
+    "model": "Model",
+    "apiKey": "API Key",
+    "disableConfig": "Disable configuration",
+    "enableConfig": "Enable configuration",
+    "setAsDefault": "Set as default",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "codexList": {
+    "enabled": "Configuration Enabled",
+    "disabled": "Configuration Disabled",
+    "statusChanged": "Configuration status changed for \"{name}\"",
+    "defaultSet": "Default Set",
+    "defaultSetDescription": "\"{name}\" is now the default configuration",
+    "error": "Operation Failed",
+    "errorDescription": "Failed to update configuration. Please try again."
   }
 }
