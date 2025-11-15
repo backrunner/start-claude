@@ -4,16 +4,10 @@ import type { ReactNode } from 'react'
 import type { ShutdownCoordinator } from '@/lib/shutdown-coordinator'
 import { Blocks, Plus, RefreshCw, Settings } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { LanguageSwitcher } from '@/components/ui/language-switcher'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { ModeSwitcher } from '@/components/ui/mode-switcher'
 
 interface HeaderProps {
   title?: string
@@ -35,25 +29,27 @@ export function Header({
   mode = 'claude',
 }: HeaderProps): ReactNode {
   const t = useTranslations('header')
-  const router = useRouter()
 
-  const handleModeChange = (newMode: string): void => {
-    if (newMode === 'claude') {
-      router.push('/')
-    }
-    else if (newMode === 'codex') {
-      router.push('/codex')
-    }
-  }
+  // Update document title based on mode
+  useEffect(() => {
+    const baseTitle = mode === 'codex' ? 'Start Codex Manager' : 'Start Claude Manager'
+    document.title = baseTitle
+  }, [mode])
+
+  const displayTitle = title || (mode === 'codex' ? 'Start Codex' : 'Start Claude')
+  const subtitle = mode === 'codex' ? t('subtitleCodex') : t('subtitle')
 
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
       <div className="flex items-center gap-4">
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-            {title || (mode === 'codex' ? 'Start Codex' : 'Start Claude')}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">{t('subtitle')}</p>
+        <div className="flex items-center gap-6">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+              {displayTitle}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
+          </div>
+          <ModeSwitcher />
         </div>
         {isVSCode && (
           <Button
@@ -74,16 +70,6 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-2 w-full sm:w-auto">
-        <Select value={mode} onValueChange={handleModeChange}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="claude">{t('modeClaude')}</SelectItem>
-            <SelectItem value="codex">{t('modeCodex')}</SelectItem>
-          </SelectContent>
-        </Select>
-
         <LanguageSwitcher />
 
         {onOpenExtensions && mode === 'claude' && (

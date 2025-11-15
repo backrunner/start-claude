@@ -1,7 +1,8 @@
 {
   "header": {
     "title": "Start Claude",
-    "subtitle": "Manage your configurations",
+    "subtitle": "Manage your Claude configurations",
+    "subtitleCodex": "Manage your Codex configurations",
     "settings": "Settings",
     "extensions": "Extensions",
     "addConfig": "Add Config",
@@ -452,7 +453,7 @@
     },
     "model": {
       "label": "Model",
-      "placeholder": "gpt-4o",
+      "placeholder": "gpt-5.1-codex",
       "help": "Optional: Specify the model to use"
     },
     "isDefault": {

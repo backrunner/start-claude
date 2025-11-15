@@ -294,9 +294,11 @@ export default function CodexHomePage({ isVSCode, initialConfigs, initialSetting
     <VSCodeProvider isVSCode={isVSCode}>
       <div className="container mx-auto p-6 max-w-6xl">
         <Header
-          title={t('title')}
           onOpenSettings={() => setIsSystemSettingsOpen(true)}
+          onAddConfig={handleAddNew}
           mode="codex"
+          isVSCode={isVSCode}
+          shutdownCoordinator={shutdownCoordinator}
         />
 
         {error && (

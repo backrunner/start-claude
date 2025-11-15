@@ -1,11 +1,14 @@
 {
   "header": {
     "title": "啟動 Claude",
-    "subtitle": "管理您的配置",
+    "subtitle": "管理您的 Claude 配置",
+    "subtitleCodex": "管理您的 Codex 配置",
     "settings": "設定",
     "extensions": "擴充功能",
     "addConfig": "新增配置",
-    "reloadPage": "重新載入頁面"
+    "reloadPage": "重新載入頁面",
+    "modeClaude": "Claude",
+    "modeCodex": "Codex"
   },
   "search": {
     "placeholder": "搜尋配置...",
@@ -402,5 +405,87 @@
       "confirm": "刪除",
       "cancel": "取消"
     }
+  },
+  "codex": {
+    "title": "Codex 配置",
+    "addNew": "新增 Codex 配置",
+    "empty": {
+      "noResults": "未找到配置",
+      "noResultsDescription": "嘗試調整您的搜尋條件或清除過濾器",
+      "noConfigs": "還沒有 Codex 配置",
+      "noConfigsDescription": "開始建立您的第一個 Codex 配置"
+    },
+    "success": {
+      "saved": "配置已儲存",
+      "savedDescription": "Codex 配置 \"{name}\" 已成功儲存",
+      "deleted": "配置已刪除",
+      "deletedDescription": "Codex 配置 \"{name}\" 已刪除"
+    },
+    "error": {
+      "save": "儲存失敗",
+      "saveDescription": "無法儲存 Codex 配置，請重試。",
+      "delete": "刪除失敗",
+      "deleteDescription": "無法刪除 Codex 配置，請重試。",
+      "reorder": "重新排序失敗",
+      "reorderDescription": "無法儲存新順序，請重試。"
+    }
+  },
+  "codexForm": {
+    "addTitle": "新增 Codex 配置",
+    "editTitle": "編輯 Codex 配置",
+    "description": "設定您的 OpenAI Codex CLI 設定",
+    "tabs": {
+      "basic": "基本設定",
+      "advanced": "進階設定"
+    },
+    "name": {
+      "label": "配置名稱",
+      "placeholder": "例如：我的 Codex 配置"
+    },
+    "apiKey": {
+      "label": "OpenAI API 金鑰",
+      "placeholder": "sk-..."
+    },
+    "baseUrl": {
+      "label": "API 位址",
+      "placeholder": "https://api.openai.com",
+      "help": "選填：用於自訂 API 端點（例如 Azure OpenAI）"
+    },
+    "model": {
+      "label": "模型",
+      "placeholder": "gpt-5.1-codex",
+      "help": "選填：指定要使用的模型"
+    },
+    "isDefault": {
+      "label": "設為預設",
+      "help": "啟動 Codex 時預設使用此配置"
+    },
+    "enabled": {
+      "label": "啟用",
+      "help": "配置處於作用中狀態可以使用"
+    },
+    "cancel": "取消",
+    "save": "儲存配置",
+    "saving": "儲存中..."
+  },
+  "codexItem": {
+    "default": "預設",
+    "baseUrl": "API 位址",
+    "model": "模型",
+    "apiKey": "API 金鑰",
+    "disableConfig": "停用配置",
+    "enableConfig": "啟用配置",
+    "setAsDefault": "設為預設",
+    "edit": "編輯",
+    "delete": "刪除"
+  },
+  "codexList": {
+    "enabled": "配置已啟用",
+    "disabled": "配置已停用",
+    "statusChanged": "配置狀態已變更：\"{name}\"",
+    "defaultSet": "預設配置已設定",
+    "defaultSetDescription": "\"{name}\" 現在是預設配置",
+    "error": "操作失敗",
+    "errorDescription": "無法更新配置，請重試。"
   }
 }

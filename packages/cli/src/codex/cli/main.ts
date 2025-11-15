@@ -174,9 +174,9 @@ export async function runCodexCLI(): Promise<void> {
       ui.displayInfo('Opening Codex configuration manager...')
       ui.displayInfo('Note: Navigate to http://localhost:2334/codex in your browser')
 
-      // Import and run manager command
+      // Import and run manager command with codex mode
       const { handleManagerCommand } = await import('../../commands/manager')
-      await handleManagerCommand({})
+      await handleManagerCommand({ defaultMode: 'codex' })
     })
 
   // Parse arguments

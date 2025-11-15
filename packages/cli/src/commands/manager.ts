@@ -3,7 +3,7 @@ import { ManagerServer } from '../core/manager-server'
 import { S3SyncManager } from '../storage/s3-sync'
 import { UILogger } from '../utils/cli/ui'
 
-export async function handleManagerCommand(options: { port?: string, verbose?: boolean, debug?: boolean } = {}): Promise<void> {
+export async function handleManagerCommand(options: { port?: string, verbose?: boolean, debug?: boolean, defaultMode?: 'claude' | 'codex' } = {}): Promise<void> {
   // Create UILogger with verbose mode configured
   const ui = new UILogger(options.verbose || options.debug)
 
@@ -36,7 +36,7 @@ export async function handleManagerCommand(options: { port?: string, verbose?: b
   }
 
   const port = options.port ? Number.parseInt(options.port) : 2334
-  const managerServer = new ManagerServer(port, options.debug)
+  const managerServer = new ManagerServer(port, options.debug, options.defaultMode)
 
   try {
     await managerServer.start()

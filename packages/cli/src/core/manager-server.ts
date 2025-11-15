@@ -15,12 +15,14 @@ export class ManagerServer {
   private port = 2334
   private stopHeartbeat: (() => void) | null = null
   private debug = false
+  private defaultMode: 'claude' | 'codex' = 'claude'
 
-  constructor(port?: number, debug?: boolean) {
+  constructor(port?: number, debug?: boolean, defaultMode?: 'claude' | 'codex') {
     if (port) {
       this.port = port
     }
     this.debug = debug || false
+    this.defaultMode = defaultMode || 'claude'
   }
 
   async start(): Promise<void> {
@@ -76,6 +78,7 @@ export class ManagerServer {
           ...process.env,
           PORT: this.port.toString(),
           HOSTNAME: 'localhost',
+          DEFAULT_MODE: this.defaultMode,
         },
         stdio,
       })
@@ -187,8 +190,9 @@ export class ManagerServer {
         setTimeout(checkServer, 2000)
       })
 
-      // Open browser
-      await open(`http://localhost:${this.port}`)
+      // Open browser with appropriate path based on default mode
+      const targetPath = this.defaultMode === 'codex' ? '/codex' : '/'
+      await open(`http://localhost:${this.port}${targetPath}`)
     }
     catch (error) {
       // Stop heartbeat and remove lock file if startup failed

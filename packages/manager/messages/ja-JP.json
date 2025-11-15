@@ -1,11 +1,14 @@
 {
   "header": {
     "title": "Start Claude",
-    "subtitle": "設定を管理",
+    "subtitle": "Claude の設定を管理",
+    "subtitleCodex": "Codex の設定を管理",
     "settings": "設定",
     "extensions": "拡張機能",
     "addConfig": "設定を追加",
-    "reloadPage": "ページを再読み込み"
+    "reloadPage": "ページを再読み込み",
+    "modeClaude": "Claude",
+    "modeCodex": "Codex"
   },
   "search": {
     "placeholder": "設定を検索...",
@@ -402,5 +405,87 @@
       "confirm": "削除",
       "cancel": "キャンセル"
     }
+  },
+  "codex": {
+    "title": "Codex 設定",
+    "addNew": "Codex 設定を追加",
+    "empty": {
+      "noResults": "設定が見つかりません",
+      "noResultsDescription": "検索条件を調整するか、フィルターをクリアしてください",
+      "noConfigs": "Codex 設定がまだありません",
+      "noConfigsDescription": "最初の Codex 設定を作成して開始しましょう"
+    },
+    "success": {
+      "saved": "設定を保存しました",
+      "savedDescription": "Codex 設定 \"{name}\" を正常に保存しました",
+      "deleted": "設定を削除しました",
+      "deletedDescription": "Codex 設定 \"{name}\" を削除しました"
+    },
+    "error": {
+      "save": "保存に失敗しました",
+      "saveDescription": "Codex 設定の保存に失敗しました。もう一度お試しください。",
+      "delete": "削除に失敗しました",
+      "deleteDescription": "Codex 設定の削除に失敗しました。もう一度お試しください。",
+      "reorder": "並び替えに失敗しました",
+      "reorderDescription": "新しい順序の保存に失敗しました。もう一度お試しください。"
+    }
+  },
+  "codexForm": {
+    "addTitle": "Codex 設定を追加",
+    "editTitle": "Codex 設定を編集",
+    "description": "OpenAI Codex CLI の設定を構成",
+    "tabs": {
+      "basic": "基本設定",
+      "advanced": "詳細設定"
+    },
+    "name": {
+      "label": "設定名",
+      "placeholder": "例: My Codex Config"
+    },
+    "apiKey": {
+      "label": "OpenAI API キー",
+      "placeholder": "sk-..."
+    },
+    "baseUrl": {
+      "label": "ベース URL",
+      "placeholder": "https://api.openai.com",
+      "help": "オプション: カスタム API エンドポイント用（例: Azure OpenAI）"
+    },
+    "model": {
+      "label": "モデル",
+      "placeholder": "gpt-5.1-codex",
+      "help": "オプション: 使用するモデルを指定"
+    },
+    "isDefault": {
+      "label": "デフォルトに設定",
+      "help": "Codex 起動時にこの設定をデフォルトで使用"
+    },
+    "enabled": {
+      "label": "有効",
+      "help": "設定がアクティブで使用可能"
+    },
+    "cancel": "キャンセル",
+    "save": "設定を保存",
+    "saving": "保存中..."
+  },
+  "codexItem": {
+    "default": "デフォルト",
+    "baseUrl": "ベース URL",
+    "model": "モデル",
+    "apiKey": "API キー",
+    "disableConfig": "設定を無効化",
+    "enableConfig": "設定を有効化",
+    "setAsDefault": "デフォルトに設定",
+    "edit": "編集",
+    "delete": "削除"
+  },
+  "codexList": {
+    "enabled": "設定を有効化しました",
+    "disabled": "設定を無効化しました",
+    "statusChanged": "設定のステータスを変更しました：\"{name}\"",
+    "defaultSet": "デフォルトを設定しました",
+    "defaultSetDescription": "\"{name}\" がデフォルト設定になりました",
+    "error": "操作に失敗しました",
+    "errorDescription": "設定の更新に失敗しました。もう一度お試しください。"
   }
 }
