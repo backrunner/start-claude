@@ -1044,7 +1044,13 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
           }
         }}
       >
-        <DialogContent className="max-w-2xl overflow-hidden">
+        <DialogContent
+          className="max-w-2xl overflow-hidden"
+          onEscapeKeyDown={(e) => {
+            // Prevent ESC from bubbling to parent dialog
+            e.stopPropagation()
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0" />

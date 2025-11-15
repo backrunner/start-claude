@@ -49,6 +49,47 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
     return clean || undefined
   }
 
+  // Helper function to get extension counts from enabledExtensions
+  // Supports both override model and legacy explicit list model
+  const getExtensionCounts = (): { mcpServers: number, skills: number, subagents: number } => {
+    if (!config.enabledExtensions) {
+      return { mcpServers: 0, skills: 0, subagents: 0 }
+    }
+
+    // For legacy explicit list mode
+    if (config.enabledExtensions.mcpServers && Array.isArray(config.enabledExtensions.mcpServers)) {
+      return {
+        mcpServers: config.enabledExtensions.mcpServers.length,
+        skills: config.enabledExtensions.skills?.length || 0,
+        subagents: config.enabledExtensions.subagents?.length || 0,
+      }
+    }
+
+    // For override model, we can't easily calculate the final count here
+    // So we just show if any overrides are defined
+    // TODO: In the future, we could fetch defaults and calculate the final count
+    const hasOverrides = config.enabledExtensions.overrides
+    if (hasOverrides) {
+      const mcpAdds = hasOverrides.mcpServers?.add?.length || 0
+      const skillAdds = hasOverrides.skills?.add?.length || 0
+      const subagentAdds = hasOverrides.subagents?.add?.length || 0
+
+      // If using global defaults, show indicator that overrides exist
+      if (config.enabledExtensions.useGlobalDefaults) {
+        return {
+          mcpServers: mcpAdds,
+          skills: skillAdds,
+          subagents: subagentAdds,
+        }
+      }
+    }
+
+    return { mcpServers: 0, skills: 0, subagents: 0 }
+  }
+
+  const extensionCounts = getExtensionCounts()
+  const hasAnyExtensions = extensionCounts.mcpServers > 0 || extensionCounts.skills > 0 || extensionCounts.subagents > 0
+
   const cleanBaseUrl = getCleanBaseUrl(config.baseUrl)
   const isEnabled = config.enabled ?? false
   const isDefault = config.isDefault ?? false
@@ -129,6 +170,17 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                   </Badge>
                 )}
               </>
+            )}
+
+            {/* Extensions badge */}
+            {hasAnyExtensions && (
+              <Badge variant="outline" className="text-xs w-fit">
+                {extensionCounts.mcpServers > 0 && `${extensionCounts.mcpServers} MCP`}
+                {extensionCounts.mcpServers > 0 && extensionCounts.skills > 0 && ' | '}
+                {extensionCounts.skills > 0 && `${extensionCounts.skills} Skills`}
+                {(extensionCounts.mcpServers > 0 || extensionCounts.skills > 0) && extensionCounts.subagents > 0 && ' | '}
+                {extensionCounts.subagents > 0 && `${extensionCounts.subagents} Agents`}
+              </Badge>
             )}
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t">
@@ -219,6 +271,16 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                       </Badge>
                     )}
                   </>
+                )}
+                {/* Extensions badge */}
+                {hasAnyExtensions && (
+                  <Badge variant="outline" className="text-xs flex-shrink-0">
+                    {extensionCounts.mcpServers > 0 && `${extensionCounts.mcpServers} MCP`}
+                    {extensionCounts.mcpServers > 0 && extensionCounts.skills > 0 && ' | '}
+                    {extensionCounts.skills > 0 && `${extensionCounts.skills} Skills`}
+                    {(extensionCounts.mcpServers > 0 || extensionCounts.skills > 0) && extensionCounts.subagents > 0 && ' | '}
+                    {extensionCounts.subagents > 0 && `${extensionCounts.subagents} Agents`}
+                  </Badge>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">

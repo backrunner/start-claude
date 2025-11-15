@@ -15,6 +15,7 @@ export interface ProgramOptions {
   addDir?: string[]
   allowedTools?: string[]
   disallowedTools?: string[]
+  agents?: string
   print?: boolean | string
   outputFormat?: string
   inputFormat?: string
@@ -103,6 +104,10 @@ export function buildClaudeArgs(
 
   if (options.disallowedTools) {
     claudeArgs.push('--disallowedTools', options.disallowedTools.join(','))
+  }
+
+  if (options.agents) {
+    claudeArgs.push('--agents', options.agents)
   }
 
   if (options.print) {

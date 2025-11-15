@@ -2,8 +2,8 @@
 
 import type { ReactNode } from 'react'
 import type { ShutdownCoordinator } from '@/lib/shutdown-coordinator'
+import { Blocks, Plus, RefreshCw, Settings } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { Plus, RefreshCw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LanguageSwitcher } from '@/components/ui/language-switcher'
 
@@ -12,9 +12,10 @@ interface HeaderProps {
   shutdownCoordinator: ShutdownCoordinator | null
   onAddConfig: () => void
   onOpenSettings: () => void
+  onOpenExtensions: () => void
 }
 
-export function Header({ isVSCode, shutdownCoordinator, onAddConfig, onOpenSettings }: HeaderProps): ReactNode {
+export function Header({ isVSCode, shutdownCoordinator, onAddConfig, onOpenSettings, onOpenExtensions }: HeaderProps): ReactNode {
   const t = useTranslations('header')
 
   return (
@@ -45,6 +46,14 @@ export function Header({ isVSCode, shutdownCoordinator, onAddConfig, onOpenSetti
 
       <div className="flex items-center gap-2 w-full sm:w-auto">
         <LanguageSwitcher />
+        <Button
+          variant="outline"
+          onClick={onOpenExtensions}
+          className="flex-1 sm:flex-none"
+        >
+          <Blocks className="h-4 w-4 mr-2" />
+          {t('extensions')}
+        </Button>
         <Button
           variant="outline"
           onClick={onOpenSettings}

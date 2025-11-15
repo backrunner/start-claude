@@ -3,6 +3,7 @@ packages:
 
 onlyBuiltDependencies:
   - '@parcel/watcher'
+  - '@swc/core'
   - '@vscode/vsce-sign'
   - esbuild
   - keytar
