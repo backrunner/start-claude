@@ -1,10 +1,15 @@
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import { Command } from 'commander'
 import { UILogger } from '../../utils/cli/ui'
 import { CodexConfigManager } from '../config/manager'
 import { startCodex } from './launcher'
+
+// Get __dirname equivalent in ESM
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 // Read package.json for version
 const packageJsonPath = join(__dirname, '../../package.json')
