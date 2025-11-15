@@ -239,7 +239,13 @@ export function McpServerFormModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent
+        className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+        onEscapeKeyDown={(e) => {
+          // Prevent ESC from bubbling to parent dialog
+          e.stopPropagation()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{isEdit ? t('editTitle') : t('addTitle')}</DialogTitle>
           <DialogDescription>

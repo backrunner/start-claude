@@ -231,8 +231,8 @@ export function ExtensionsModal({
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto py-6 px-1">
-          <div className="pr-3">
+        <div className="flex-1 overflow-y-auto px-2 py-1">
+          <div className="px-2">
             <Tabs
               value={activeTab}
               onValueChange={setActiveTab}
@@ -261,7 +261,7 @@ export function ExtensionsModal({
 
               {/* MCP Servers Tab */}
               <TabsContent value="mcp" className="mt-0 space-y-4">
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-4 px-1">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-semibold">{t('mcp.title')}</h3>
@@ -283,7 +283,7 @@ export function ExtensionsModal({
                         </div>
                       )
                     : (
-                        <div className="space-y-2">
+                        <div className="space-y-2 px-0.5">
                           {Object.entries(library.mcpServers).map(([id, server]) => (
                             <div
                               key={id}
@@ -327,7 +327,7 @@ export function ExtensionsModal({
 
               {/* Skills Tab */}
               <TabsContent value="skills" className="mt-0 space-y-4">
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-4 px-1">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-semibold">{t('skills.title')}</h3>
@@ -349,7 +349,7 @@ export function ExtensionsModal({
                         </div>
                       )
                     : (
-                        <div className="space-y-2">
+                        <div className="space-y-2 px-0.5">
                           {Object.entries(library.skills).map(([id, skill]) => (
                             <div
                               key={id}
@@ -386,7 +386,7 @@ export function ExtensionsModal({
 
               {/* Subagents Tab */}
               <TabsContent value="subagents" className="mt-0 space-y-4">
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-4 px-1">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-semibold">{t('subagents.title')}</h3>
@@ -408,7 +408,7 @@ export function ExtensionsModal({
                         </div>
                       )
                     : (
-                        <div className="space-y-2">
+                        <div className="space-y-2 px-0.5">
                           {Object.entries(library.subagents).map(([id, subagent]) => (
                             <div
                               key={id}
@@ -500,7 +500,12 @@ export function ExtensionsModal({
       {/* Delete Confirmation Dialog */}
       {deletingItem && (
         <Dialog open={!!deletingItem} onOpenChange={() => setDeletingItem(null)}>
-          <DialogContent>
+          <DialogContent
+            onEscapeKeyDown={(e) => {
+              // Prevent ESC from bubbling to parent dialog
+              e.stopPropagation()
+            }}
+          >
             <DialogHeader>
               <DialogTitle>{t('confirmDelete.title')}</DialogTitle>
               <DialogDescription>
