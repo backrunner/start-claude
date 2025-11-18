@@ -152,7 +152,8 @@ async function validateEnabledExtensions(config: ClaudeConfig): Promise<{ valid:
 async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
     const configFile = await configManager.load()
-    return configFile.configs || []
+    // Filter out deleted configs (soft delete tombstones)
+    return (configFile.configs || []).filter(c => !c.isDeleted)
   }
   catch (error) {
     console.error('Error reading configs:', error)
@@ -408,7 +409,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Config not found' }, { status: 404 })
     }
 
-    // Re-order remaining configs to create a continuous sequence
+    // Re-order remaining configs to create a continuous sequence (only non-deleted ones)
     const configs = await getConfigs()
     const reorderedConfigs = configs
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -417,11 +418,12 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
         order: index + 1,
       }))
 
-    // Save reordered configs using ConfigManager
+    // Save reordered configs using ConfigManager while preserving deleted configs (tombstones)
     const configFile = await configManager.load()
+    const deletedConfigs = configFile.configs.filter(c => c.isDeleted)
     await configManager.save({
       ...configFile,
-      configs: reorderedConfigs,
+      configs: [...reorderedConfigs, ...deletedConfigs],
     })
 
     const settings = await getSettings()

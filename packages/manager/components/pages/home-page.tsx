@@ -124,8 +124,15 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
       return
     }
 
-    await deleteConfigAPI(deleteConfig, notifyConfigChange)
-    setDeleteConfig(null)
+    try {
+      await deleteConfigAPI(deleteConfig, notifyConfigChange)
+      setDeleteConfig(null)
+    }
+    catch (error) {
+      // Error is already handled by deleteConfigAPI with toast
+      // Just keep the dialog open so user can try again or cancel
+      console.error('Delete config failed, keeping dialog open:', error)
+    }
   }
 
   const filteredConfigs = configs.filter(config =>

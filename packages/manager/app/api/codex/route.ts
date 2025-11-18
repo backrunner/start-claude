@@ -146,7 +146,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Config not found' }, { status: 404 })
     }
 
-    // Re-order remaining configs
+    // Re-order remaining configs (only non-deleted ones)
     const configs = await getConfigs()
     const reorderedConfigs = configs
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -155,11 +155,12 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
         order: index + 1,
       }))
 
-    // Save reordered configs
+    // Save reordered configs while preserving deleted configs (tombstones)
     const configFile = configManager.getConfigFile()
+    const deletedConfigs = configFile.configs.filter(c => c.isDeleted)
     configManager.saveConfigFile({
       ...configFile,
-      configs: reorderedConfigs,
+      configs: [...reorderedConfigs, ...deletedConfigs],
     })
 
     const settings = await getSettings()

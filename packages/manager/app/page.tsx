@@ -13,7 +13,8 @@ async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
     const configManager = ConfigManager.getInstance()
     const configFile = await configManager.load()
-    return configFile.configs || []
+    // Filter out deleted configs (soft delete tombstones)
+    return (configFile.configs || []).filter(c => !c.isDeleted)
   }
   catch (error) {
     console.error('Error reading configs:', error)
