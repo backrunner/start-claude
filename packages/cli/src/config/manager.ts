@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import dayjs from 'dayjs'
 import { S3SyncManager } from '../storage/s3-sync'
 import { ConfigFileManager } from './file-operations'
+import { configNamesMatch, findConfigByName, findNameConflict, getNameConflictMessage } from './name-utils'
 
 export class ConfigManager {
   private static instance: ConfigManager
@@ -137,18 +138,33 @@ export class ConfigManager {
       existingIndex = configFile.configs.findIndex(c => c.id === config.id)
     }
     if (existingIndex === -1) {
-      existingIndex = configFile.configs.findIndex(c => c.name.toLowerCase() === config.name.toLowerCase())
+      // Use flexible name matching (case-insensitive, space/hyphen equivalent)
+      existingIndex = configFile.configs.findIndex(c => configNamesMatch(c.name, config.name))
     }
 
     if (existingIndex >= 0) {
       // Update existing config while preserving UUID
       const existingConfig = configFile.configs[existingIndex]
+
+      // If updating and name changed, check for conflicts with other configs
+      if (!configNamesMatch(existingConfig.name, config.name)) {
+        const conflict = findNameConflict(configFile.configs, config.name, existingConfig)
+        if (conflict) {
+          throw new Error(getNameConflictMessage(config.name, conflict.name))
+        }
+      }
+
       configFile.configs[existingIndex] = {
         ...config,
         id: existingConfig.id || config.id, // Preserve existing UUID if present
       }
     }
     else {
+      // Adding new config - check for name conflicts
+      const conflict = findNameConflict(configFile.configs, config.name)
+      if (conflict) {
+        throw new Error(getNameConflictMessage(config.name, conflict.name))
+      }
       configFile.configs.push(config)
     }
 
@@ -157,7 +173,8 @@ export class ConfigManager {
 
   async removeConfig(name: string): Promise<boolean> {
     const configFile = await this.load()
-    const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
+    // Use flexible name matching
+    const targetConfig = findConfigByName(configFile.configs, name)
 
     if (!targetConfig) {
       return false
@@ -198,7 +215,8 @@ export class ConfigManager {
 
   async getConfig(name: string): Promise<ClaudeConfig | undefined> {
     const configFile = await this.load()
-    const config = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase())
+    // Use flexible name matching (supports "my api" and "my-api" as equivalent)
+    const config = findConfigByName(configFile.configs, name)
     return config?.isDeleted ? undefined : config
   }
 
@@ -222,7 +240,11 @@ export class ConfigManager {
 
     configFile.configs.forEach(c => c.isDefault = false)
 
-    const targetConfig = configFile.configs.find(c => c.name.toLowerCase() === name.toLowerCase() && !c.isDeleted)
+    // Use flexible name matching
+    const targetConfig = findConfigByName(
+      configFile.configs.filter(c => !c.isDeleted),
+      name,
+    )
     if (targetConfig) {
       targetConfig.isDefault = true
       await this.save(configFile)
@@ -299,8 +321,10 @@ export class ConfigManager {
     const initialLength = configFile.configs.length
 
     // Find the config to cleanup (prefer by name since this is called from CLI)
-    const targetConfig = configFile.configs.find(c =>
-      c.name.toLowerCase() === name.toLowerCase() && c.isDeleted,
+    // Use flexible name matching
+    const targetConfig = findConfigByName(
+      configFile.configs.filter(c => c.isDeleted),
+      name,
     )
 
     if (!targetConfig) {
@@ -309,7 +333,7 @@ export class ConfigManager {
 
     // Remove by UUID if available, otherwise by name
     configFile.configs = configFile.configs.filter(c =>
-      targetConfig.id ? c.id !== targetConfig.id : c.name.toLowerCase() !== name.toLowerCase() || !c.isDeleted,
+      targetConfig.id ? c.id !== targetConfig.id : !configNamesMatch(c.name, name) || !c.isDeleted,
     )
 
     if (configFile.configs.length < initialLength) {
@@ -326,13 +350,23 @@ export class ConfigManager {
   async restoreConfig(name: string): Promise<boolean> {
     const configFile = await this.load()
 
-    // Find the deleted config by name
-    const config = configFile.configs.find(c =>
-      c.name.toLowerCase() === name.toLowerCase() && c.isDeleted,
+    // Find the deleted config by name using flexible matching
+    const config = findConfigByName(
+      configFile.configs.filter(c => c.isDeleted),
+      name,
     )
 
     if (!config) {
       return false // Not found or not deleted
+    }
+
+    // Check if restoring would cause a conflict with active configs
+    const conflict = findNameConflict(
+      configFile.configs.filter(c => !c.isDeleted),
+      config.name,
+    )
+    if (conflict) {
+      throw new Error(getNameConflictMessage(config.name, conflict.name))
     }
 
     // Restore the config (UUID is preserved automatically)
