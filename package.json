@@ -28,7 +28,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "node --experimental-strip-types scripts/clean.ts && turbo build && pnpm run postbuild",
+    "clean": "node --experimental-strip-types scripts/clean.ts",
+    "build": "pnpm run clean && turbo build && pnpm run postbuild",
     "build:manager": "turbo build --filter=@start-claude/manager",
     "build:plugin": "turbo build --filter=@start-claude/plugin",
     "postbuild": "node --experimental-strip-types scripts/postbuild.ts",
@@ -47,7 +48,7 @@
     "version:patch": "node --experimental-strip-types scripts/version.ts patch",
     "version:minor": "node --experimental-strip-types scripts/version.ts minor",
     "version:major": "node --experimental-strip-types scripts/version.ts major",
-    "release": "turbo build",
+    "release": "pnpm run clean && turbo build && pnpm run postbuild",
     "release:dry-run": "turbo build --dry-run"
   },
   "dependencies": {

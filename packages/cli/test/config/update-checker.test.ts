@@ -95,12 +95,19 @@ describe('updateChecker', () => {
     it('should check for updates via https when updates available', async () => {
       mockInstance.shouldCheckForUpdates.mockReturnValue(true)
 
-      // Mock successful https request
+      // Mock successful https request with new API format
       mockHttpsGet.mockImplementation((_url, _options, callback: any) => {
         const mockResponse = {
           on: vi.fn((event: string, handler: any) => {
             if (event === 'data') {
-              handler(Buffer.from(JSON.stringify({ version: '1.0.1' })))
+              const packageData = {
+                'dist-tags': { latest: '1.0.1' },
+                'versions': {
+                  '1.0.0': { version: '1.0.0' },
+                  '1.0.1': { version: '1.0.1' },
+                },
+              }
+              handler(Buffer.from(JSON.stringify(packageData)))
             }
             if (event === 'end') {
               handler()
@@ -119,6 +126,87 @@ describe('updateChecker', () => {
       expect(result).toEqual({
         currentVersion: CURRENT_VERSION,
         latestVersion: '1.0.1',
+        hasUpdate: true,
+        updateCommand: 'pnpm add -g start-claude@latest',
+      })
+    })
+
+    it('should filter out beta/alpha versions and return latest stable', async () => {
+      mockInstance.shouldCheckForUpdates.mockReturnValue(true)
+
+      // Mock https response with package data that includes beta/alpha versions
+      mockHttpsGet.mockImplementation((_url, _options, callback: any) => {
+        const mockResponse = {
+          on: vi.fn((event: string, handler: any) => {
+            if (event === 'data') {
+              const packageData = {
+                'dist-tags': { latest: '1.0.5-beta.1' }, // Latest tag points to beta
+                'versions': {
+                  '1.0.3': { version: '1.0.3' },
+                  '1.0.4': { version: '1.0.4' },
+                  '1.0.5-beta.1': { version: '1.0.5-beta.1' },
+                  '1.0.5-alpha.2': { version: '1.0.5-alpha.2' },
+                },
+              }
+              handler(Buffer.from(JSON.stringify(packageData)))
+            }
+            if (event === 'end') {
+              handler()
+            }
+            return mockResponse
+          }),
+        }
+        callback(mockResponse)
+        return {
+          on: vi.fn(),
+        } as any
+      })
+
+      const result = await checkForUpdates(false)
+
+      expect(result).toEqual({
+        currentVersion: CURRENT_VERSION,
+        latestVersion: '1.0.4', // Should return latest stable, not beta
+        hasUpdate: true,
+        updateCommand: 'pnpm add -g start-claude@latest',
+      })
+    })
+
+    it('should use latest tag if it points to a stable version', async () => {
+      mockInstance.shouldCheckForUpdates.mockReturnValue(true)
+
+      // Mock https response where latest tag points to stable version
+      mockHttpsGet.mockImplementation((_url, _options, callback: any) => {
+        const mockResponse = {
+          on: vi.fn((event: string, handler: any) => {
+            if (event === 'data') {
+              const packageData = {
+                'dist-tags': { latest: '1.0.4' }, // Latest tag points to stable
+                'versions': {
+                  '1.0.3': { version: '1.0.3' },
+                  '1.0.4': { version: '1.0.4' },
+                  '1.0.5-beta.1': { version: '1.0.5-beta.1' },
+                },
+              }
+              handler(Buffer.from(JSON.stringify(packageData)))
+            }
+            if (event === 'end') {
+              handler()
+            }
+            return mockResponse
+          }),
+        }
+        callback(mockResponse)
+        return {
+          on: vi.fn(),
+        } as any
+      })
+
+      const result = await checkForUpdates(false)
+
+      expect(result).toEqual({
+        currentVersion: CURRENT_VERSION,
+        latestVersion: '1.0.4',
         hasUpdate: true,
         updateCommand: 'pnpm add -g start-claude@latest',
       })
@@ -145,12 +233,19 @@ describe('updateChecker', () => {
     it('should save timestamp after successful check', async () => {
       mockInstance.shouldCheckForUpdates.mockReturnValue(true)
 
-      // Mock successful https request
+      // Mock successful https request with new API format
       mockHttpsGet.mockImplementation((_url, _options, callback: any) => {
         const mockResponse = {
           on: vi.fn((event: string, handler: any) => {
             if (event === 'data') {
-              handler(Buffer.from(JSON.stringify({ version: '1.0.1' })))
+              const packageData = {
+                'dist-tags': { latest: '1.0.1' },
+                'versions': {
+                  '1.0.0': { version: '1.0.0' },
+                  '1.0.1': { version: '1.0.1' },
+                },
+              }
+              handler(Buffer.from(JSON.stringify(packageData)))
             }
             if (event === 'end') {
               handler()
