@@ -17,7 +17,8 @@ const s3ConfigManager = S3ConfigFileManager.getInstance()
 async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
     const configFile = await configManager.load()
-    return configFile.configs || []
+    // Filter out deleted configs (isDeleted: true)
+    return (configFile.configs || []).filter(c => !c.isDeleted)
   }
   catch (error) {
     console.error('Error reading configs:', error)

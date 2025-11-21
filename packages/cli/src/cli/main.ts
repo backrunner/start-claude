@@ -530,6 +530,13 @@ program
   .action(async () => (await import('../commands/config')).handleListCommand())
 
 program
+  .command('duplicate <original-name> [new-name]')
+  .description('Duplicate an existing configuration with a new name')
+  .action(async (originalName, newName) =>
+    (await import('../commands/duplicate')).handleDuplicateCommand(originalName, newName),
+  )
+
+program
   .command('default <name>')
   .description('Set a configuration as default')
   .action(async name => (await import('../commands/config')).handleDefaultCommand(name))

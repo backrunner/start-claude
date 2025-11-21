@@ -146,9 +146,10 @@ export class ConfigManager {
       // Update existing config while preserving UUID
       const existingConfig = configFile.configs[existingIndex]
 
-      // If updating and name changed, check for conflicts with other configs
+      // If updating and name changed, check for conflicts with other active configs
       if (!configNamesMatch(existingConfig.name, config.name)) {
-        const conflict = findNameConflict(configFile.configs, config.name, existingConfig)
+        const activeConfigs = configFile.configs.filter(c => !c.isDeleted)
+        const conflict = findNameConflict(activeConfigs, config.name, existingConfig)
         if (conflict) {
           throw new Error(getNameConflictMessage(config.name, conflict.name))
         }
@@ -160,8 +161,9 @@ export class ConfigManager {
       }
     }
     else {
-      // Adding new config - check for name conflicts
-      const conflict = findNameConflict(configFile.configs, config.name)
+      // Adding new config - check for name conflicts (only with active configs, not deleted ones)
+      const activeConfigs = configFile.configs.filter(c => !c.isDeleted)
+      const conflict = findNameConflict(activeConfigs, config.name)
       if (conflict) {
         throw new Error(getNameConflictMessage(config.name, conflict.name))
       }
