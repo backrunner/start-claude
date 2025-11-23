@@ -1,6 +1,6 @@
 {
   "name": "@start-claude/migrator",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "private": true,
   "description": "Config migration package for start-claude",
   "main": "dist/index.js",

@@ -269,8 +269,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const existingConfig = findConfigByName(configs, config.name)
 
     if (existingConfig) {
-      // Validate the updated config before saving
-      const updatedConfigResult = claudeConfigSchema.safeParse({
+      // Merge existing config with new config
+      const updatedConfig = {
         ...existingConfig,
         ...config,
       }
@@ -284,6 +284,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }, { status: 400 })
       }
 
+      // Validate the updated config
       const updatedConfigResult = claudeConfigSchema.safeParse(updatedConfig)
 
       if (!updatedConfigResult.success) {
