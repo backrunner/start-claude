@@ -19,13 +19,18 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
   if (options.useEditor) {
     const updatedConfig = await editConfigInEditor(config)
     if (updatedConfig) {
-      if (updatedConfig.isDefault && !config.isDefault) {
-        const configs = await configManager.listConfigs()
-        configs.forEach((c: ClaudeConfig) => c.isDefault = false)
-      }
+      try {
+        if (updatedConfig.isDefault && !config.isDefault) {
+          const configs = await configManager.listConfigs()
+          configs.forEach((c: ClaudeConfig) => c.isDefault = false)
+        }
 
-      await configManager.addConfig(updatedConfig)
-      ui.displaySuccess(`Configuration "${name}" updated successfully!`)
+        await configManager.addConfig(updatedConfig)
+        ui.displaySuccess(`Configuration "${name}" updated successfully!`)
+      }
+      catch (error) {
+        ui.displayError(error instanceof Error ? error.message : 'Failed to update configuration')
+      }
     }
     return
   }
@@ -124,11 +129,16 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
     isDefault: answers.isDefault,
   }
 
-  await configManager.addConfig(updatedConfig)
+  try {
+    await configManager.addConfig(updatedConfig)
 
-  if (updatedConfig.isDefault && !config.isDefault) {
-    await configManager.setDefaultConfig(updatedConfig.name)
+    if (updatedConfig.isDefault && !config.isDefault) {
+      await configManager.setDefaultConfig(updatedConfig.name)
+    }
+
+    ui.displaySuccess(`Configuration "${name}" updated successfully!`)
   }
-
-  ui.displaySuccess(`Configuration "${name}" updated successfully!`)
+  catch (error) {
+    ui.displayError(error instanceof Error ? error.message : 'Failed to update configuration')
+  }
 }

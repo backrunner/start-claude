@@ -4,6 +4,7 @@ import type { NormalizeResult, ProxyConfig, ProxyMode, Transformer } from '../ty
 import { Buffer } from 'node:buffer'
 import * as http from 'node:http'
 import * as https from 'node:https'
+import process from 'node:process'
 import { PassThrough } from 'node:stream'
 import dayjs from 'dayjs'
 import { HttpProxyAgent } from 'http-proxy-agent'
@@ -90,7 +91,14 @@ export class ProxyServer {
     this.proxyMode = proxyMode || {}
     this.verbose = this.proxyMode.verbose || false
     this.debug = this.proxyMode.debug || false
+
+    // If no explicit proxy URL provided, check environment variables
+    // Check both lowercase and uppercase variants (Node.js convention)
     this.proxyUrl = proxyUrl
+      || process.env.HTTPS_PROXY
+      || process.env.https_proxy
+      || process.env.HTTP_PROXY
+      || process.env.http_proxy
 
     // Enable verbose mode automatically if debug mode is enabled
     if (this.debug && !this.verbose) {
@@ -107,7 +115,7 @@ export class ProxyServer {
       fileLogger.info('PROXY', `Verbose mode: ${this.verbose}`)
     }
 
-    // Initialize proxy agents if proxy URL is provided
+    // Initialize proxy agents if proxy URL is provided or detected from environment
     if (this.proxyUrl) {
       this.httpAgent = new HttpProxyAgent(this.proxyUrl)
       this.httpsAgent = new HttpsProxyAgent(this.proxyUrl)

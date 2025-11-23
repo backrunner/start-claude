@@ -13,20 +13,18 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
   if (options.useEditor) {
     const newConfig = await createConfigInEditor()
     if (newConfig) {
-      // Check if config name already exists
-      const existing = await configManager.getConfig(newConfig.name)
-      if (existing) {
-        ui.displayError('Configuration with this name already exists')
-        return
-      }
+      try {
+        if (newConfig.isDefault) {
+          const configs = await configManager.listConfigs()
+          configs.forEach((c: ClaudeConfig) => c.isDefault = false)
+        }
 
-      if (newConfig.isDefault) {
-        const configs = await configManager.listConfigs()
-        configs.forEach((c: ClaudeConfig) => c.isDefault = false)
+        await configManager.addConfig(newConfig)
+        ui.displaySuccess(`Configuration "${newConfig.name}" added successfully!`)
       }
-
-      await configManager.addConfig(newConfig)
-      ui.displaySuccess(`Configuration "${newConfig.name}" added successfully!`)
+      catch (error) {
+        ui.displayError(error instanceof Error ? error.message : 'Failed to add configuration')
+      }
     }
     return
   }
@@ -123,13 +121,6 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
 
   const answers = await inquirer.prompt(questions)
 
-  // Check if config name already exists after getting the input
-  const existing = await configManager.getConfig(answers.name.trim())
-  if (existing) {
-    ui.displayError('Configuration with this name already exists')
-    return
-  }
-
   const config: ClaudeConfig = {
     name: answers.name.trim(),
     profileType: profileTypeAnswer.profileType,
@@ -142,11 +133,16 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
     isDefault: answers.isDefault,
   }
 
-  await configManager.addConfig(config)
+  try {
+    await configManager.addConfig(config)
 
-  if (config.isDefault) {
-    await configManager.setDefaultConfig(config.name)
+    if (config.isDefault) {
+      await configManager.setDefaultConfig(config.name)
+    }
+
+    ui.displaySuccess(`Configuration "${config.name}" added successfully!`)
   }
-
-  ui.displaySuccess(`Configuration "${config.name}" added successfully!`)
+  catch (error) {
+    ui.displayError(error instanceof Error ? error.message : 'Failed to add configuration')
+  }
 }

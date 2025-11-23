@@ -24,14 +24,23 @@ export interface UpdateInfo {
 }
 
 /**
- * Fetch latest version from npm registry via HTTP
+ * Check if a version is a prerelease (contains beta, alpha, rc, etc.)
+ */
+function isPrereleaseVersion(version: string): boolean {
+  return version.includes('-') || version.includes('beta') || version.includes('alpha') || version.includes('rc')
+}
+
+/**
+ * Fetch latest stable (non-prerelease) version from npm registry via HTTP
  * Much faster than spawning pnpm subprocess
+ * Filters out beta, alpha, and other prerelease versions
  */
 async function fetchLatestVersionFromNpm(): Promise<string> {
   return new Promise((resolve, reject) => {
     const timeout = 3000 // Reduced to 3 seconds
 
-    const req = https.get('https://registry.npmjs.org/start-claude/latest', {
+    // Fetch full package metadata to access all versions
+    const req = https.get('https://registry.npmjs.org/start-claude', {
       timeout,
       headers: {
         'Accept': 'application/json',
@@ -47,7 +56,31 @@ async function fetchLatestVersionFromNpm(): Promise<string> {
       res.on('end', () => {
         try {
           const pkg = JSON.parse(data)
-          resolve(pkg.version)
+
+          // Get the latest dist-tag first as a fallback
+          const latestTagVersion = pkg['dist-tags']?.latest
+
+          // Check if the latest tag version is a prerelease
+          if (latestTagVersion && !isPrereleaseVersion(latestTagVersion)) {
+            resolve(latestTagVersion)
+            return
+          }
+
+          // If latest tag is a prerelease, find the newest stable version
+          // Get all versions and filter out prereleases
+          const allVersions = Object.keys(pkg.versions || {})
+          const stableVersions = allVersions.filter(v => !isPrereleaseVersion(v))
+
+          if (stableVersions.length === 0) {
+            reject(new Error('No stable versions found'))
+            return
+          }
+
+          // Sort versions and get the latest stable one
+          stableVersions.sort((a, b) => compareVersions(a, b))
+          const latestStable = stableVersions[stableVersions.length - 1]
+
+          resolve(latestStable)
         }
         catch {
           reject(new Error('Failed to parse npm registry response'))
@@ -97,8 +130,14 @@ export async function checkForUpdates(forceCheck = false): Promise<UpdateInfo | 
 }
 
 function compareVersions(current: string, latest: string): number {
-  const currentParts = current.split('.').map(Number)
-  const latestParts = latest.split('.').map(Number)
+  // Split version into main version and prerelease parts
+  // e.g., "1.2.3-beta.1" -> ["1.2.3", "beta.1"]
+  const [currentMain, currentPre] = current.split('-')
+  const [latestMain, latestPre] = latest.split('-')
+
+  // Compare main version numbers (e.g., "1.2.3")
+  const currentParts = currentMain.split('.').map(Number)
+  const latestParts = latestMain.split('.').map(Number)
 
   for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
     const currentPart = currentParts[i] || 0
@@ -110,6 +149,16 @@ function compareVersions(current: string, latest: string): number {
       return 1
   }
 
+  // If main versions are equal, check prerelease
+  // A version with prerelease (e.g., 1.2.3-beta) is LESS than without (e.g., 1.2.3)
+  if (currentPre && !latestPre) {
+    return -1 // current is prerelease, latest is stable -> current < latest
+  }
+  if (!currentPre && latestPre) {
+    return 1 // current is stable, latest is prerelease -> current > latest
+  }
+
+  // Both are prereleases or both are stable
   return 0
 }
 
@@ -235,13 +284,15 @@ function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
 }
 
 /**
- * Download the latest start-claude tarball from npm
+ * Download a specific version of start-claude tarball from npm
+ * Only downloads stable (non-prerelease) versions
  */
-async function downloadLatestTarball(destPath: string): Promise<void> {
+async function downloadLatestTarball(destPath: string, version?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const timeout = 30000 // 30 seconds
 
-    https.get('https://registry.npmjs.org/start-claude/latest', {
+    // Fetch full package metadata to get tarball URL for specific version
+    https.get('https://registry.npmjs.org/start-claude', {
       timeout,
       headers: {
         'Accept': 'application/json',
@@ -257,10 +308,50 @@ async function downloadLatestTarball(destPath: string): Promise<void> {
       res.on('end', () => {
         try {
           const pkg = JSON.parse(data)
-          const tarballUrl = pkg.dist?.tarball
+
+          // Determine which version to download
+          let targetVersion = version
+          if (!targetVersion) {
+            // Get the latest stable version
+            const latestTagVersion = pkg['dist-tags']?.latest
+
+            // Check if latest is stable
+            if (latestTagVersion && !isPrereleaseVersion(latestTagVersion)) {
+              targetVersion = latestTagVersion
+            }
+            else {
+              // Find newest stable version from all versions
+              const allVersions = Object.keys(pkg.versions || {})
+              const stableVersions = allVersions.filter(v => !isPrereleaseVersion(v))
+
+              if (stableVersions.length === 0) {
+                reject(new Error('No stable versions available'))
+                return
+              }
+
+              stableVersions.sort((a, b) => compareVersions(a, b))
+              targetVersion = stableVersions[stableVersions.length - 1]
+            }
+          }
+
+          // At this point, targetVersion must be defined
+          if (!targetVersion) {
+            reject(new Error('Could not determine target version'))
+            return
+          }
+
+          // Verify target version is not a prerelease
+          if (isPrereleaseVersion(targetVersion)) {
+            reject(new Error(`Cannot download prerelease version: ${targetVersion}`))
+            return
+          }
+
+          // Get tarball URL for specific version
+          const versionData = pkg.versions?.[targetVersion]
+          const tarballUrl = versionData?.dist?.tarball
 
           if (!tarballUrl) {
-            reject(new Error('No tarball URL found in package metadata'))
+            reject(new Error(`No tarball URL found for version ${targetVersion}`))
             return
           }
 
