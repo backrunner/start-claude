@@ -7,7 +7,7 @@ export const claudeConfigSchema = z.object({
   name: z.string().min(1, 'Configuration name is required').max(100, 'Name too long'),
   profileType: z.enum(['default', 'official']).optional(),
   baseUrl: z.string().url('Invalid base URL').optional().or(z.literal('')),
-  apiKey: z.string().min(1, 'API key is required').optional().or(z.literal('')),
+  apiKey: z.string().optional().or(z.literal('')), // Legacy API Key (ANTHROPIC_API_KEY)
   model: z.string().optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'plan', 'bypassPermissions']).optional(),
   transformerEnabled: z.boolean().optional().default(false),
@@ -17,7 +17,7 @@ export const claudeConfigSchema = z.object({
   enabled: z.boolean().optional().default(true),
 
   // Environment variables
-  authToken: z.string().optional(),
+  authToken: z.string().optional().or(z.literal('')), // Primary API Key (ANTHROPIC_AUTH_TOKEN)
   authorization: z.string().optional(),
   customHeaders: z.string().optional(),
   smallFastModel: z.string().optional(),
@@ -55,14 +55,14 @@ export const claudeConfigSchema = z.object({
   vertexRegion40Sonnet: z.string().optional(),
   vertexRegion45Sonnet: z.string().optional(),
 }).refine((data) => {
-  // If baseUrl is provided, apiKey should also be provided for balance mode
-  if (data.baseUrl && data.baseUrl !== '') {
-    return data.apiKey && data.apiKey !== ''
+  // For custom profiles with baseUrl, require authToken (primary API key)
+  if (data.profileType !== 'official' && data.baseUrl && data.baseUrl !== '') {
+    return data.authToken && data.authToken !== ''
   }
   return true
 }, {
-  message: 'API key is required when base URL is provided',
-  path: ['apiKey'],
+  message: 'API key (authToken) is required when base URL is provided',
+  path: ['authToken'],
 })
 
 // S3 sync configuration schema

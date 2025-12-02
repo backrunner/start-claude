@@ -299,7 +299,7 @@ Override configuration with environment variables:
 
 ```bash
 # API Configuration
-export ANTHROPIC_API_KEY="sk-your-key"
+export ANTHROPIC_AUTH_TOKEN="sk-your-key"  # Primary API key
 export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 export ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 

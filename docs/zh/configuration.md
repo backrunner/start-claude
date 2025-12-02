@@ -27,7 +27,7 @@
 - **名称**: 配置的唯一标识符
 - **配置文件类型**: 配置类型（`default` 或 `official`）
 - **基础 URL**: 自定义 API 端点（`ANTHROPIC_BASE_URL`）- 仅用于 `default` 配置文件类型
-- **API 密钥**: 您的 Claude API 密钥（`ANTHROPIC_API_KEY`）- 仅用于 `default` 配置文件类型
+- **API 密钥**: 您的 Claude API 密钥（`ANTHROPIC_AUTH_TOKEN`）- 仅用于 `default` 配置文件类型
 - **模型**: 要使用的 Claude 模型（`ANTHROPIC_MODEL`）
 - **权限模式**: 配置权限行为（`default`, `acceptEdits`, `plan`, `bypassPermissions`）
 - **顺序**: 负载均衡的优先级顺序（数字越小 = 优先级越高）
@@ -154,7 +154,7 @@ start-claude manager  # 前往设置标签
 
 ### 身份验证和 API
 
-- **身份验证令牌**: 自定义授权令牌（`ANTHROPIC_AUTH_TOKEN`）
+- **ANTHROPIC_API_KEY**: 旧版 API 密钥字段，大部分服务商已迁移到 `ANTHROPIC_AUTH_TOKEN`，仅在服务商明确要求时使用
 - **自定义标头**: 自定义 HTTP 标头（`ANTHROPIC_CUSTOM_HEADERS`）
 
 ### AWS/Bedrock 配置
@@ -243,7 +243,7 @@ start-claude edit-config
     {
       "name": "production",
       "profileType": "default",
-      "apiKey": "sk-ant-...",
+      "authToken": "sk-ant-...",
       "baseUrl": "https://api.anthropic.com",
       "model": "claude-sonnet-4-20250514",
       "permissionMode": "default",
@@ -287,13 +287,13 @@ start-claude edit-config
   "name": "primary-api",
   "order": 0,  // 最高优先级
   "baseUrl": "https://primary.api.com",
-  "apiKey": "sk-primary"
+  "authToken": "sk-primary"
 },
 {
   "name": "backup-api",
   "order": 10,  // 较低优先级
   "baseUrl": "https://backup.api.com",
-  "apiKey": "sk-backup"
+  "authToken": "sk-backup"
 }
 ```
 

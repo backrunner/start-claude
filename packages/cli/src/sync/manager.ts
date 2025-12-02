@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import process from 'node:process'
 import inquirer from 'inquirer'
 import { S3SyncManager } from '../storage/s3-sync'
 import { UILogger } from '../utils/cli/ui'
@@ -44,6 +45,79 @@ export class SyncManager {
     this.configFile = join(this.configDir, 'config.json')
     this.syncConfigFile = join(this.configDir, 'sync.json')
     this.ui = new UILogger()
+  }
+
+  /**
+   * Check if a config file has actual content (non-empty configs array)
+   * Returns true if the file exists and has at least one config (including soft-deleted ones)
+   */
+  private hasConfigContent(configPath: string): boolean {
+    try {
+      if (!existsSync(configPath)) {
+        return false
+      }
+      const content = readFileSync(configPath, 'utf-8')
+      const config = JSON.parse(content)
+      // Check if configs array exists and has at least one item
+      return Array.isArray(config.configs) && config.configs.length > 0
+    }
+    catch {
+      return false
+    }
+  }
+
+  /**
+   * Verify write permission to a directory by creating and deleting a test file
+   * This is especially important for iCloud on macOS where permission prompts may appear
+   */
+  private async verifyDirectoryPermission(dirPath: string, providerName: string): Promise<boolean> {
+    const testFileName = `.start-claude-permission-test-${Date.now()}`
+    const testFilePath = join(dirPath, testFileName)
+
+    try {
+      // Try to write a test file
+      writeFileSync(testFilePath, 'permission-test', 'utf-8')
+
+      // Verify we can read it back
+      const content = readFileSync(testFilePath, 'utf-8')
+      if (content !== 'permission-test') {
+        this.ui.displayError(`❌ Permission verification failed: Could not verify written content`)
+        return false
+      }
+
+      // Clean up the test file
+      unlinkSync(testFilePath)
+
+      return true
+    }
+    catch (error) {
+      // Clean up if file was created but something else failed
+      try {
+        if (existsSync(testFilePath)) {
+          unlinkSync(testFilePath)
+        }
+      }
+      catch {
+        // Ignore cleanup errors
+      }
+
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+      // Check for common permission-related errors
+      if (errorMessage.includes('EPERM') || errorMessage.includes('EACCES')) {
+        this.ui.displayError(`❌ Permission denied when accessing ${providerName}`)
+        if (process.platform === 'darwin') {
+          this.ui.displayInfo('💡 On macOS, you may need to grant Full Disk Access to your terminal app:')
+          this.ui.displayInfo('   System Settings → Privacy & Security → Full Disk Access')
+          this.ui.displayInfo('   Add your terminal application (Terminal.app, iTerm2, etc.)')
+        }
+      }
+      else {
+        this.ui.displayError(`❌ Failed to verify ${providerName} permission: ${errorMessage}`)
+      }
+
+      return false
+    }
   }
 
   /**
@@ -232,17 +306,27 @@ export class SyncManager {
     try {
       const cloudStatus = getCloudStorageStatus()
       const serviceInfo = provider === 'icloud' ? cloudStatus.iCloud : cloudStatus.oneDrive
+      const providerName = provider === 'icloud' ? 'iCloud' : 'OneDrive'
 
       if (!serviceInfo.isEnabled || !serviceInfo.path) {
-        this.ui.displayError(`❌ ${provider} is not properly configured`)
+        this.ui.displayError(`❌ ${providerName} is not properly configured`)
         return false
       }
 
+      this.ui.displayInfo(`📁 Setting up sync with ${providerName}...`)
+      this.ui.displayInfo(`Cloud path: ${serviceInfo.path}`)
+
+      // Step 1: Verify permission to access the cloud storage directory
+      this.ui.displayInfo(`🔐 Verifying ${providerName} access permission...`)
+      const hasPermission = await this.verifyDirectoryPermission(serviceInfo.path, providerName)
+      if (!hasPermission) {
+        this.ui.displayError(`❌ Cannot access ${providerName}. Please grant the necessary permissions and try again.`)
+        return false
+      }
+      this.ui.displaySuccess(`✅ ${providerName} access verified`)
+
       const cloudConfigDir = join(serviceInfo.path, '.start-claude')
       const cloudConfigFile = join(cloudConfigDir, 'config.json')
-
-      this.ui.displayInfo(`📁 Setting up sync with ${provider}...`)
-      this.ui.displayInfo(`Cloud path: ${serviceInfo.path}`)
 
       // Create cloud config directory
       if (!existsSync(cloudConfigDir)) {
@@ -251,26 +335,92 @@ export class SyncManager {
       }
 
       // Handle different scenarios
-      const localExists = existsSync(this.configFile)
+      // Check both file existence and actual content (configs array not empty)
+      const localHasContent = this.hasConfigContent(this.configFile)
       const remoteExists = existsSync(cloudConfigFile)
+      const remoteHasContent = this.hasConfigContent(cloudConfigFile)
 
-      if (!localExists && !remoteExists) {
-        // Scenario: No config anywhere - create new
-        const emptyConfig = { version: 1, configs: [] }
-        writeFileSync(cloudConfigFile, JSON.stringify(emptyConfig, null, 2))
-        this.ui.displayInfo('📄 Created new config in cloud folder')
+      // Treat empty configs as "no content" - user needs to confirm
+      if (!localHasContent && !remoteHasContent) {
+        // Scenario: No actual configs anywhere (files may exist but are empty)
+        this.ui.displayWarning(`⚠️  No configuration content found in ${providerName}`)
+        if (remoteExists) {
+          this.ui.displayInfo(`(The config file exists in ${providerName} but contains no configurations)`)
+        }
+        this.ui.displayInfo('This could mean:')
+        this.ui.displayInfo('  1. This is a new setup and no config exists yet')
+        this.ui.displayInfo(`  2. ${providerName} sync hasn't finished downloading files yet`)
+
+        const { action } = await inquirer.prompt([{
+          type: 'list',
+          name: 'action',
+          message: 'What would you like to do?',
+          choices: [
+            {
+              name: '📄 Create/use empty configuration and continue setup',
+              value: 'create',
+            },
+            {
+              name: `⏳ Wait for ${providerName} to sync (cancel and try again later)`,
+              value: 'wait',
+            },
+          ],
+        }])
+
+        if (action === 'wait') {
+          this.ui.displayInfo(`Please wait for ${providerName} to finish syncing, then run this command again.`)
+          return false
+        }
+
+        // Create new empty config if it doesn't exist
+        if (!remoteExists) {
+          const emptyConfig = { version: 1, configs: [], settings: { overrideClaudeCommand: false } }
+          writeFileSync(cloudConfigFile, JSON.stringify(emptyConfig, null, 2))
+          this.ui.displayInfo('📄 Created new config in cloud folder')
+        }
       }
-      else if (localExists && !remoteExists) {
-        // Scenario 1: Local has config, remote doesn't - move to cloud
+      else if (localHasContent && !remoteHasContent) {
+        // Scenario 1: Local has actual configs, remote doesn't or is empty
+        // This could be dangerous if cloud sync hasn't finished
+        this.ui.displayWarning(`⚠️  No configuration content in ${providerName}, but you have local configurations`)
+        if (remoteExists) {
+          this.ui.displayInfo(`(The config file exists in ${providerName} but contains no configurations)`)
+        }
+        this.ui.displayInfo('This could mean:')
+        this.ui.displayInfo(`  1. ${providerName} sync hasn't finished downloading your existing cloud config`)
+        this.ui.displayInfo('  2. This is a new cloud setup and your local config should be uploaded')
+
+        const { action } = await inquirer.prompt([{
+          type: 'list',
+          name: 'action',
+          message: 'What would you like to do?',
+          choices: [
+            {
+              name: `📤 Upload local config to ${providerName} (overwrites any pending cloud data)`,
+              value: 'upload',
+            },
+            {
+              name: `⏳ Wait for ${providerName} to sync (cancel and try again later)`,
+              value: 'wait',
+            },
+          ],
+        }])
+
+        if (action === 'wait') {
+          this.ui.displayInfo(`Please wait for ${providerName} to finish syncing, then run this command again.`)
+          return false
+        }
+
+        // User confirmed to upload local config
         await this.moveConfigToCloud(this.configFile, cloudConfigFile)
       }
-      else if (!localExists && remoteExists) {
-        // Scenario 2: Remote has config, local doesn't - use remote directly
+      else if (!localHasContent && remoteHasContent) {
+        // Scenario 2: Remote has actual configs, local doesn't or is empty - use remote directly
         this.ui.displaySuccess('📥 Found existing configuration in cloud')
         this.ui.displayInfo('Will use cloud configuration')
       }
       else {
-        // Scenario 3: Both exist - resolve conflict
+        // Scenario 3: Both have actual content - resolve conflict
         const resolved = await this.resolveConfigConflict(this.configFile, cloudConfigFile)
         if (!resolved) {
           return false // User cancelled
@@ -326,17 +476,22 @@ export class SyncManager {
       this.ui.displayInfo(`Config path: ${windowsConfigFile}`)
 
       // Handle different scenarios
-      const localExists = existsSync(this.configFile)
+      // Check both file existence and actual content (configs array not empty)
+      const localHasContent = this.hasConfigContent(this.configFile)
       const windowsExists = existsSync(windowsConfigFile)
+      const windowsHasContent = this.hasConfigContent(windowsConfigFile)
 
-      if (!localExists && windowsExists) {
-        // Scenario 1: Windows has config, WSL doesn't - use Windows config directly
+      if (!localHasContent && windowsHasContent) {
+        // Scenario 1: Windows has actual configs, WSL doesn't or is empty - use Windows config directly
         this.ui.displaySuccess('📥 Found existing configuration on Windows host')
         this.ui.displayInfo('Will use Windows host configuration')
       }
-      else if (localExists && !windowsExists) {
-        // Scenario 2: WSL has config, Windows doesn't - ask user what to do
-        this.ui.displayWarning('⚠️  WSL has a local config but Windows host does not')
+      else if (localHasContent && !windowsHasContent) {
+        // Scenario 2: WSL has actual configs, Windows doesn't or is empty - ask user what to do
+        this.ui.displayWarning('⚠️  WSL has configurations but Windows host does not')
+        if (windowsExists) {
+          this.ui.displayInfo('(The config file exists on Windows but contains no configurations)')
+        }
 
         const { action } = await inquirer.prompt([{
           type: 'list',
@@ -348,14 +503,23 @@ export class SyncManager {
               value: 'copy',
             },
             {
+              name: '⏳ Wait for Windows sync to complete (cancel and try again later)',
+              value: 'wait',
+            },
+            {
               name: '❌ Cancel setup',
               value: 'cancel',
             },
           ],
         }])
 
-        if (action === 'cancel') {
-          this.ui.displayInfo('Setup cancelled')
+        if (action === 'cancel' || action === 'wait') {
+          if (action === 'wait') {
+            this.ui.displayInfo('Please wait for Windows sync to finish, then run this command again.')
+          }
+          else {
+            this.ui.displayInfo('Setup cancelled')
+          }
           return false
         }
 
@@ -369,23 +533,54 @@ export class SyncManager {
         copyFileSync(this.configFile, windowsConfigFile)
         this.ui.displaySuccess('📤 Copied WSL config to Windows host')
       }
-      else if (localExists && windowsExists) {
-        // Scenario 3: Both exist - resolve conflict
+      else if (localHasContent && windowsHasContent) {
+        // Scenario 3: Both have actual content - resolve conflict
         const resolved = await this.resolveConfigConflict(this.configFile, windowsConfigFile)
         if (!resolved) {
           return false // User cancelled
         }
       }
       else {
-        // Scenario 4: Neither exists - create new config on Windows
-        if (!existsSync(windowsConfigDir)) {
-          mkdirSync(windowsConfigDir, { recursive: true })
-          this.ui.displayInfo(`📁 Created directory: ${windowsConfigDir}`)
+        // Scenario 4: Neither has actual content - ask user what to do
+        this.ui.displayWarning('⚠️  No configuration content found on Windows host or in WSL')
+        if (windowsExists) {
+          this.ui.displayInfo('(The config file exists on Windows but contains no configurations)')
+        }
+        this.ui.displayInfo('This could mean:')
+        this.ui.displayInfo('  1. This is a new setup and no config exists yet')
+        this.ui.displayInfo('  2. Windows sync hasn\'t finished downloading files yet')
+
+        const { action } = await inquirer.prompt([{
+          type: 'list',
+          name: 'action',
+          message: 'What would you like to do?',
+          choices: [
+            {
+              name: '📄 Create/use empty configuration and continue setup',
+              value: 'create',
+            },
+            {
+              name: '⏳ Wait for sync to complete (cancel and try again later)',
+              value: 'wait',
+            },
+          ],
+        }])
+
+        if (action === 'wait') {
+          this.ui.displayInfo('Please wait for Windows sync to finish, then run this command again.')
+          return false
         }
 
-        const emptyConfig = { version: 1, configs: [] }
-        writeFileSync(windowsConfigFile, JSON.stringify(emptyConfig, null, 2))
-        this.ui.displayInfo('📄 Created new config on Windows host')
+        if (!windowsExists) {
+          if (!existsSync(windowsConfigDir)) {
+            mkdirSync(windowsConfigDir, { recursive: true })
+            this.ui.displayInfo(`📁 Created directory: ${windowsConfigDir}`)
+          }
+
+          const emptyConfig = { version: 1, configs: [], settings: { overrideClaudeCommand: false } }
+          writeFileSync(windowsConfigFile, JSON.stringify(emptyConfig, null, 2))
+          this.ui.displayInfo('📄 Created new config on Windows host')
+        }
       }
 
       // Save sync configuration
@@ -449,25 +644,98 @@ export class SyncManager {
       this.ui.displayInfo('📁 Setting up custom folder sync...')
       this.ui.displayInfo(`Custom path: ${resolvedPath}`)
 
+      // Verify permission to access the custom folder
+      this.ui.displayInfo('🔐 Verifying folder access permission...')
+      const hasPermission = await this.verifyDirectoryPermission(resolvedPath, 'custom folder')
+      if (!hasPermission) {
+        this.ui.displayError('❌ Cannot access the custom folder. Please check permissions and try again.')
+        return false
+      }
+      this.ui.displaySuccess('✅ Folder access verified')
+
       // Create custom config directory
       if (!existsSync(customConfigDir)) {
         mkdirSync(customConfigDir, { recursive: true })
         this.ui.displayInfo(`📁 Created directory: ${customConfigDir}`)
       }
 
-      // Handle different scenarios (same as cloud sync)
-      const localExists = existsSync(this.configFile)
+      // Handle different scenarios
+      // Check both file existence and actual content (configs array not empty)
+      const localHasContent = this.hasConfigContent(this.configFile)
       const remoteExists = existsSync(customConfigFile)
+      const remoteHasContent = this.hasConfigContent(customConfigFile)
 
-      if (!localExists && !remoteExists) {
-        const emptyConfig = { version: 1, configs: [] }
-        writeFileSync(customConfigFile, JSON.stringify(emptyConfig, null, 2))
-        this.ui.displayInfo('📄 Created new config in custom folder')
+      if (!localHasContent && !remoteHasContent) {
+        // Scenario: No actual configs anywhere - ask user what to do
+        this.ui.displayWarning('⚠️  No configuration content found in custom folder')
+        if (remoteExists) {
+          this.ui.displayInfo('(The config file exists but contains no configurations)')
+        }
+        this.ui.displayInfo('This could mean:')
+        this.ui.displayInfo('  1. This is a new setup and no config exists yet')
+        this.ui.displayInfo('  2. If this is a cloud-synced folder, sync may not have completed')
+
+        const { action } = await inquirer.prompt([{
+          type: 'list',
+          name: 'action',
+          message: 'What would you like to do?',
+          choices: [
+            {
+              name: '📄 Create/use empty configuration and continue setup',
+              value: 'create',
+            },
+            {
+              name: '⏳ Wait for sync to complete (cancel and try again later)',
+              value: 'wait',
+            },
+          ],
+        }])
+
+        if (action === 'wait') {
+          this.ui.displayInfo('Please wait for sync to finish, then run this command again.')
+          return false
+        }
+
+        if (!remoteExists) {
+          const emptyConfig = { version: 1, configs: [], settings: { overrideClaudeCommand: false } }
+          writeFileSync(customConfigFile, JSON.stringify(emptyConfig, null, 2))
+          this.ui.displayInfo('📄 Created new config in custom folder')
+        }
       }
-      else if (localExists && !remoteExists) {
+      else if (localHasContent && !remoteHasContent) {
+        // Scenario 1: Local has actual configs, remote doesn't or is empty - ask for confirmation
+        this.ui.displayWarning('⚠️  No configuration content in custom folder, but you have local configurations')
+        if (remoteExists) {
+          this.ui.displayInfo('(The config file exists but contains no configurations)')
+        }
+        this.ui.displayInfo('This could mean:')
+        this.ui.displayInfo('  1. If this is a cloud-synced folder, sync may not have completed')
+        this.ui.displayInfo('  2. This is a new setup and your local config should be uploaded')
+
+        const { action } = await inquirer.prompt([{
+          type: 'list',
+          name: 'action',
+          message: 'What would you like to do?',
+          choices: [
+            {
+              name: '📤 Upload local config to custom folder (overwrites any pending data)',
+              value: 'upload',
+            },
+            {
+              name: '⏳ Wait for sync to complete (cancel and try again later)',
+              value: 'wait',
+            },
+          ],
+        }])
+
+        if (action === 'wait') {
+          this.ui.displayInfo('Please wait for sync to finish, then run this command again.')
+          return false
+        }
+
         await this.moveConfigToCloud(this.configFile, customConfigFile)
       }
-      else if (!localExists && remoteExists) {
+      else if (!localHasContent && remoteHasContent) {
         this.ui.displaySuccess('📥 Found existing configuration in custom folder')
         this.ui.displayInfo('Will use custom folder configuration')
       }
@@ -886,77 +1154,154 @@ export class SyncManager {
         return true
       }
 
+      // Get cloud config path from sync config
+      const cloudPath = syncConfig.cloudPath || syncConfig.customPath
+      const providerName = syncConfig.provider === 'icloud'
+        ? 'iCloud'
+        : syncConfig.provider === 'onedrive'
+          ? 'OneDrive'
+          : syncConfig.provider === 'wsl-host'
+            ? 'Windows Host'
+            : syncConfig.provider === 's3'
+              ? 'S3'
+              : 'Custom Folder'
+
+      this.ui.displayInfo(`📋 Current sync configuration:`)
+      this.ui.displayInfo(`   Provider: ${providerName}`)
+      if (cloudPath) {
+        this.ui.displayInfo(`   Cloud path: ${cloudPath}`)
+      }
+
+      // Check what exists and whether they have actual content
+      const localExists = existsSync(this.configFile)
+      const localHasContent = this.hasConfigContent(this.configFile)
+      const cloudConfigFile = cloudPath ? join(cloudPath, '.start-claude', 'config.json') : null
+      const cloudExists = cloudConfigFile ? existsSync(cloudConfigFile) : false
+      const cloudHasContent = cloudConfigFile ? this.hasConfigContent(cloudConfigFile) : false
+
+      // Warning: cloud is empty but local has content
+      if (localHasContent && !cloudHasContent) {
+        this.ui.displayInfo('')
+        this.ui.displayWarning('⚠️  WARNING: The cloud config is empty but you have local configurations!')
+        this.ui.displayInfo('   This could mean cloud sync hasn\'t finished downloading your data.')
+        this.ui.displayInfo('   If you proceed with "Copy cloud config to local", you may lose your configurations.')
+      }
+
+      // Show user what will happen and get confirmation
+      this.ui.displayInfo('')
+      this.ui.displayWarning('⚠️  Disabling sync will:')
+      this.ui.displayInfo('   • Remove the sync link')
+      if (cloudHasContent) {
+        this.ui.displayInfo('   • Copy current cloud config to local storage')
+      }
+      else if (cloudExists) {
+        this.ui.displayInfo('   • Note: Cloud config exists but contains no configurations')
+      }
+      this.ui.displayInfo('   • Your local config will no longer sync with the cloud')
+
+      const { action } = await inquirer.prompt([{
+        type: 'list',
+        name: 'action',
+        message: 'How would you like to handle your configuration?',
+        choices: [
+          // Only show "Copy cloud config" if cloud has actual content
+          ...(cloudHasContent
+            ? [{
+                name: '📥 Copy cloud config to local and disable sync',
+                value: 'copy-cloud',
+              }]
+            : []),
+          // Show "Keep local" if local has content (prioritize this when cloud is empty)
+          ...(localHasContent
+            ? [{
+                name: `📄 Keep existing local config and disable sync${!cloudHasContent ? ' (RECOMMENDED)' : ''}`,
+                value: 'keep-local',
+              }]
+            : []),
+          // Show "Copy cloud" with warning if cloud exists but is empty and local has content
+          ...(cloudExists && !cloudHasContent && localHasContent
+            ? [{
+                name: '⚠️  Copy empty cloud config to local (will lose local configurations)',
+                value: 'copy-cloud-empty',
+              }]
+            : []),
+          {
+            name: '📄 Create new empty local config and disable sync',
+            value: 'create-new',
+          },
+          {
+            name: '❌ Cancel (keep sync enabled)',
+            value: 'cancel',
+          },
+        ],
+      }])
+
+      if (action === 'cancel') {
+        this.ui.displayInfo('Operation cancelled. Sync remains enabled.')
+        return false
+      }
+
       this.ui.displayInfo('🔄 Disabling sync...')
 
-      // Copy cloud config back to local if it exists
-      try {
-        // Get cloud config path from sync config
-        const cloudPath = syncConfig.cloudPath || syncConfig.customPath
+      // Handle the chosen action
+      if ((action === 'copy-cloud' || action === 'copy-cloud-empty') && cloudConfigFile && cloudExists) {
+        // Backup existing local config if any
+        if (localExists) {
+          const backupPath = `${this.configFile}.backup.${Date.now()}`
+          copyFileSync(this.configFile, backupPath)
+          this.ui.displayInfo(`💾 Backed up local config to: ${backupPath}`)
+        }
+
+        // Copy cloud config to local
+        copyFileSync(cloudConfigFile, this.configFile)
+        this.ui.displayInfo('📥 Copied cloud config to local location')
+
+        // Also copy additional config files if they exist and are valid
         if (cloudPath) {
-          const cloudConfigFile = join(cloudPath, '.start-claude', 'config.json')
+          const cloudS3Config = join(cloudPath, '.start-claude', 's3-config.json')
+          const localS3Config = join(this.configDir, 's3-config.json')
+          if (existsSync(cloudS3Config)) {
+            try {
+              // Validate S3 config before copying
+              const s3ConfigContent = readFileSync(cloudS3Config, 'utf-8')
+              const s3Config = JSON.parse(s3ConfigContent)
 
-          if (existsSync(cloudConfigFile)) {
-            // Backup existing local config if any
-            if (existsSync(this.configFile)) {
-              const backupPath = `${this.configFile}.backup.${Date.now()}`
-              copyFileSync(this.configFile, backupPath)
-              this.ui.displayInfo(`💾 Backed up local config to: ${backupPath}`)
-            }
-
-            // Copy cloud config to local
-            copyFileSync(cloudConfigFile, this.configFile)
-            this.ui.displayInfo('📥 Copied cloud config to local location')
-
-            // Also copy additional config files if they exist and are valid
-            const cloudS3Config = join(cloudPath, '.start-claude', 's3-config.json')
-            const localS3Config = join(this.configDir, 's3-config.json')
-            if (existsSync(cloudS3Config)) {
-              try {
-                // Validate S3 config before copying
-                const s3ConfigContent = readFileSync(cloudS3Config, 'utf-8')
-                const s3Config = JSON.parse(s3ConfigContent)
-
-                // Check if it has required fields
-                if (s3Config.bucket && s3Config.region && s3Config.accessKeyId && s3Config.secretAccessKey && s3Config.key) {
-                  copyFileSync(cloudS3Config, localS3Config)
-                  this.ui.displayInfo('📥 Copied S3 config to local location')
-                }
-                else {
-                  this.ui.displayWarning('⚠️  Cloud S3 config is incomplete, skipping copy')
-                }
+              // Check if it has required fields
+              if (s3Config.bucket && s3Config.region && s3Config.accessKeyId && s3Config.secretAccessKey && s3Config.key) {
+                copyFileSync(cloudS3Config, localS3Config)
+                this.ui.displayInfo('📥 Copied S3 config to local location')
               }
-              catch (error) {
-                this.ui.displayWarning(`⚠️  Failed to validate/copy S3 config: ${error instanceof Error ? error.message : 'Unknown error'}`)
+              else {
+                this.ui.displayWarning('⚠️  Cloud S3 config is incomplete, skipping copy')
               }
             }
-
-            // Also copy migration flags if they exist
-            const cloudMigrationFlags = join(cloudPath, '.start-claude', 'migration-flags.json')
-            const localMigrationFlags = join(this.configDir, 'migration-flags.json')
-            if (existsSync(cloudMigrationFlags)) {
-              try {
-                copyFileSync(cloudMigrationFlags, localMigrationFlags)
-                this.ui.displayInfo('📥 Copied migration flags to local location')
-              }
-              catch (error) {
-                this.ui.displayWarning(`⚠️  Failed to copy migration flags: ${error instanceof Error ? error.message : 'Unknown error'}`)
-              }
+            catch (error) {
+              this.ui.displayWarning(`⚠️  Failed to validate/copy S3 config: ${error instanceof Error ? error.message : 'Unknown error'}`)
             }
           }
-          else {
-            this.ui.displayWarning('⚠️  Cloud config file not found')
 
-            // Create an empty config if no local config exists
-            if (!existsSync(this.configFile)) {
-              const emptyConfig = { version: 1, configs: [] }
-              writeFileSync(this.configFile, JSON.stringify(emptyConfig, null, 2))
-              this.ui.displayInfo('📄 Created new local config file')
+          // Also copy migration flags if they exist
+          const cloudMigrationFlags = join(cloudPath, '.start-claude', 'migration-flags.json')
+          const localMigrationFlags = join(this.configDir, 'migration-flags.json')
+          if (existsSync(cloudMigrationFlags)) {
+            try {
+              copyFileSync(cloudMigrationFlags, localMigrationFlags)
+              this.ui.displayInfo('📥 Copied migration flags to local location')
+            }
+            catch (error) {
+              this.ui.displayWarning(`⚠️  Failed to copy migration flags: ${error instanceof Error ? error.message : 'Unknown error'}`)
             }
           }
         }
       }
-      catch (error) {
-        this.ui.displayWarning(`⚠️  Error copying config from cloud: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      else if (action === 'keep-local') {
+        this.ui.displayInfo('📄 Keeping existing local config')
+      }
+      else if (action === 'create-new') {
+        // Create an empty config
+        const emptyConfig = { version: 1, configs: [], settings: { overrideClaudeCommand: false } }
+        writeFileSync(this.configFile, JSON.stringify(emptyConfig, null, 2))
+        this.ui.displayInfo('📄 Created new local config file')
       }
 
       // Remove sync configuration
@@ -1136,8 +1481,19 @@ export class SyncManager {
    */
   async autoSetupFromCloudConfig(provider: 'icloud' | 'onedrive' | 'wsl-host', cloudPath: string, configPath: string): Promise<boolean> {
     try {
-      const providerName = provider === 'wsl-host' ? 'Windows host' : provider
+      const providerName = provider === 'wsl-host' ? 'Windows host' : provider === 'icloud' ? 'iCloud' : 'OneDrive'
       this.ui.displayInfo(`🔍 Found existing configuration in ${providerName} - Setting up automatic sync...`)
+
+      // Verify permission to access the cloud storage directory (especially important for iCloud on macOS)
+      if (provider === 'icloud' || provider === 'onedrive') {
+        this.ui.displayInfo(`🔐 Verifying ${providerName} access permission...`)
+        const hasPermission = await this.verifyDirectoryPermission(cloudPath, providerName)
+        if (!hasPermission) {
+          this.ui.displayError(`❌ Cannot access ${providerName}. Please grant the necessary permissions and try again.`)
+          return false
+        }
+        this.ui.displaySuccess(`✅ ${providerName} access verified`)
+      }
 
       // Save sync configuration (config will be auto-read from cloud via ConfigFileManager)
       const syncConfig: SyncConfig = {

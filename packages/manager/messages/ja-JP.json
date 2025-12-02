@@ -73,9 +73,9 @@
     "advanced": {
       "title": "詳細設定",
       "description": "高度な環境変数と設定を構成",
-      "authToken": "認証トークン",
-      "authTokenPlaceholder": "認証用 Bearer トークン",
-      "authTokenHelpText": "Claude Code 操作用の追加認証トークン",
+      "legacyApiKey": "レガシー API キー (ANTHROPIC_API_KEY)",
+      "legacyApiKeyPlaceholder": "レガシーキーを使用するプロバイダー用",
+      "legacyApiKeyHelpText": "レガシー API キーフィールド。ほとんどのプロバイダーは ANTHROPIC_AUTH_TOKEN に移行しています。プロバイダーが ANTHROPIC_API_KEY を明示的に要求する場合のみ使用してください。",
       "authHeader": "認証ヘッダー",
       "authHeaderPlaceholder": "Bearer your-token-here",
       "authHeaderHelpText": "認証ヘッダーの便利なフィールド（例：\"Bearer token\"）",
@@ -97,6 +97,7 @@
     "setDefault": "デフォルトに設定",
     "edit": "編集",
     "delete": "削除",
+    "duplicate": "複製",
     "setAsDefault": "デフォルトに設定"
   },
   "deleteModal": {

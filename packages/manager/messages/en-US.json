@@ -73,9 +73,9 @@
     "advanced": {
       "title": "Advanced Settings",
       "description": "Configure advanced environment variables and settings",
-      "authToken": "Auth Token",
-      "authTokenPlaceholder": "Bearer token for authentication",
-      "authTokenHelpText": "Additional authentication token for Claude Code operations",
+      "legacyApiKey": "Legacy API Key (ANTHROPIC_API_KEY)",
+      "legacyApiKeyPlaceholder": "Legacy API key for providers that still use it",
+      "legacyApiKeyHelpText": "Legacy API key field. Most providers have migrated to ANTHROPIC_AUTH_TOKEN. Only use this if your provider specifically requires ANTHROPIC_API_KEY.",
       "authHeader": "Authorization Header",
       "authHeaderPlaceholder": "Bearer your-token-here",
       "authHeaderHelpText": "Convenience field for Authorization header (e.g., \"Bearer token\")",
@@ -97,6 +97,7 @@
     "setDefault": "Set default",
     "edit": "Edit",
     "delete": "Delete",
+    "duplicate": "Duplicate",
     "setAsDefault": "Set as default"
   },
   "deleteModal": {

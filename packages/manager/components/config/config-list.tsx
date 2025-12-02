@@ -13,9 +13,10 @@ interface ConfigListProps {
   onDelete: (name: string) => void
   onToggleEnabled: (name: string, enabled: boolean) => void
   onSetDefault: (name: string) => void
+  onDuplicate: (config: ClaudeConfig) => void
 }
 
-export function ConfigList({ configs, onEdit, onDelete, onToggleEnabled, onSetDefault }: ConfigListProps): ReactNode {
+export function ConfigList({ configs, onEdit, onDelete, onToggleEnabled, onSetDefault, onDuplicate }: ConfigListProps): ReactNode {
   const sortedConfigs = [...configs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   if (configs.length === 0) {
@@ -45,6 +46,7 @@ export function ConfigList({ configs, onEdit, onDelete, onToggleEnabled, onSetDe
             onDelete={onDelete}
             onToggleEnabled={onToggleEnabled}
             onSetDefault={onSetDefault}
+            onDuplicate={onDuplicate}
           />
         ))}
       </div>

@@ -78,6 +78,7 @@ export interface CliOverrides {
   env?: string[]
   proxy?: string
   apiKey?: string
+  authToken?: string // Primary API key (ANTHROPIC_AUTH_TOKEN)
   baseUrl?: string
   model?: string
 }

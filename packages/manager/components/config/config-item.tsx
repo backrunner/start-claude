@@ -5,7 +5,7 @@ import type { ClaudeConfig } from '@/config/types'
 import { useTranslations } from 'next-intl'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Edit, GripVertical, Shield, ShieldCheck, ShieldOff, Star, Trash2, FileCheck } from 'lucide-react'
+import { Copy, Edit, FileCheck, GripVertical, Shield, ShieldCheck, ShieldOff, Star, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,9 +19,10 @@ interface ConfigItemProps {
   onDelete: (name: string) => void
   onToggleEnabled: (name: string, enabled: boolean) => void
   onSetDefault: (name: string) => void
+  onDuplicate: (config: ClaudeConfig) => void
 }
 
-export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDefault }: ConfigItemProps): ReactNode {
+export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDefault, onDuplicate }: ConfigItemProps): ReactNode {
   const t = useTranslations('configItem')
 
   const {
@@ -208,6 +209,14 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                 </Tooltip>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => onDuplicate(config)} className="h-8 w-8">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>{t('duplicate')}</p></TooltipContent>
+                </Tooltip>
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" onClick={() => onDelete(config.name)} className="h-8 w-8 text-muted-foreground hover:text-destructive">
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -320,6 +329,14 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent><p>{t('edit')}</p></TooltipContent>
+                </Tooltip>
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => onDuplicate(config)} className="h-9 w-9">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>{t('duplicate')}</p></TooltipContent>
                 </Tooltip>
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>

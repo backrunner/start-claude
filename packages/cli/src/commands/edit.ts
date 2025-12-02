@@ -19,13 +19,18 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
   if (options.useEditor) {
     const updatedConfig = await editConfigInEditor(config)
     if (updatedConfig) {
-      if (updatedConfig.isDefault && !config.isDefault) {
-        const configs = await configManager.listConfigs()
-        configs.forEach((c: ClaudeConfig) => c.isDefault = false)
-      }
+      try {
+        if (updatedConfig.isDefault && !config.isDefault) {
+          const configs = await configManager.listConfigs()
+          configs.forEach((c: ClaudeConfig) => c.isDefault = false)
+        }
 
-      await configManager.addConfig(updatedConfig)
-      ui.displaySuccess(`Configuration "${name}" updated successfully!`)
+        await configManager.addConfig(updatedConfig)
+        ui.displaySuccess(`Configuration "${name}" updated successfully!`)
+      }
+      catch (error) {
+        ui.displayError(error instanceof Error ? error.message : 'Failed to update configuration')
+      }
     }
     return
   }
@@ -57,8 +62,15 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
       },
       {
         type: 'password',
+        name: 'authToken',
+        message: 'API Key (ANTHROPIC_AUTH_TOKEN):',
+        default: config.authToken ?? '',
+        mask: '*',
+      },
+      {
+        type: 'password',
         name: 'apiKey',
-        message: 'API Key:',
+        message: 'ANTHROPIC_API_KEY (most providers use AUTH_TOKEN above):',
         default: config.apiKey ?? '',
         mask: '*',
       },
@@ -116,6 +128,7 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
     ...config,
     profileType: profileTypeAnswer.profileType,
     baseUrl: profileTypeAnswer.profileType === 'default' ? (answers.baseUrl?.trim() || undefined) : undefined,
+    authToken: profileTypeAnswer.profileType === 'default' ? (answers.authToken?.trim() || undefined) : undefined,
     apiKey: profileTypeAnswer.profileType === 'default' ? (answers.apiKey?.trim() || undefined) : undefined,
     httpProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpProxy?.trim() || undefined) : undefined,
     httpsProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpsProxy?.trim() || undefined) : undefined,
@@ -124,11 +137,16 @@ export async function handleEditCommand(name: string, options: { useEditor?: boo
     isDefault: answers.isDefault,
   }
 
-  await configManager.addConfig(updatedConfig)
+  try {
+    await configManager.addConfig(updatedConfig)
 
-  if (updatedConfig.isDefault && !config.isDefault) {
-    await configManager.setDefaultConfig(updatedConfig.name)
+    if (updatedConfig.isDefault && !config.isDefault) {
+      await configManager.setDefaultConfig(updatedConfig.name)
+    }
+
+    ui.displaySuccess(`Configuration "${name}" updated successfully!`)
   }
-
-  ui.displaySuccess(`Configuration "${name}" updated successfully!`)
+  catch (error) {
+    ui.displayError(error instanceof Error ? error.message : 'Failed to update configuration')
+  }
 }

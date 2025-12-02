@@ -1,6 +1,7 @@
 import type { ClaudeConfig, SystemSettings } from '@start-claude/cli/src/config/types'
 import type { NextRequest } from 'next/server'
 import { ConfigManager } from '@start-claude/cli/src/config/manager'
+import { findConfigByName } from '@start-claude/cli/src/config/name-utils'
 import { S3ConfigFileManager } from '@start-claude/cli/src/config/s3-config'
 import { NextResponse } from 'next/server'
 import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
@@ -152,7 +153,8 @@ async function validateEnabledExtensions(config: ClaudeConfig): Promise<{ valid:
 async function getConfigs(): Promise<ClaudeConfig[]> {
   try {
     const configFile = await configManager.load()
-    return configFile.configs || []
+    // Filter out deleted configs (isDeleted: true)
+    return (configFile.configs || []).filter(c => !c.isDeleted)
   }
   catch (error) {
     console.error('Error reading configs:', error)
@@ -260,14 +262,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Configuration name is required' }, { status: 400 })
     }
 
-    // Use ConfigManager.addConfig() to ensure proper S3 sync
+    // Use ConfigManager.addConfig() to ensure proper S3 sync and name conflict checking
     const configs = await getConfigs()
-    const existingIndex = configs.findIndex(c => c.name === config.name)
 
-    if (existingIndex >= 0) {
+    // Use flexible name matching to find existing config
+    const existingConfig = findConfigByName(configs, config.name)
+
+    if (existingConfig) {
       // Validate the updated config before saving
       const updatedConfig = {
-        ...configs[existingIndex],
+        ...existingConfig,
         ...config,
       }
 
@@ -289,8 +293,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }, { status: 400 })
       }
 
-      // Use ConfigManager.addConfig() which triggers S3 sync
-      await configManager.addConfig(updatedConfigResult.data)
+      try {
+        // Use ConfigManager.addConfig() which triggers S3 sync and checks for conflicts
+        await configManager.addConfig(updatedConfigResult.data)
+      }
+      catch (error) {
+        // Handle name conflict errors from ConfigManager
+        if (error instanceof Error && error.message.includes('conflicts with existing configuration')) {
+          return NextResponse.json({ error: error.message }, { status: 409 })
+        }
+        throw error
+      }
     }
     else {
       // Calculate the next order value as max existing order + 1
@@ -321,8 +334,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }, { status: 400 })
       }
 
-      // Use ConfigManager.addConfig() which triggers S3 sync
-      await configManager.addConfig(newConfigResult.data)
+      try {
+        // Use ConfigManager.addConfig() which triggers S3 sync and checks for conflicts
+        await configManager.addConfig(newConfigResult.data)
+      }
+      catch (error) {
+        // Handle name conflict errors from ConfigManager
+        if (error instanceof Error && error.message.includes('conflicts with existing configuration')) {
+          return NextResponse.json({ error: error.message }, { status: 409 })
+        }
+        throw error
+      }
     }
 
     const updatedConfigs = await getConfigs()
@@ -334,7 +356,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error instanceof SyntaxError) {
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
     }
-    return NextResponse.json({ error: 'Failed to save config' }, { status: 500 })
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Failed to save config',
+    }, { status: 500 })
   }
 }
 

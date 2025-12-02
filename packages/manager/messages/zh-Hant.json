@@ -73,9 +73,9 @@
     "advanced": {
       "title": "進階設定",
       "description": "配置進階選項和環境變數",
-      "authToken": "身份驗證令牌",
-      "authTokenPlaceholder": "Bearer 令牌",
-      "authTokenHelpText": "用於 Claude Code 操作的額外驗證令牌",
+      "legacyApiKey": "舊版 API 金鑰 (ANTHROPIC_API_KEY)",
+      "legacyApiKeyPlaceholder": "適用於仍使用舊版金鑰的服務商",
+      "legacyApiKeyHelpText": "舊版 API 金鑰欄位。大多數服務商已遷移至 ANTHROPIC_AUTH_TOKEN，僅當您的服務商明確要求使用 ANTHROPIC_API_KEY 時才使用此欄位。",
       "authHeader": "授權請求標頭",
       "authHeaderPlaceholder": "Bearer your-token-here",
       "authHeaderHelpText": "快捷設定授權請求標頭（如 \"Bearer token\"）",
@@ -97,6 +97,7 @@
     "setDefault": "設為預設",
     "edit": "編輯",
     "delete": "刪除",
+    "duplicate": "複製",
     "setAsDefault": "設為預設"
   },
   "deleteModal": {
