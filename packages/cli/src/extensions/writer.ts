@@ -146,15 +146,24 @@ export class ExtensionsWriter {
         fs.mkdirSync(skillDir, { recursive: true })
       }
 
-      // Build SKILL.md with frontmatter
-      let skillContent = '---\n'
-      skillContent += `name: ${skill.name}\n`
-      skillContent += `description: ${skill.description}\n`
-      if (skill.allowedTools && skill.allowedTools.length > 0) {
-        skillContent += `allowed-tools: ${skill.allowedTools.join(', ')}\n`
+      // Check if content already has frontmatter
+      let skillContent: string
+      if (this.hasFrontmatter(skill.content)) {
+        // Content already has frontmatter, use as-is
+        skillContent = skill.content
+        this.ui.verbose(`Skill "${skill.name}" already has frontmatter, using content as-is`)
       }
-      skillContent += '---\n\n'
-      skillContent += skill.content
+      else {
+        // Build SKILL.md with frontmatter
+        skillContent = '---\n'
+        skillContent += `name: ${skill.name}\n`
+        skillContent += `description: ${skill.description}\n`
+        if (skill.allowedTools && skill.allowedTools.length > 0) {
+          skillContent += `allowed-tools: ${skill.allowedTools.join(', ')}\n`
+        }
+        skillContent += '---\n\n'
+        skillContent += skill.content
+      }
 
       // Write SKILL.md
       const skillFilePath = path.join(skillDir, 'SKILL.md')
@@ -269,5 +278,16 @@ export class ExtensionsWriter {
     expanded = expanded.replace(/~/g, os.homedir())
 
     return expanded
+  }
+
+  /**
+   * Check if content already has YAML frontmatter
+   */
+  private hasFrontmatter(content: string): boolean {
+    if (!content) {
+      return false
+    }
+    // Frontmatter must start at the beginning of the file with ---
+    return content.trimStart().startsWith('---')
   }
 }
