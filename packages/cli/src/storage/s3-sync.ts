@@ -645,6 +645,39 @@ export class S3SyncManager {
       const configFile = configManager.getConfigFile()
       const localConfigData = JSON.stringify(configFile, null, 2)
 
+      // Safety check: Don't overwrite S3 with empty configs unless forced
+      const localHasContent = Array.isArray(configFile.configs) && configFile.configs.length > 0
+      if (!localHasContent && remoteInfo.exists && !force) {
+        logger.displayVerbose(`⚠️  Local config is empty (no configurations), checking S3 for existing content...`)
+
+        // Check if S3 has actual content
+        try {
+          const getCommand = new GetObjectCommand({
+            Bucket: s3Config.bucket,
+            Key: this.normalizeS3Key(s3Config.key),
+          })
+          const response = await this.s3Client!.send(getCommand)
+          const remoteConfigData = (await response.Body?.transformToString()) || ''
+          const remoteConfig: ConfigFile = JSON.parse(remoteConfigData)
+          const remoteHasContent = Array.isArray(remoteConfig.configs) && remoteConfig.configs.length > 0
+
+          if (remoteHasContent) {
+            logger.displayWarning(`⚠️  S3 has ${remoteConfig.configs.length} configuration(s) but local config is empty.`)
+            logger.displayInfo('   Skipping upload to prevent data loss.')
+            logger.displayInfo('   Use --force to override this protection.')
+            return false
+          }
+        }
+        catch (checkError) {
+          logger.displayVerbose(
+            `⚠️ Failed to check S3 content: ${checkError instanceof Error ? checkError.message : 'Unknown error'}`,
+          )
+          // If we can't verify S3 content, skip upload for safety
+          logger.displayWarning('⚠️  Could not verify S3 content. Skipping empty config upload for safety.')
+          return false
+        }
+      }
+
       // Check if remote file exists and compare content if it does
       if (remoteInfo.exists && !force) {
         logger.displayVerbose(

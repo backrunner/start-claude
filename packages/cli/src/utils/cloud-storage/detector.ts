@@ -450,7 +450,64 @@ function detectiCloudWSL(): CloudStorageInfo {
 }
 
 /**
+ * Get the actual config file path for Windows host, considering cloud sync
+ * Returns the real config path (which may be in a cloud folder if cloud sync is enabled)
+ */
+export function getWindowsHostActualConfigPath(): { configPath: string, syncProvider?: string, cloudPath?: string } | null {
+  if (!isWSL()) {
+    return null
+  }
+
+  const windowsUserPath = getWindowsUserPath()
+  if (!windowsUserPath) {
+    return null
+  }
+
+  const windowsConfigDir = join(windowsUserPath, '.start-claude')
+  const windowsSyncFile = join(windowsConfigDir, 'sync.json')
+  const windowsConfigFile = join(windowsConfigDir, 'config.json')
+
+  // Check if Windows has cloud sync configured
+  if (existsSync(windowsSyncFile)) {
+    try {
+      const syncData = readFileSync(windowsSyncFile, 'utf-8')
+      const syncConfig = JSON.parse(syncData)
+
+      // If Windows is using cloud sync (not local or wsl-host), get the cloud path
+      if (syncConfig.enabled && syncConfig.provider !== 'wsl-host' && syncConfig.provider !== 's3') {
+        const cloudPath = syncConfig.cloudPath || syncConfig.customPath
+        if (cloudPath) {
+          const cloudConfigDir = join(cloudPath, '.start-claude')
+          const cloudConfigFile = join(cloudConfigDir, 'config.json')
+
+          if (existsSync(cloudConfigFile)) {
+            return {
+              configPath: cloudConfigFile,
+              syncProvider: syncConfig.provider,
+              cloudPath,
+            }
+          }
+        }
+      }
+    }
+    catch {
+      // Invalid sync.json, continue to check local config
+    }
+  }
+
+  // Fall back to local Windows config
+  if (existsSync(windowsConfigFile)) {
+    return {
+      configPath: windowsConfigFile,
+    }
+  }
+
+  return null
+}
+
+/**
  * Detect Windows host config directory when running in WSL
+ * Now considers cloud sync configuration on Windows host
  */
 export function detectWindowsHostFromWSL(): CloudStorageInfo {
   if (!isWSL()) {
@@ -483,14 +540,30 @@ export function detectWindowsHostFromWSL(): CloudStorageInfo {
         const syncData = readFileSync(windowsSyncFile, 'utf-8')
         const syncConfig = JSON.parse(syncData)
 
-        // If Windows is using cloud sync (not local), don't offer wsl-host option
-        // Instead, the WSL user should use the same cloud sync provider
-        if (syncConfig.enabled && syncConfig.provider !== 'wsl-host') {
-          return {
-            isAvailable: false,
-            isEnabled: false,
-            path: windowsUserPath,
-            error: `Windows is using ${syncConfig.provider} sync. Please use the same sync provider in WSL.`,
+        // If Windows is using cloud sync (not local or wsl-host), check if WSL can access the same cloud folder
+        if (syncConfig.enabled && syncConfig.provider !== 'wsl-host' && syncConfig.provider !== 's3') {
+          const cloudPath = syncConfig.cloudPath || syncConfig.customPath
+          if (cloudPath) {
+            const cloudConfigDir = join(cloudPath, '.start-claude')
+            const cloudConfigFile = join(cloudConfigDir, 'config.json')
+
+            // If cloud config exists and is accessible from WSL, suggest using the same cloud provider
+            if (existsSync(cloudConfigFile)) {
+              return {
+                isAvailable: true,
+                isEnabled: true,
+                path: cloudPath, // Return the cloud path, not the Windows user path
+                error: `Windows is using ${syncConfig.provider} sync. WSL can access the same cloud folder.`,
+              }
+            }
+            else {
+              return {
+                isAvailable: false,
+                isEnabled: false,
+                path: windowsUserPath,
+                error: `Windows is using ${syncConfig.provider} sync but cloud config is not accessible from WSL.`,
+              }
+            }
           }
         }
       }
@@ -667,20 +740,72 @@ export function detectExistingCloudStorageConfigs(): CloudStorageConfigInfo[] {
   const cloudStatus = getCloudStorageStatus()
 
   // Check Windows host first if running in WSL
-  if (cloudStatus.windowsHost && cloudStatus.windowsHost.isEnabled && cloudStatus.windowsHost.path) {
+  // This now considers the Windows host's cloud sync configuration
+  if (isWSL()) {
+    const windowsActualConfig = getWindowsHostActualConfigPath()
+
+    if (windowsActualConfig) {
+      try {
+        const configData = readFileSync(windowsActualConfig.configPath, 'utf-8')
+        const config = JSON.parse(configData)
+
+        // Valid config must have version, configs array, AND at least one config
+        const hasValidConfig = config
+          && typeof config.version === 'number'
+          && Array.isArray(config.configs)
+          && config.configs.length > 0
+
+        // If Windows is using cloud sync, report the cloud provider
+        if (windowsActualConfig.syncProvider && windowsActualConfig.cloudPath) {
+          results.push({
+            provider: windowsActualConfig.syncProvider as 'icloud' | 'onedrive' | 'wsl-host',
+            path: windowsActualConfig.cloudPath,
+            configPath: windowsActualConfig.configPath,
+            hasValidConfig,
+          })
+        }
+        else {
+          // Windows is using local config
+          const windowsUserPath = getWindowsUserPath()
+          if (windowsUserPath) {
+            results.push({
+              provider: 'wsl-host',
+              path: windowsUserPath,
+              configPath: windowsActualConfig.configPath,
+              hasValidConfig,
+            })
+          }
+        }
+      }
+      catch {
+        // Invalid JSON or other error - still report it but mark as invalid
+        const windowsUserPath = getWindowsUserPath()
+        if (windowsUserPath) {
+          results.push({
+            provider: 'wsl-host',
+            path: windowsUserPath,
+            configPath: windowsActualConfig.configPath,
+            hasValidConfig: false,
+          })
+        }
+      }
+    }
+  }
+  else if (cloudStatus.windowsHost && cloudStatus.windowsHost.isEnabled && cloudStatus.windowsHost.path) {
+    // Non-WSL fallback (shouldn't happen but keep for safety)
     const windowsConfigDir = join(cloudStatus.windowsHost.path, '.start-claude')
     const windowsConfigFile = join(windowsConfigDir, 'config.json')
 
     if (existsSync(windowsConfigFile)) {
       try {
-        // Validate that it's a proper config file
         const configData = readFileSync(windowsConfigFile, 'utf-8')
         const config = JSON.parse(configData)
 
-        // Basic validation - should have version and configs array
+        // Valid config must have version, configs array, AND at least one config
         const hasValidConfig = config
           && typeof config.version === 'number'
           && Array.isArray(config.configs)
+          && config.configs.length > 0
 
         results.push({
           provider: 'wsl-host',
@@ -690,7 +815,6 @@ export function detectExistingCloudStorageConfigs(): CloudStorageConfigInfo[] {
         })
       }
       catch {
-        // Invalid JSON or other error - still report it but mark as invalid
         results.push({
           provider: 'wsl-host',
           path: cloudStatus.windowsHost.path,
@@ -712,10 +836,11 @@ export function detectExistingCloudStorageConfigs(): CloudStorageConfigInfo[] {
         const configData = readFileSync(iCloudConfigFile, 'utf-8')
         const config = JSON.parse(configData)
 
-        // Basic validation - should have version and configs array
+        // Valid config must have version, configs array, AND at least one config
         const hasValidConfig = config
           && typeof config.version === 'number'
           && Array.isArray(config.configs)
+          && config.configs.length > 0
 
         results.push({
           provider: 'icloud',
@@ -747,10 +872,11 @@ export function detectExistingCloudStorageConfigs(): CloudStorageConfigInfo[] {
         const configData = readFileSync(oneDriveConfigFile, 'utf-8')
         const config = JSON.parse(configData)
 
-        // Basic validation - should have version and configs array
+        // Valid config must have version, configs array, AND at least one config
         const hasValidConfig = config
           && typeof config.version === 'number'
           && Array.isArray(config.configs)
+          && config.configs.length > 0
 
         results.push({
           provider: 'onedrive',
