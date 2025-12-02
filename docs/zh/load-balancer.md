@@ -193,7 +193,7 @@ start-claude --balance
 ```bash
 # 设置 Claude Code 使用负载均衡器端点
 export ANTHROPIC_BASE_URL="http://localhost:2333"
-export ANTHROPIC_API_KEY="sk-claude-load-balancer-proxy-key"
+export ANTHROPIC_AUTH_TOKEN="sk-claude-load-balancer-proxy-key"
 
 # 或使用 CLI 覆盖
 claude --base-url http://localhost:2333 --api-key sk-claude-load-balancer-proxy-key

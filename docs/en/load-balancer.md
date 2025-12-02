@@ -193,7 +193,7 @@ Once the load balancer is running, configure Claude Code to use it:
 ```bash
 # Set Claude Code to use load balancer endpoint
 export ANTHROPIC_BASE_URL="http://localhost:2333"
-export ANTHROPIC_API_KEY="sk-claude-load-balancer-proxy-key"
+export ANTHROPIC_AUTH_TOKEN="sk-claude-load-balancer-proxy-key"
 
 # Or use CLI overrides
 claude --base-url http://localhost:2333 --api-key sk-claude-load-balancer-proxy-key

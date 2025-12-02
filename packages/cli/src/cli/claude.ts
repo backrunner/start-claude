@@ -275,6 +275,12 @@ function applyCliOverrides(env: NodeJS.ProcessEnv, overrides: CliOverrides): voi
   }
 
   // Apply API overrides
+  // authToken is the primary API key (ANTHROPIC_AUTH_TOKEN)
+  if (overrides.authToken) {
+    env.ANTHROPIC_AUTH_TOKEN = overrides.authToken
+  }
+
+  // apiKey is the legacy API key (ANTHROPIC_API_KEY)
   if (overrides.apiKey) {
     env.ANTHROPIC_API_KEY = overrides.apiKey
   }

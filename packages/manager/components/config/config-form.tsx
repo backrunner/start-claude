@@ -24,14 +24,14 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     name: '',
     profileType: 'default',
     baseUrl: '',
-    apiKey: '',
+    authToken: '', // Primary API Key (ANTHROPIC_AUTH_TOKEN)
+    apiKey: '', // Legacy API Key (ANTHROPIC_API_KEY)
     model: '',
     permissionMode: 'default',
     transformerEnabled: false,
     transformer: 'auto',
     isDefault: false,
     enabled: true,
-    authToken: '',
     authorization: '',
     customHeaders: '',
   })
@@ -66,7 +66,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
       return false
     if (data.profileType !== 'official' && !data.baseUrl?.trim())
       return false
-    if (data.profileType !== 'official' && !data.apiKey?.trim())
+    if (data.profileType !== 'official' && !data.authToken?.trim())
       return false
 
     // Validate baseUrl format
@@ -107,14 +107,14 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         name: '',
         profileType: 'default' as const,
         baseUrl: '',
-        apiKey: '',
+        authToken: '', // Primary API Key (ANTHROPIC_AUTH_TOKEN)
+        apiKey: '', // Legacy API Key (ANTHROPIC_API_KEY)
         model: '',
         permissionMode: 'default' as const,
         transformerEnabled: false,
         transformer: 'auto',
         isDefault: false,
         enabled: true,
-        authToken: '',
       }
       const isValid = validateFormData(defaultData)
       onFormDataChange(defaultData, isValid)
@@ -154,8 +154,8 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
       }
     }
 
-    if (formData.profileType !== 'official' && !formData.apiKey?.trim()) {
-      newErrors.apiKey = 'API Key is required for custom configurations'
+    if (formData.profileType !== 'official' && !formData.authToken?.trim()) {
+      newErrors.authToken = 'API Key is required for custom configurations'
     }
 
     // Validate customHeaders format
@@ -285,22 +285,22 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="apiKey" className="font-medium flex items-center gap-2">
+                <Label htmlFor="authToken" className="font-medium flex items-center gap-2">
                   <Key className="h-3 w-3" />
-                  API Key *
+                  API Key (ANTHROPIC_AUTH_TOKEN) *
                 </Label>
                 <Input
-                  id="apiKey"
+                  id="authToken"
                   type="password"
-                  value={formData.apiKey ?? ''}
-                  onChange={e => handleChange('apiKey', e.target.value)}
+                  value={formData.authToken ?? ''}
+                  onChange={e => handleChange('authToken', e.target.value)}
                   placeholder="sk-ant-..."
-                  className={errors.apiKey ? 'border-destructive focus-visible:ring-destructive font-mono' : 'font-mono'}
+                  className={errors.authToken ? 'border-destructive focus-visible:ring-destructive font-mono' : 'font-mono'}
                 />
-                {errors.apiKey && (
+                {errors.authToken && (
                   <div className="flex items-center gap-2 text-sm text-destructive">
                     <AlertCircle className="h-3 w-3" />
-                    {errors.apiKey}
+                    {errors.authToken}
                   </div>
                 )}
                 <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
@@ -309,7 +309,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                     <div className="text-sm">
                       <p className="font-medium text-blue-900 dark:text-blue-100">Security Note</p>
                       <p className="text-blue-700 dark:text-blue-300 mt-1">
-                        API keys are stored securely and encrypted locally.
+                        API keys are stored securely and encrypted locally. Most providers now use ANTHROPIC_AUTH_TOKEN.
                       </p>
                     </div>
                   </div>
@@ -482,21 +482,21 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="authToken" className="font-medium flex items-center gap-2">
+              <Label htmlFor="apiKey" className="font-medium flex items-center gap-2">
                 <Key className="h-3 w-3" />
-                Auth Token
+                ANTHROPIC_API_KEY
                 <Badge variant="outline" className="text-xs">Optional</Badge>
               </Label>
               <Input
-                id="authToken"
+                id="apiKey"
                 type="password"
-                value={formData.authToken ?? ''}
-                onChange={e => handleChange('authToken', e.target.value)}
-                placeholder="Bearer token for authentication"
+                value={formData.apiKey ?? ''}
+                onChange={e => handleChange('apiKey', e.target.value)}
+                placeholder="Legacy API key for providers that still use it"
                 className="font-mono"
               />
               <p className="text-xs text-muted-foreground">
-                Additional authentication token for Claude Code operations
+                Legacy API key field. Most providers have migrated to ANTHROPIC_AUTH_TOKEN above. Only use this if your provider specifically requires ANTHROPIC_API_KEY.
               </p>
             </div>
 

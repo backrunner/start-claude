@@ -343,7 +343,7 @@ start-claude transformer-config
 ```bash
 # Set Claude Code to use transformer proxy
 export ANTHROPIC_BASE_URL="http://localhost:2333"
-export ANTHROPIC_API_KEY="sk-claude-load-balancer-proxy-key"
+export ANTHROPIC_AUTH_TOKEN="sk-claude-load-balancer-proxy-key"
 
 # Claude Code will send requests to transformer proxy
 claude --model openai-gpt4

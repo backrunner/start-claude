@@ -38,7 +38,7 @@ export async function handleProxyMode(
 
     const cliOverrides = {
       ...buildCliOverrides(options),
-      apiKey: 'sk-claude-proxy-server', // Use default proxy API key
+      authToken: 'sk-claude-proxy-server', // Use default proxy API key (ANTHROPIC_AUTH_TOKEN)
       baseUrl: 'http://localhost:2333', // Use proxy server's URL
     }
 
@@ -198,7 +198,7 @@ export async function handleProxyMode(
     // Create CLI overrides with load balancer settings
     const cliOverrides = {
       ...buildCliOverrides(options),
-      apiKey: proxyServer.getProxyApiKey(), // Use proxy server's random API key
+      authToken: proxyServer.getProxyApiKey(), // Use proxy server's API key (ANTHROPIC_AUTH_TOKEN)
       baseUrl: 'http://localhost:2333', // Use proxy server's URL
     }
 

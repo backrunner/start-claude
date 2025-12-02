@@ -69,8 +69,8 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
       },
       {
         type: 'password',
-        name: 'apiKey',
-        message: 'API Key (optional):',
+        name: 'authToken',
+        message: 'API Key (ANTHROPIC_AUTH_TOKEN, optional):',
         mask: '*',
       },
     )
@@ -125,7 +125,7 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
     name: answers.name.trim(),
     profileType: profileTypeAnswer.profileType,
     baseUrl: profileTypeAnswer.profileType === 'default' ? (answers.baseUrl?.trim() || undefined) : undefined,
-    apiKey: profileTypeAnswer.profileType === 'default' ? (answers.apiKey?.trim() || undefined) : undefined,
+    authToken: profileTypeAnswer.profileType === 'default' ? (answers.authToken?.trim() || undefined) : undefined,
     httpProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpProxy?.trim() || undefined) : undefined,
     httpsProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpsProxy?.trim() || undefined) : undefined,
     model: answers.model?.trim() || undefined,

@@ -299,7 +299,7 @@ start-claude edit-config      # 在默认编辑器中打开配置文件
 
 ```bash
 # API 配置
-export ANTHROPIC_API_KEY="sk-your-key"
+export ANTHROPIC_AUTH_TOKEN="sk-your-key"  # 主要 API 密钥
 export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 export ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 

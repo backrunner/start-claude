@@ -27,7 +27,7 @@ Official Claude login with proxy support:
 - **Name**: Unique identifier for the configuration
 - **Profile Type**: Configuration type (`default` or `official`)
 - **Base URL**: Custom API endpoint (`ANTHROPIC_BASE_URL`) - for `default` profile type
-- **API Key**: Your Claude API key (`ANTHROPIC_API_KEY`) - for `default` profile type
+- **API Key**: Your Claude API key (`ANTHROPIC_AUTH_TOKEN`) - for `default` profile type
 - **Model**: The Claude model to use (`ANTHROPIC_MODEL`)
 - **Permission Mode**: Configure permission behavior (`default`, `acceptEdits`, `plan`, `bypassPermissions`)
 - **Order**: Priority order for load balancing (lower numbers = higher priority)
@@ -154,7 +154,7 @@ start-claude manager  # Go to Settings tab
 
 ### Authentication & API
 
-- **Auth Token**: Custom authorization token (`ANTHROPIC_AUTH_TOKEN`)
+- **ANTHROPIC_API_KEY**: Legacy API key field. Most providers have migrated to `ANTHROPIC_AUTH_TOKEN`. Only use this if your provider specifically requires ANTHROPIC_API_KEY.
 - **Custom Headers**: Custom HTTP headers (`ANTHROPIC_CUSTOM_HEADERS`)
 
 ### AWS/Bedrock Configuration
@@ -243,7 +243,7 @@ Configurations are stored in `~/.start-claude/config.json`:
     {
       "name": "production",
       "profileType": "default",
-      "apiKey": "sk-ant-...",
+      "authToken": "sk-ant-...",
       "baseUrl": "https://api.anthropic.com",
       "model": "claude-sonnet-4-5-20250929",
       "permissionMode": "default",
@@ -302,13 +302,13 @@ The `order` field allows you to set priority for configurations when using the l
   "name": "primary-api",
   "order": 0,  // Highest priority
   "baseUrl": "https://primary.api.com",
-  "apiKey": "sk-primary"
+  "authToken": "sk-primary"
 },
 {
   "name": "backup-api",
   "order": 10,  // Lower priority
   "baseUrl": "https://backup.api.com",
-  "apiKey": "sk-backup"
+  "authToken": "sk-backup"
 }
 ```
 
