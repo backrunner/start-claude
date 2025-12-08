@@ -1,7 +1,7 @@
 {
   "name": "start-claude",
   "type": "module",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "packageManager": "pnpm@10.25.0",
   "description": "Start your claude code with specified config friendly :D",
   "author": "BackRunner",
