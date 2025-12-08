@@ -3,7 +3,6 @@ import type { ProgramOptions } from './common'
 
 import process from 'node:process'
 import { Command } from 'commander'
-import inquirer from 'inquirer'
 import { name, version } from '../../package.json'
 
 import { ConfigManager } from '../config/manager'
@@ -15,7 +14,7 @@ import {
   promptClaudeInstallation,
 } from '../utils/cli/detection'
 import { UILogger } from '../utils/cli/ui'
-import { checkBackgroundUpgradeResult, checkForUpdates, performAutoUpdate, performBackgroundUpgrade, relaunchCLI } from '../utils/config/update-checker'
+import { checkBackgroundUpgradeResult, checkForUpdates, performBackgroundUpgrade } from '../utils/config/update-checker'
 import { McpSyncManager } from '../utils/mcp/sync-manager'
 import { SpeedTestManager } from '../utils/network/speed-test'
 import { StatusLineManager } from '../utils/statusline/manager'
@@ -345,119 +344,19 @@ program
       return
     }
 
+    // Auto-update in background without user confirmation
     if (updateCheckInfo?.hasUpdate) {
-      ui.warning(`🔔 Update available: ${updateCheckInfo.currentVersion} → ${updateCheckInfo.latestVersion}`)
+      ui.verbose(`🔔 Update available: ${updateCheckInfo.currentVersion} → ${updateCheckInfo.latestVersion}`)
+      ui.verbose('⏳ Starting background upgrade automatically...')
 
-      const updateAnswer = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'updateChoice',
-          message: 'How would you like to update?',
-          choices: [
-            { name: 'Update in background (recommended - non-blocking)', value: 'background' },
-            { name: 'Update now (blocks startup)', value: 'now' },
-            { name: 'Skip for now', value: 'skip' },
-          ],
-          default: 'background',
-        },
-      ])
-
-      if (updateAnswer.updateChoice === 'background') {
-        ui.info('⏳ Starting background upgrade...')
-        // Start background upgrade asynchronously with error handling
-        try {
-          void performBackgroundUpgrade()
-          ui.success('✅ Upgrade started in background. Results will be shown on next startup.')
-          ui.info('💡 You can continue using the CLI while the upgrade happens.')
-        }
-        catch (error) {
-          ui.error('❌ Failed to start background upgrade')
-          ui.verbose(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
-          ui.warning('⚠️ Continuing with current version...')
-        }
+      // Start background upgrade asynchronously - no user confirmation needed
+      try {
+        void performBackgroundUpgrade()
+        ui.verbose('✅ Background upgrade started. Results will be shown on next startup.')
       }
-      else if (updateAnswer.updateChoice === 'now') {
-        ui.info('⏳ Updating start-claude...')
-        let updateResult = await performAutoUpdate()
-
-        // Handle the upgrade flow
-        if (updateResult.success) {
-          // Success - show appropriate message based on method
-          if (updateResult.method === 'silent-upgrade') {
-            ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion}!`)
-            ui.verbose('ℹ️ Update was installed silently without requiring package manager')
-          }
-          else if (updateResult.usedSudo) {
-            ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion} using sudo!`)
-            ui.info('ℹ️ Sudo was required due to permission restrictions')
-          }
-          else {
-            ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion}!`)
-          }
-
-          ui.info('🔄 Relaunching with new version...')
-
-          // Small delay to ensure the message is displayed
-          setTimeout(() => {
-            relaunchCLI()
-          }, 1000)
-          return
-        }
-
-        // Failed - check if we should retry with package manager
-        if (updateResult.shouldRetryWithPackageManager) {
-          ui.warning('⚠️ Silent upgrade failed, attempting update via package manager...')
-
-          // Retry with package manager
-          updateResult = await performAutoUpdate(true, false)
-
-          if (updateResult.success) {
-            ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion}!`)
-            ui.info('🔄 Relaunching with new version...')
-
-            setTimeout(() => {
-              relaunchCLI()
-            }, 1000)
-            return
-          }
-
-          // Package manager failed - check if we need sudo (macOS only)
-          if (updateResult.shouldRetryWithPackageManager && process.platform === 'darwin') {
-            ui.warning('⚠️ Permission denied. Sudo may be required for this installation.')
-
-            const sudoAnswer = await inquirer.prompt([
-              {
-                type: 'confirm',
-                name: 'useSudo',
-                message: 'Would you like to try updating with sudo?',
-                default: true,
-              },
-            ])
-
-            if (sudoAnswer.useSudo) {
-              ui.info('⏳ Updating with sudo...')
-              updateResult = await performAutoUpdate(true, true)
-
-              if (updateResult.success) {
-                ui.success(`✅ Successfully updated to version ${updateCheckInfo.latestVersion} using sudo!`)
-                ui.info('🔄 Relaunching with new version...')
-
-                setTimeout(() => {
-                  relaunchCLI()
-                }, 1000)
-                return
-              }
-            }
-          }
-        }
-
-        // All attempts failed
-        ui.error('❌ Failed to auto-update. Please run manually:')
-        ui.error(updateCheckInfo.updateCommand)
-        if (updateResult.error) {
-          ui.error(`Error details: ${updateResult.error}`)
-        }
-        ui.warning('⚠️ Continuing with current version...')
+      catch (error) {
+        // Silently fail - don't interrupt user's workflow
+        ui.verbose(`Background upgrade failed to start: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
     }
 
