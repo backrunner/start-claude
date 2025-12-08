@@ -1,6 +1,25 @@
 import { z } from 'zod'
 import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
 
+// Extension overrides schema
+const extensionOverridesSchema = z.object({
+  add: z.array(z.string()).optional(),
+  remove: z.array(z.string()).optional(),
+}).optional()
+
+// Enabled extensions schema
+const enabledExtensionsSchema = z.object({
+  useGlobalDefaults: z.boolean().optional(),
+  overrides: z.object({
+    mcpServers: extensionOverridesSchema,
+    skills: extensionOverridesSchema,
+    subagents: extensionOverridesSchema,
+  }).optional(),
+  mcpServers: z.array(z.string()).optional(),
+  skills: z.array(z.string()).optional(),
+  subagents: z.array(z.string()).optional(),
+}).optional()
+
 // Claude configuration validation schema
 export const claudeConfigSchema = z.object({
   id: z.string().optional(),
@@ -12,13 +31,20 @@ export const claudeConfigSchema = z.object({
   permissionMode: z.enum(['default', 'acceptEdits', 'plan', 'bypassPermissions']).optional(),
   transformerEnabled: z.boolean().optional().default(false),
   transformer: z.string().optional().default('auto'),
+  transformerHeaders: z.record(z.string(), z.string()).optional(),
   isDefault: z.boolean().optional().default(false),
   order: z.number().int().min(0).optional(),
   enabled: z.boolean().optional().default(true),
+  deletedAt: z.string().optional(),
+  isDeleted: z.boolean().optional(),
+
+  // Environment variables map
+  env: z.record(z.string(), z.string()).optional(),
 
   // Environment variables
   authToken: z.string().optional().or(z.literal('')), // Primary API Key (ANTHROPIC_AUTH_TOKEN)
   authorization: z.string().optional(),
+  claudeCodeDisableNonessentialTraffic: z.boolean().optional(),
   customHeaders: z.string().optional(),
   smallFastModel: z.string().optional(),
   smallFastModelAwsRegion: z.string().optional(),
@@ -54,14 +80,19 @@ export const claudeConfigSchema = z.object({
   vertexRegion40Opus: z.string().optional(),
   vertexRegion40Sonnet: z.string().optional(),
   vertexRegion45Sonnet: z.string().optional(),
+
+  // Extensions configuration
+  enabledExtensions: enabledExtensionsSchema,
 }).refine((data) => {
-  // For custom profiles with baseUrl, require authToken (primary API key)
+  // For custom profiles with baseUrl, require authToken or apiKey
   if (data.profileType !== 'official' && data.baseUrl && data.baseUrl !== '') {
-    return data.authToken && data.authToken !== ''
+    const hasAuthToken = data.authToken && data.authToken !== ''
+    const hasApiKey = data.apiKey && data.apiKey !== ''
+    return hasAuthToken || hasApiKey
   }
   return true
 }, {
-  message: 'API key (authToken) is required when base URL is provided',
+  message: 'API key is required when base URL is provided',
   path: ['authToken'],
 })
 
