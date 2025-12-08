@@ -20,6 +20,23 @@
     "createButton": "Create Your First Configuration"
   },
   "configForm": {
+    "modal": {
+      "editTitle": "Edit Configuration",
+      "createTitle": "Create Configuration",
+      "editDescription": "Update your Claude configuration settings",
+      "createDescription": "Set up a new Claude configuration",
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "updateButton": "Update Configuration",
+      "createButton": "Create Configuration"
+    },
+    "modelPresets": {
+      "title": "Quick Fill",
+      "claudeOpus": "Claude Opus",
+      "claudeSonnet": "Claude Sonnet",
+      "gpt51": "GPT-5.1",
+      "gemini3": "Gemini 3"
+    },
     "basicInfo": {
       "title": "Basic Information",
       "description": "Configure the basic details for your Claude instance",
@@ -41,6 +58,8 @@
       "apiKey": "API Key",
       "apiKeyPlaceholder": "sk-ant-...",
       "apiKeyRequired": "API Key is required for custom configurations",
+      "convertToAuthToken": "Convert to AuthToken",
+      "convertToAuthTokenHint": "Migrate from legacy API Key to AuthToken format",
       "securityNote": "Security Note",
       "securityNoteText": "API keys are stored securely and encrypted locally."
     },
@@ -53,6 +72,8 @@
       "smallModel": "Small Fast Model",
       "smallModelPlaceholder": "claude-3-5-haiku-20241022",
       "smallModelHelpText": "Model used for quick non-essential tasks (ANTHROPIC_SMALL_FAST_MODEL)",
+      "useMainModel": "Use Main Model",
+      "useMainModelHint": "Fill with the same value as the main model",
       "permissionMode": "Permission Mode",
       "permissionModePlaceholder": "Select permission mode",
       "permissionDefault": "Default",

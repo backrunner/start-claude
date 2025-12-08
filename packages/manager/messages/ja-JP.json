@@ -20,6 +20,23 @@
     "createButton": "最初の設定を作成"
   },
   "configForm": {
+    "modal": {
+      "editTitle": "設定を編集",
+      "createTitle": "設定を作成",
+      "editDescription": "Claude 設定を更新",
+      "createDescription": "新しい Claude 設定をセットアップ",
+      "cancel": "キャンセル",
+      "saving": "保存中...",
+      "updateButton": "設定を更新",
+      "createButton": "設定を作成"
+    },
+    "modelPresets": {
+      "title": "クイック入力",
+      "claudeOpus": "Claude Opus",
+      "claudeSonnet": "Claude Sonnet",
+      "gpt51": "GPT-5.1",
+      "gemini3": "Gemini 3"
+    },
     "basicInfo": {
       "title": "基本情報",
       "description": "Claude インスタンスの基本詳細を設定",
@@ -41,6 +58,8 @@
       "apiKey": "API キー",
       "apiKeyPlaceholder": "sk-ant-...",
       "apiKeyRequired": "カスタム設定には API キーが必要です",
+      "convertToAuthToken": "AuthToken に変換",
+      "convertToAuthTokenHint": "レガシー API Key から AuthToken 形式に移行",
       "securityNote": "セキュリティ注意事項",
       "securityNoteText": "API キーは安全に暗号化されてローカルに保存されます。"
     },
@@ -53,6 +72,8 @@
       "smallModel": "小型高速モデル",
       "smallModelPlaceholder": "claude-3-5-haiku-20241022",
       "smallModelHelpText": "必須でない迅速なタスクに使用するモデル（ANTHROPIC_SMALL_FAST_MODEL）",
+      "useMainModel": "メインモデルを使用",
+      "useMainModelHint": "メインモデルと同じ値を入力",
       "permissionMode": "権限モード",
       "permissionModePlaceholder": "権限モードを選択",
       "permissionDefault": "デフォルト",

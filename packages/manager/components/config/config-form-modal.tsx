@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
+import { useTranslations } from 'next-intl'
 import { Edit, Plus } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -17,6 +18,7 @@ interface ConfigFormModalProps {
 }
 
 export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }: ConfigFormModalProps): ReactNode {
+  const t = useTranslations('configForm.modal')
   const [formData, setFormData] = useState<ClaudeConfig | null>(null)
   const [isValid, setIsValid] = useState<boolean>(false)
   const [saving, setSaving] = useState(false)
@@ -80,10 +82,10 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
             </div>
             <div className="flex-1">
               <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                {config ? 'Edit Configuration' : 'Create Configuration'}
+                {config ? t('editTitle') : t('createTitle')}
               </DialogTitle>
               <DialogDescription className="text-base mt-1.5 text-muted-foreground">
-                {config ? 'Update your Claude configuration settings' : 'Set up a new Claude configuration'}
+                {config ? t('editDescription') : t('createDescription')}
               </DialogDescription>
             </div>
           </div>
@@ -108,7 +110,7 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
               disabled={saving}
               className="min-w-[100px] h-11 font-medium hover:bg-muted/80 transition-colors"
             >
-              Cancel
+              {t('cancel')}
             </Button>
             <Button
               onClick={(): void => { void handleSave() }}
@@ -119,11 +121,11 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
                 ? (
                     <div className="flex items-center gap-2">
                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      Saving...
+                      {t('saving')}
                     </div>
                   )
                 : (
-                    config ? 'Update Configuration' : 'Create Configuration'
+                    config ? t('updateButton') : t('createButton')
                   )}
             </Button>
           </div>

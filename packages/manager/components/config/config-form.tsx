@@ -3,9 +3,10 @@
 import type { ReactNode } from 'react'
 import type { ClaudeConfig } from '@/config/types'
 import { useTranslations } from 'next-intl'
-import { AlertCircle, Brain, Globe, Key, Settings, Shield } from 'lucide-react'
+import { AlertCircle, ArrowRightLeft, Brain, Globe, Key, Settings, Shield } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -291,14 +292,32 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   <Key className="h-3 w-3" />
                   {t('apiConfig.apiKey')} *
                 </Label>
-                <Input
-                  id="authToken"
-                  type="password"
-                  value={formData.authToken ?? ''}
-                  onChange={e => handleChange('authToken', e.target.value)}
-                  placeholder={t('apiConfig.apiKeyPlaceholder')}
-                  className={errors.authToken ? 'border-destructive focus-visible:ring-destructive font-mono' : 'font-mono'}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="authToken"
+                    type="password"
+                    value={formData.authToken ?? ''}
+                    onChange={e => handleChange('authToken', e.target.value)}
+                    placeholder={t('apiConfig.apiKeyPlaceholder')}
+                    className={errors.authToken ? 'border-destructive focus-visible:ring-destructive font-mono flex-1' : 'font-mono flex-1'}
+                  />
+                  {formData.apiKey && !formData.authToken && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-10 px-3 text-xs font-medium whitespace-nowrap hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                      onClick={() => {
+                        handleChange('authToken', formData.apiKey ?? '')
+                        handleChange('apiKey', '')
+                      }}
+                      title={t('apiConfig.convertToAuthTokenHint')}
+                    >
+                      <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />
+                      {t('apiConfig.convertToAuthToken')}
+                    </Button>
+                  )}
+                </div>
                 {errors.authToken && (
                   <div className="flex items-center gap-2 text-sm text-destructive">
                     <AlertCircle className="h-3 w-3" />
@@ -335,6 +354,49 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Model Presets */}
+            <div className="space-y-2">
+              <Label className="font-medium text-sm text-muted-foreground">{t('modelPresets.title')}</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-medium hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
+                  onClick={() => handleChange('model', 'claude-opus-4-5-20251101')}
+                >
+                  {t('modelPresets.claudeOpus')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-medium hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
+                  onClick={() => handleChange('model', 'claude-sonnet-4-5-20250929')}
+                >
+                  {t('modelPresets.claudeSonnet')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-medium hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:hover:bg-green-950/30 dark:hover:text-green-300"
+                  onClick={() => handleChange('model', 'gpt-5.1-codex')}
+                >
+                  {t('modelPresets.gpt51')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-medium hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 dark:hover:bg-blue-950/30 dark:hover:text-blue-300"
+                  onClick={() => handleChange('model', 'gemini-3-pro-preview')}
+                >
+                  {t('modelPresets.gemini3')}
+                </Button>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="model" className="font-medium flex items-center gap-2">
                 <Brain className="h-3 w-3" />
@@ -359,13 +421,27 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 {t('modelPermissions.smallModel')}
                 <Badge variant="outline" className="text-xs">Optional</Badge>
               </Label>
-              <Input
-                id="smallFastModel"
-                value={formData.smallFastModel ?? ''}
-                onChange={e => handleChange('smallFastModel', e.target.value)}
-                placeholder={t('modelPermissions.smallModelPlaceholder')}
-                className="font-mono"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="smallFastModel"
+                  value={formData.smallFastModel ?? ''}
+                  onChange={e => handleChange('smallFastModel', e.target.value)}
+                  placeholder={t('modelPermissions.smallModelPlaceholder')}
+                  className="font-mono flex-1"
+                />
+                {formData.model && formData.model !== formData.smallFastModel && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-10 px-3 text-xs font-medium whitespace-nowrap hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
+                    onClick={() => handleChange('smallFastModel', formData.model ?? '')}
+                    title={t('modelPermissions.useMainModelHint')}
+                  >
+                    {t('modelPermissions.useMainModel')}
+                  </Button>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {t('modelPermissions.smallModelHelpText')}
               </p>

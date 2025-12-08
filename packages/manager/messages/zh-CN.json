@@ -20,6 +20,23 @@
     "createButton": "创建您的第一个配置"
   },
   "configForm": {
+    "modal": {
+      "editTitle": "编辑配置",
+      "createTitle": "创建配置",
+      "editDescription": "更新您的 Claude 配置设置",
+      "createDescription": "设置新的 Claude 配置",
+      "cancel": "取消",
+      "saving": "保存中...",
+      "updateButton": "更新配置",
+      "createButton": "创建配置"
+    },
+    "modelPresets": {
+      "title": "快速填充",
+      "claudeOpus": "Claude Opus",
+      "claudeSonnet": "Claude Sonnet",
+      "gpt51": "GPT-5.1",
+      "gemini3": "Gemini 3"
+    },
     "basicInfo": {
       "title": "基本信息",
       "description": "配置 Claude 的基本信息",
@@ -41,6 +58,8 @@
       "apiKey": "API 密钥",
       "apiKeyPlaceholder": "sk-ant-...",
       "apiKeyRequired": "请输入 API 密钥",
+      "convertToAuthToken": "转换为 AuthToken",
+      "convertToAuthTokenHint": "从旧版 API Key 迁移到 AuthToken 格式",
       "securityNote": "安全提示",
       "securityNoteText": "您的 API 密钥将加密保存在本地。"
     },
@@ -53,6 +72,8 @@
       "smallModel": "轻量快速模型",
       "smallModelPlaceholder": "claude-3-5-haiku-20241022",
       "smallModelHelpText": "用于处理简单任务的轻量模型（ANTHROPIC_SMALL_FAST_MODEL）",
+      "useMainModel": "使用主模型",
+      "useMainModelHint": "填入与主模型相同的值",
       "permissionMode": "权限模式",
       "permissionModePlaceholder": "选择权限模式",
       "permissionDefault": "默认",
