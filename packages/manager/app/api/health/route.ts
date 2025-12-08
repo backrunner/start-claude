@@ -1,5 +1,6 @@
 import process from 'node:process'
 import { NextResponse } from 'next/server'
+import { cancelPendingShutdown } from '@/lib/shutdown-state'
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
@@ -58,6 +59,12 @@ export async function GET(): Promise<NextResponse> {
   // Update last heartbeat timestamp
   lastFrontendHeartbeat = Date.now()
 
+  // Cancel any pending shutdown (page might have refreshed)
+  const wasCancelled = cancelPendingShutdown()
+  if (wasCancelled) {
+    console.log('[Health] Cancelled pending shutdown due to new heartbeat')
+  }
+
   // Start monitoring on first request
   if (!initialized) {
     initialized = true
@@ -69,5 +76,6 @@ export async function GET(): Promise<NextResponse> {
     status: 'ok',
     timestamp: Date.now(),
     lastHeartbeat: lastFrontendHeartbeat,
+    shutdownCancelled: wasCancelled,
   })
 }
