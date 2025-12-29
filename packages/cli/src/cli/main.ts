@@ -14,7 +14,7 @@ import {
   promptClaudeInstallation,
 } from '../utils/cli/detection'
 import { UILogger } from '../utils/cli/ui'
-import { checkBackgroundUpgradeResult, checkForUpdates, performBackgroundUpgrade } from '../utils/config/update-checker'
+import { checkForUpdates, handleBackgroundUpgradeResult, performBackgroundUpgrade } from '../utils/config/update-checker'
 import { McpSyncManager } from '../utils/mcp/sync-manager'
 import { SpeedTestManager } from '../utils/network/speed-test'
 import { StatusLineManager } from '../utils/statusline/manager'
@@ -225,29 +225,12 @@ program
     ui.verbose('Verbose mode enabled')
 
     // Check if there's a background upgrade result from previous run
-    // Wrapped in try-catch to ensure upgrade checking never crashes CLI startup
+    // Silent handling - only prompts after multiple consecutive failures
     try {
-      const backgroundUpgradeInfo = checkBackgroundUpgradeResult()
-      if (backgroundUpgradeInfo) {
-        const { result, latestVersion } = backgroundUpgradeInfo
-        if (result.success) {
-          ui.success(`✅ Update completed successfully${latestVersion ? ` to version ${latestVersion}` : ''}!`)
-          if (result.method === 'silent-upgrade') {
-            ui.info('ℹ️ The update was installed silently in the background')
-          }
-          ui.info('💡 The new version will be used on your next start-claude session')
-        }
-        else if (result.shouldRetryWithPackageManager) {
-          ui.warning('⚠️ Background upgrade encountered an issue. You may need to update manually.')
-          if (result.error) {
-            ui.verbose(`Error: ${result.error}`)
-          }
-        }
-      }
+      await handleBackgroundUpgradeResult(ui)
     }
-    catch (error) {
+    catch {
       // Silently fail - upgrade result checking should never crash the CLI
-      ui.verbose(`Failed to check upgrade result: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
 
     // Handle WSL config detection if needed

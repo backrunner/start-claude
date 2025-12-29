@@ -16,6 +16,11 @@ import { CacheManager } from './cache-manager'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// Cache keys for silent upgrade tracking
+const CACHE_KEY_FAILURE_COUNT = 'upgrade.consecutiveFailures'
+const CACHE_KEY_USER_DISMISSED = 'upgrade.userDismissedPrompt'
+const FAILURE_THRESHOLD = 10
+
 export interface UpdateInfo {
   currentVersion: string
   latestVersion: string
@@ -762,6 +767,16 @@ export async function performBackgroundUpgrade(): Promise<void> {
             ...result,
             timestamp: Date.now(),
           })
+
+          // Track success/failure for silent upgrade prompting
+          if (result.success) {
+            cache.set(CACHE_KEY_FAILURE_COUNT, 0)
+            cache.delete(CACHE_KEY_USER_DISMISSED)
+          }
+          else {
+            const failures = cache.get(CACHE_KEY_FAILURE_COUNT) || 0
+            cache.set(CACHE_KEY_FAILURE_COUNT, failures + 1)
+          }
         }
         catch (error) {
           // Catch any unexpected errors (performSilentUpgrade should return errors, not throw)
@@ -770,6 +785,10 @@ export async function performBackgroundUpgrade(): Promise<void> {
             error: error instanceof Error ? error.message : 'Unknown error',
             timestamp: Date.now(),
           })
+
+          // Increment failure count on exception
+          const failures = cache.get(CACHE_KEY_FAILURE_COUNT) || 0
+          cache.set(CACHE_KEY_FAILURE_COUNT, failures + 1)
         }
         finally {
           cache.delete('upgrade.backgroundRunning')
@@ -873,4 +892,105 @@ export function relaunchCLI(): void {
 
   // Exit the current process
   process.exit(0)
+}
+
+/**
+ * Check if sudo is needed for global npm install on macOS
+ */
+function checkNeedsSudo(): boolean {
+  if (process.platform !== 'darwin') return false
+
+  try {
+    const globalDir = execSync('npm root -g', { encoding: 'utf-8' }).trim()
+    accessSync(globalDir, constants.W_OK)
+    return false
+  }
+  catch {
+    return true
+  }
+}
+
+/**
+ * Perform interactive upgrade when user chooses to upgrade
+ */
+async function performInteractiveUpgrade(ui: { info: (msg: string) => void, success: (msg: string) => void, error: (msg: string) => void }): Promise<void> {
+  const needsSudo = checkNeedsSudo()
+  const pm = detectPackageManager()
+
+  if (needsSudo) {
+    ui.info(`Admin privileges required for global install, using sudo ${pm}...`)
+  }
+
+  ui.info('Upgrading start-claude...')
+  const result = await performPackageManagerUpdate(needsSudo)
+
+  if (result.success) {
+    ui.success('Upgrade successful! The new version will be used on next startup.')
+    const cache = CacheManager.getInstance()
+    cache.set(CACHE_KEY_FAILURE_COUNT, 0)
+    cache.delete(CACHE_KEY_USER_DISMISSED)
+  }
+  else {
+    ui.error(`Upgrade failed: ${result.error}`)
+    if (!needsSudo && result.shouldRetryWithPackageManager) {
+      ui.info('Permission issue detected, retrying with sudo...')
+      const retryResult = await performPackageManagerUpdate(true)
+      if (retryResult.success) {
+        ui.success('Upgrade successful!')
+        const cache = CacheManager.getInstance()
+        cache.set(CACHE_KEY_FAILURE_COUNT, 0)
+        cache.delete(CACHE_KEY_USER_DISMISSED)
+      }
+      else {
+        ui.error(`Upgrade still failed: ${retryResult.error}`)
+      }
+    }
+  }
+}
+
+/**
+ * Prompt user for upgrade choice using inquirer
+ */
+async function promptUserForUpgrade(ui: { info: (msg: string) => void, success: (msg: string) => void, error: (msg: string) => void }): Promise<void> {
+  // Dynamic import to avoid loading inquirer unless needed
+  const inquirer = await import('inquirer')
+
+  const { choice } = await inquirer.default.prompt([{
+    type: 'list',
+    name: 'choice',
+    message: 'Background upgrade has failed multiple times. Would you like to upgrade now for the best experience?',
+    choices: [
+      { name: 'Upgrade now', value: 'upgrade' },
+      { name: 'Skip (don\'t ask again)', value: 'dismiss' },
+    ],
+  }])
+
+  const cache = CacheManager.getInstance()
+
+  if (choice === 'upgrade') {
+    await performInteractiveUpgrade(ui)
+  }
+  else {
+    cache.set(CACHE_KEY_USER_DISMISSED, true)
+  }
+}
+
+/**
+ * Handle background upgrade result silently, only prompting after multiple failures
+ */
+export async function handleBackgroundUpgradeResult(ui: { info: (msg: string) => void, success: (msg: string) => void, error: (msg: string) => void }): Promise<void> {
+  const result = checkBackgroundUpgradeResult()
+  if (!result) return
+
+  // Silent handling - no messages for success or failure
+  // Failure counting is handled in performBackgroundUpgrade
+
+  // Check if we need to prompt user (after multiple failures)
+  const cache = CacheManager.getInstance()
+  const failures = cache.get(CACHE_KEY_FAILURE_COUNT) || 0
+  const dismissed = cache.get(CACHE_KEY_USER_DISMISSED)
+
+  if (failures >= FAILURE_THRESHOLD && !dismissed) {
+    await promptUserForUpgrade(ui)
+  }
 }
