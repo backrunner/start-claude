@@ -898,7 +898,8 @@ export function relaunchCLI(): void {
  * Check if sudo is needed for global npm install on macOS
  */
 function checkNeedsSudo(): boolean {
-  if (process.platform !== 'darwin') return false
+  if (process.platform !== 'darwin')
+    return false
 
   try {
     const globalDir = execSync('npm root -g', { encoding: 'utf-8' }).trim()
@@ -980,7 +981,8 @@ async function promptUserForUpgrade(ui: { info: (msg: string) => void, success: 
  */
 export async function handleBackgroundUpgradeResult(ui: { info: (msg: string) => void, success: (msg: string) => void, error: (msg: string) => void }): Promise<void> {
   const result = checkBackgroundUpgradeResult()
-  if (!result) return
+  if (!result)
+    return
 
   // Silent handling - no messages for success or failure
   // Failure counting is handled in performBackgroundUpgrade
