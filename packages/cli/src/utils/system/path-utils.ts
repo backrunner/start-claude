@@ -19,7 +19,7 @@ export function findExecutable(
 ): string | null {
   const {
     env = process.env,
-    extensions = process.platform === 'win32' ? ['.cmd', '.ps1', '.bat', ''] : [''],
+    extensions = process.platform === 'win32' ? ['.exe', '.cmd', '.ps1', '.bat', ''] : [''],
     skipDirs = ['.start-claude'],
   } = options
 
@@ -71,6 +71,15 @@ export function getGlobalNodePaths(env: NodeJS.ProcessEnv = process.env): string
     }
     if (env.LOCALAPPDATA) {
       paths.push(path.join(env.LOCALAPPDATA, 'npm'))
+      // winget installation paths
+      paths.push(path.join(env.LOCALAPPDATA, 'Programs', 'claude'))
+      paths.push(path.join(env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Packages'))
+    }
+    // bun global path (Windows)
+    if (env.USERPROFILE) {
+      paths.push(path.join(env.USERPROFILE, '.bun', 'bin'))
+      // Official installer path (Windows)
+      paths.push(path.join(env.USERPROFILE, '.claude', 'bin'))
     }
   }
   else {
@@ -104,7 +113,16 @@ export function getGlobalNodePaths(env: NodeJS.ProcessEnv = process.env): string
       paths.push(path.join(env.HOME, '.npm-global', 'bin'))
       paths.push(path.join(env.HOME, '.nvm', 'versions', 'node'))
       paths.push(path.join(env.HOME, '.n', 'bin'))
+      // bun global path
+      paths.push(path.join(env.HOME, '.bun', 'bin'))
+      // Official installer path
+      paths.push(path.join(env.HOME, '.claude', 'bin'))
+      // Linux user bin
+      paths.push(path.join(env.HOME, '.local', 'bin'))
     }
+
+    // snap path (Linux)
+    paths.push('/snap/bin')
   }
 
   // Filter out empty or invalid paths
@@ -125,6 +143,10 @@ export function isGlobalNodePath(dirPath: string): boolean {
       /[\\/]nodejs[\\/]?$/i,
       /AppData[\\/]Roaming[\\/]npm/i,
       /Program Files[\\/]nodejs/i,
+      /\.bun[\\/]bin/i,
+      /\.claude[\\/]bin/i,
+      /WinGet[\\/]Packages/i,
+      /Programs[\\/]claude/i,
     ]
     return windowsPatterns.some(pattern => pattern.test(dirPath))
   }
@@ -138,6 +160,10 @@ export function isGlobalNodePath(dirPath: string): boolean {
       /\.nvm\/versions\/node/,
       /\.n\/bin/,
       /\/usr\/local\/opt\/node@\d+\/bin/,
+      /\.bun\/bin/,
+      /\.claude\/bin/,
+      /\.local\/bin/,
+      /\/snap\/bin/,
     ]
     return unixPatterns.some(pattern => pattern.test(dirPath))
   }

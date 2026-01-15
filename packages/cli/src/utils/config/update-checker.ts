@@ -9,7 +9,7 @@ import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { extract } from 'tar'
 import { version } from '../../../package.json'
-import { isGlobalNodePath } from '../system/path-utils'
+import { findExecutable, isGlobalNodePath } from '../system/path-utils'
 import { CacheManager } from './cache-manager'
 
 // Get the current file path using import.meta.url for bundled code
@@ -267,22 +267,28 @@ function hasWritePermission(dirPath: string): boolean {
 
 /**
  * Detect package manager to use for updates
+ * Uses cached installation method if available, then PATH lookup (fast, no execution)
  */
-function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' {
-  try {
-    execSync('pnpm --version', { stdio: 'ignore' })
-    return 'pnpm'
-  }
-  catch {
-    // pnpm not available
+function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' | 'bun' {
+  const cache = CacheManager.getInstance()
+
+  // First, check cached installation method
+  const cachedMethod = cache.getClaudeInstallMethod()
+  if (cachedMethod && ['npm', 'pnpm', 'yarn', 'bun'].includes(cachedMethod)) {
+    return cachedMethod as 'pnpm' | 'npm' | 'yarn' | 'bun'
   }
 
-  try {
-    execSync('yarn --version', { stdio: 'ignore' })
-    return 'yarn'
+  // Fallback to checking available package managers via PATH lookup (fast, no execution)
+  if (findExecutable('pnpm')) {
+    return 'pnpm'
   }
-  catch {
-    // yarn not available
+
+  if (findExecutable('bun')) {
+    return 'bun'
+  }
+
+  if (findExecutable('yarn')) {
+    return 'yarn'
   }
 
   return 'npm' // Fallback to npm
@@ -669,7 +675,9 @@ async function performPackageManagerUpdate(useSudo: boolean = false): Promise<Up
     ? 'npm install -g start-claude@latest'
     : packageManager === 'yarn'
       ? 'yarn global add start-claude@latest'
-      : 'pnpm add -g start-claude@latest'
+      : packageManager === 'bun'
+        ? 'bun add -g start-claude@latest'
+        : 'pnpm add -g start-claude@latest'
 
   const finalCommand = useSudo ? `sudo ${updateCommand}` : updateCommand
 

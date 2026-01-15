@@ -1,4 +1,5 @@
 export * from './detection'
 export * from './editor'
 export * from './fuzzy-match'
+export * from './install-methods'
 export * from './ui'

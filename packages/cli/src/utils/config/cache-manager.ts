@@ -1,3 +1,4 @@
+import type { ClaudeInstallMethod } from '../../config/types'
 import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -359,5 +360,35 @@ export class CacheManager {
   clearClaudeInstallationCache(): void {
     this.delete('claude.installed')
     this.delete('claude.version')
+  }
+
+  /**
+   * Get cached Claude executable path
+   */
+  getClaudePath(): string | null {
+    return this.get('claude.path')
+  }
+
+  /**
+   * Set Claude executable path and installation method (permanent - no expiration)
+   */
+  setClaudePath(claudePath: string, method: ClaudeInstallMethod): void {
+    this.set('claude.path', claudePath) // No TTL = permanent
+    this.set('claude.installMethod', method)
+  }
+
+  /**
+   * Get cached Claude installation method
+   */
+  getClaudeInstallMethod(): ClaudeInstallMethod | null {
+    return this.get('claude.installMethod')
+  }
+
+  /**
+   * Clear Claude path cache (force re-detection on next startup)
+   */
+  clearClaudePathCache(): void {
+    this.delete('claude.path')
+    this.delete('claude.installMethod')
   }
 }

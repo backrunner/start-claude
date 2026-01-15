@@ -307,3 +307,29 @@ export interface MigrationInfo {
   description: string
   timestamp: number
 }
+
+/**
+ * Claude Code installation method types
+ */
+export type ClaudeInstallMethod =
+  | 'npm'
+  | 'pnpm'
+  | 'yarn'
+  | 'bun'
+  | 'homebrew'
+  | 'winget'
+  | 'official-script'
+  | 'unknown'
+
+/**
+ * Installation method information
+ */
+export interface InstallMethodInfo {
+  method: ClaudeInstallMethod
+  name: string
+  command: string
+  installCmd: string
+  updateCmd: string
+  available: boolean
+  priority: number // Lower = higher priority
+}

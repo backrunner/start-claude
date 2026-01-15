@@ -9,7 +9,8 @@ import { ClaudeConfigSyncer } from '../extensions/claude-config-syncer'
 import { ClaudeConfigWatcher } from '../extensions/claude-config-watcher'
 import { ExtensionsWriter } from '../extensions/writer'
 import { UILogger } from '../utils/cli/ui'
-import { findExecutable } from '../utils/system/path-utils'
+import { findClaudeExecutable, detectAvailableInstallMethods } from '../utils/cli/install-methods'
+import { CacheManager } from '../utils/config/cache-manager'
 
 // Global watcher instance to clean up on exit
 let configWatcher: ClaudeConfigWatcher | null = null
@@ -37,10 +38,10 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
     applyCliOverrides(env, cliOverrides)
   }
 
-  // Check if claude command is available
-  const claudePath = findExecutableWithSkipDirs('claude', env)
+  // Check if claude command is available (with cache-first strategy)
+  const claudeResult = findClaudeExecutable(env)
 
-  if (!claudePath) {
+  if (!claudeResult) {
     // Claude is not installed, ask user if they want to install it
     const shouldInstall = await promptForInstallation()
 
@@ -51,15 +52,15 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
       }
 
       // Try to find claude again after installation
-      const newClaudePath = findExecutableWithSkipDirs('claude', env)
-      if (!newClaudePath) {
+      const newClaudeResult = findClaudeExecutable(env)
+      if (!newClaudeResult) {
         const ui = new UILogger()
         ui.error('Failed to find Claude Code after installation. Please restart your terminal.')
         return 1
       }
 
       // Start claude with the newly installed version
-      return startClaudeProcess(newClaudePath, args, env, config)
+      return startClaudeProcess(newClaudeResult.path, args, env, config)
     }
     else {
       const ui = new UILogger()
@@ -70,7 +71,7 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
   }
   else {
     // Claude is available, start it
-    return startClaudeProcess(claudePath, args, env, config)
+    return startClaudeProcess(claudeResult.path, args, env, config)
   }
 }
 
@@ -89,25 +90,35 @@ async function promptForInstallation(): Promise<boolean> {
 
 async function installClaudeCode(): Promise<boolean> {
   const ui = new UILogger()
+
+  const allMethods = await detectAvailableInstallMethods()
+  const availableMethods = allMethods.filter(m => m.available)
+  const preferred = availableMethods[0]
+
+  if (!preferred) {
+    ui.error('No installation method available. Please install Node.js or use the official installer.')
+    return false
+  }
+
   return new Promise((resolve) => {
-    ui.info('Installing Claude Code CLI...')
+    ui.info(`Installing Claude Code CLI using ${preferred.name}...`)
 
-    // Find npm executable in PATH
-    const npmPath = findExecutableWithSkipDirs('npm', process.env)
-    if (!npmPath) {
-      ui.error('npm is not found in PATH. Please install Node.js and npm first.')
-      resolve(false)
-      return
-    }
+    // Parse the install command
+    const [command, ...args] = preferred.installCmd.split(' ')
 
-    const npm: ChildProcess = spawn(npmPath, ['install', '-g', '@anthropic-ai/claude-code'], {
+    const installer: ChildProcess = spawn(command, args, {
       stdio: 'inherit',
       shell: process.platform === 'win32',
     })
 
-    npm.on('close', (code: number | null) => {
+    installer.on('close', (code: number | null) => {
       if (code === 0) {
         ui.success('Claude Code CLI installed successfully!')
+
+        // Cache the installation method
+        const cache = CacheManager.getInstance()
+        cache.set('claude.installMethod', preferred.method)
+
         resolve(true)
       }
       else {
@@ -116,7 +127,7 @@ async function installClaudeCode(): Promise<boolean> {
       }
     })
 
-    npm.on('error', (error: Error) => {
+    installer.on('error', (error: Error) => {
       ui.error(`Installation failed: ${error.message}`)
       resolve(false)
     })
@@ -439,9 +450,4 @@ async function startConfigWatcher(config: ClaudeConfig): Promise<void> {
     const ui = new UILogger()
     ui.warning(`Failed to start config watcher: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
-}
-
-// Function to find executable in PATH (using shared utility)
-function findExecutableWithSkipDirs(command: string, env: NodeJS.ProcessEnv): string | null {
-  return findExecutable(command, { env, skipDirs: ['.start-claude'] })
 }
