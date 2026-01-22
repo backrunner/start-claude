@@ -115,9 +115,9 @@ export function getGlobalNodePaths(env: NodeJS.ProcessEnv = process.env): string
       paths.push(path.join(env.HOME, '.n', 'bin'))
       // bun global path
       paths.push(path.join(env.HOME, '.bun', 'bin'))
-      // Official installer path
+      // Official installer path (~/.claude/bin)
       paths.push(path.join(env.HOME, '.claude', 'bin'))
-      // Linux user bin
+      // User local bin (macOS/Linux) - also used by official installer on macOS
       paths.push(path.join(env.HOME, '.local', 'bin'))
     }
 

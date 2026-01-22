@@ -8,8 +8,8 @@ import { ConfigManager } from '../config/manager'
 import { ClaudeConfigSyncer } from '../extensions/claude-config-syncer'
 import { ClaudeConfigWatcher } from '../extensions/claude-config-watcher'
 import { ExtensionsWriter } from '../extensions/writer'
+import { detectAvailableInstallMethods, findClaudeExecutable } from '../utils/cli/install-methods'
 import { UILogger } from '../utils/cli/ui'
-import { findClaudeExecutable, detectAvailableInstallMethods } from '../utils/cli/install-methods'
 import { CacheManager } from '../utils/config/cache-manager'
 
 // Global watcher instance to clean up on exit
