@@ -4,6 +4,22 @@ import type { ClaudeConfig, SystemSettings } from '@/config/types'
 import { useState } from 'react'
 import { useToast } from '@/lib/use-toast'
 
+interface ToastTranslations {
+  configSaved: string
+  configSavedCreated: (name: string) => string
+  configSavedUpdated: (name: string) => string
+  configSaveFailed: string
+  configsUpdated: string
+  configsUpdatedDescription: string
+  configsUpdateFailed: string
+  configDeleted: string
+  configDeletedDescription: (name: string) => string
+  configDeleteFailed: string
+  settingsSaved: string
+  settingsSavedDescription: string
+  settingsSaveFailed: string
+}
+
 interface UseConfigsReturn {
   configs: ClaudeConfig[]
   settings: SystemSettings
@@ -17,7 +33,11 @@ interface UseConfigsReturn {
   refetchConfigs: () => Promise<void>
 }
 
-export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: SystemSettings): UseConfigsReturn {
+export function useConfigs(
+  initialConfigs?: ClaudeConfig[],
+  initialSettings?: SystemSettings,
+  translations?: ToastTranslations,
+): UseConfigsReturn {
   const { toast } = useToast()
 
   // Helper function to sort configs by order
@@ -77,8 +97,10 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       }
 
       toast({
-        title: 'Configuration saved',
-        description: `Configuration "${config.name}" has been ${isEditing ? 'updated' : 'created'} successfully.`,
+        title: translations?.configSaved ?? 'Configuration saved',
+        description: isEditing
+          ? (translations?.configSavedUpdated(config.name) ?? `Configuration "${config.name}" has been updated successfully.`)
+          : (translations?.configSavedCreated(config.name) ?? `Configuration "${config.name}" has been created successfully.`),
         variant: 'success',
       })
 
@@ -93,7 +115,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       setError(errorMessage)
 
       toast({
-        title: 'Failed to save configuration',
+        title: translations?.configSaveFailed ?? 'Failed to save configuration',
         description: errorMessage,
         variant: 'destructive',
       })
@@ -123,8 +145,8 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       }
 
       toast({
-        title: 'Configurations updated',
-        description: customMessage || 'Configuration order has been updated successfully.',
+        title: translations?.configsUpdated ?? 'Configurations updated',
+        description: customMessage || translations?.configsUpdatedDescription || 'Configuration order has been updated successfully.',
         variant: 'success',
       })
 
@@ -139,7 +161,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       setError(errorMessage)
 
       toast({
-        title: 'Failed to update configurations',
+        title: translations?.configsUpdateFailed ?? 'Failed to update configurations',
         description: errorMessage,
         variant: 'destructive',
       })
@@ -172,8 +194,8 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       }
 
       toast({
-        title: 'Configuration deleted',
-        description: `Configuration "${configName}" has been deleted successfully.`,
+        title: translations?.configDeleted ?? 'Configuration deleted',
+        description: translations?.configDeletedDescription(configName) ?? `Configuration "${configName}" has been deleted successfully.`,
         variant: 'success',
       })
 
@@ -188,7 +210,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       setError(errorMessage)
 
       toast({
-        title: 'Failed to delete configuration',
+        title: translations?.configDeleteFailed ?? 'Failed to delete configuration',
         description: errorMessage,
         variant: 'destructive',
       })
@@ -213,8 +235,8 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       setSettings(data.settings)
 
       toast({
-        title: 'System settings saved',
-        description: 'System settings have been updated successfully.',
+        title: translations?.settingsSaved ?? 'System settings saved',
+        description: translations?.settingsSavedDescription ?? 'System settings have been updated successfully.',
         variant: 'success',
       })
 
@@ -229,7 +251,7 @@ export function useConfigs(initialConfigs?: ClaudeConfig[], initialSettings?: Sy
       setError(errorMessage)
 
       toast({
-        title: 'Failed to save system settings',
+        title: translations?.settingsSaveFailed ?? 'Failed to save system settings',
         description: errorMessage,
         variant: 'destructive',
       })

@@ -8,6 +8,7 @@ import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, us
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { AlertCircle } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useRef, useState } from 'react'
 import { ConfigFormModal } from '@/components/config/config-form-modal'
 import { ConfigList } from '@/components/config/config-list'
@@ -35,6 +36,24 @@ interface HomePageProps {
 }
 
 export default function HomePage({ isVSCode, initialConfigs, initialSettings }: HomePageProps): ReactNode {
+  const t = useTranslations('toast')
+
+  const toastTranslations = {
+    configSaved: t('configSaved'),
+    configSavedCreated: (name: string) => t('configSavedCreated', { name }),
+    configSavedUpdated: (name: string) => t('configSavedUpdated', { name }),
+    configSaveFailed: t('configSaveFailed'),
+    configsUpdated: t('configsUpdated'),
+    configsUpdatedDescription: t('configsUpdatedDescription'),
+    configsUpdateFailed: t('configsUpdateFailed'),
+    configDeleted: t('configDeleted'),
+    configDeletedDescription: (name: string) => t('configDeletedDescription', { name }),
+    configDeleteFailed: t('configDeleteFailed'),
+    settingsSaved: t('settingsSaved'),
+    settingsSavedDescription: t('settingsSavedDescription'),
+    settingsSaveFailed: t('settingsSaveFailed'),
+  }
+
   const {
     configs,
     settings,
@@ -45,7 +64,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     deleteConfig: deleteConfigAPI,
     saveSettings,
     refetchConfigs,
-  } = useConfigs(initialConfigs, initialSettings)
+  } = useConfigs(initialConfigs, initialSettings, toastTranslations)
 
   const [editingConfig, setEditingConfig] = useState<ClaudeConfig | null>(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -233,7 +252,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     const updatedConfigs = configs.map(config =>
       config.name === configName ? { ...config, enabled } : config,
     )
-    void updateConfigs(updatedConfigs, `Configuration "${configName}" has been ${enabled ? 'enabled' : 'disabled'}.`, notifyConfigChange)
+    void updateConfigs(updatedConfigs, enabled ? t('configEnabled', { configName }) : t('configDisabled', { configName }), notifyConfigChange)
   }
 
   const handleSetDefault = (configName: string): void => {
@@ -241,7 +260,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
       ...config,
       isDefault: config.name === configName,
     }))
-    void updateConfigs(updatedConfigs, `Configuration "${configName}" has been set as the default.`, notifyConfigChange)
+    void updateConfigs(updatedConfigs, t('configSetDefault', { configName }), notifyConfigChange)
   }
 
   const handleSwitchSuccess = (result: SwitchResult): void => {
@@ -249,18 +268,22 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
     const healthyCount = result.healthyEndpoints || 0
     const totalCount = result.totalEndpoints || 0
 
-    let description = `${healthyCount} of ${totalCount} endpoints are healthy`
-
     // Add speed test info if available
-    if (result.speedTestResults && result.speedTestResults.length > 0) {
-      const fastest = result.speedTestResults[0]
-      description += ` • Fastest: ${fastest.name} (${fastest.responseTime.toFixed(0)}ms)`
-    }
+    const fastest = result.speedTestResults && result.speedTestResults.length > 0
+      ? result.speedTestResults[0]
+      : null
 
     toast({
       variant: 'success',
-      title: 'Configuration Switch Successful',
-      description,
+      title: t('switchSuccessTitle'),
+      description: fastest
+        ? t('switchSuccessDescription', {
+            healthyCount,
+            totalCount,
+            name: fastest.name,
+            time: fastest.responseTime.toFixed(0),
+          })
+        : `${healthyCount} of ${totalCount} endpoints are healthy`,
     })
 
     // Refresh proxy status to update the card

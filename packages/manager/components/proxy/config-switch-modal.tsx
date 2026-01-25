@@ -4,6 +4,7 @@ import type { ClaudeConfig } from '@start-claude/cli/src/config/types'
 import type { ReactNode } from 'react'
 import type { ProxyStatus } from '@/hooks/use-proxy-status'
 import { AlertCircle, PlayCircle, RefreshCw, Settings2 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,7 @@ export interface SwitchResult {
 }
 
 export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSwitchSuccess }: ConfigSwitchModalProps): ReactNode {
+  const t = useTranslations('configSwitch')
   const [configs, setConfigs] = useState<ClaudeConfig[]>([])
   const [selectedConfigs, setSelectedConfigs] = useState<Set<string>>(new Set())
   const [currentProxyStatus, setCurrentProxyStatus] = useState<ProxyStatus | null>(null)
@@ -106,7 +108,7 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
       if (selectedConfigObjects.length === 0) {
         setSwitchResult({
           success: false,
-          message: 'No valid configurations selected',
+          message: t('noValidConfigs'),
         })
         setSwitching(false)
         return
@@ -176,9 +178,9 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
       console.error('Error switching configs:', error)
 
       // Provide more helpful error messages
-      let errorMessage = 'Failed to connect to proxy server'
+      let errorMessage = t('proxyConnectionFailed')
       if (error instanceof TypeError && error.message.includes('fetch')) {
-        errorMessage = `Cannot connect to proxy server at port ${currentProxyPort}. Is the proxy running?`
+        errorMessage = t('proxyConnectionFailedPort', { port: currentProxyPort })
       }
       else if (error instanceof Error) {
         errorMessage = error.message
@@ -212,10 +214,10 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
             </div>
             <div className="flex-1">
               <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                Switch Configurations
+                {t('title')}
               </DialogTitle>
               <DialogDescription className="text-base mt-1.5 text-muted-foreground">
-                Select configurations to load into the proxy server
+                {t('description')}
               </DialogDescription>
             </div>
           </div>
@@ -235,9 +237,9 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
                     <div className="flex items-start gap-3">
                       <Settings2 className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                       <div className="text-sm flex-1">
-                        <p className="font-medium text-blue-900 dark:text-blue-100">Configuration Switching</p>
+                        <p className="font-medium text-blue-900 dark:text-blue-100">{t('infoTitle')}</p>
                         <p className="text-blue-700 dark:text-blue-300 mt-1">
-                          Select one or more configurations to load into the proxy server. The server will perform health checks on all selected endpoints.
+                          {t('infoDescription')}
                         </p>
                       </div>
                     </div>
@@ -245,13 +247,13 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
 
                   {/* Configuration List */}
                   <div className="space-y-3">
-                    <h4 className="text-sm font-semibold text-foreground">Available Configurations</h4>
+                    <h4 className="text-sm font-semibold text-foreground">{t('availableConfigs')}</h4>
                     {configs.length === 0
                       ? (
                           <div className="text-center py-12 text-muted-foreground border rounded-lg bg-muted/20">
                             <Settings2 className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                            <p className="font-medium">No configurations available</p>
-                            <p className="text-xs mt-1">Add configurations in the settings</p>
+                            <p className="font-medium">{t('noConfigs')}</p>
+                            <p className="text-xs mt-1">{t('noConfigsHint')}</p>
                           </div>
                         )
                       : (
@@ -298,17 +300,17 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
                                   <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                                     {isCurrentlyInUse && (
                                       <Badge className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 shadow-md shadow-green-500/30 px-2 py-0.5">
-                                        In Use
+                                        {t('inUse')}
                                       </Badge>
                                     )}
                                     {config.enabled && !isCurrentlyInUse && (
                                       <Badge variant="default" className="px-2 py-0.5">
-                                        Enabled
+                                        {t('enabled')}
                                       </Badge>
                                     )}
                                     {config.isDefault && (
                                       <Badge variant="secondary" className="px-2 py-0.5">
-                                        Default
+                                        {t('default')}
                                       </Badge>
                                     )}
                                   </div>
@@ -326,7 +328,7 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
                         <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-base text-red-900 dark:text-red-100">
-                            Switch Failed
+                            {t('switchFailed')}
                           </p>
                           <p className="text-sm mt-1 text-red-700 dark:text-red-300">
                             {switchResult.message}
@@ -334,7 +336,7 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
 
                           {switchResult.endpointDetails && switchResult.endpointDetails.length > 0 && (
                             <div className="mt-3 space-y-2">
-                              <p className="text-xs font-semibold uppercase tracking-wide opacity-75">Endpoint Status:</p>
+                              <p className="text-xs font-semibold uppercase tracking-wide opacity-75">{t('endpointStatus')}</p>
                               <div className="space-y-1">
                                 {switchResult.endpointDetails.map((detail, index) => (
                                   <div key={index} className="flex items-center gap-2 text-sm">
@@ -366,7 +368,7 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
         <DialogFooter className="pt-6 border-t bg-gradient-to-r from-muted/20 to-transparent flex-shrink-0 -mb-6 -mx-6 px-6 pb-6">
           <div className="flex items-center justify-between w-full">
             <p className="text-sm text-muted-foreground">
-              {selectedConfigs.size > 0 && `${selectedConfigs.size} configuration${selectedConfigs.size === 1 ? '' : 's'} selected`}
+              {selectedConfigs.size > 0 && t('selectedCount', { count: selectedConfigs.size })}
             </p>
             <div className="flex items-center gap-3">
               <Button
@@ -375,7 +377,7 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
                 disabled={switching}
                 className="min-w-[100px] h-11 font-medium hover:bg-muted/80 transition-colors"
               >
-                Cancel
+                {t('cancel')}
               </Button>
               <Button
                 onClick={() => void handleSwitch()}
@@ -386,13 +388,13 @@ export function ConfigSwitchModal({ open, onClose, currentProxyPort = 2333, onSw
                   ? (
                       <div className="flex items-center gap-2">
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        Switching...
+                        {t('switching')}
                       </div>
                     )
                   : (
                       <>
                         <RefreshCw className="h-4 w-4 mr-2" />
-                        Switch Configs
+                        {t('switchConfigs')}
                       </>
                     )}
               </Button>

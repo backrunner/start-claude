@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { Terminal } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useVSCode } from '@/context/vscode-context'
@@ -14,6 +15,7 @@ interface VSCodeStartButtonProps {
 
 export function VSCodeStartButton({ configName, className }: VSCodeStartButtonProps): ReactNode {
   const { toast } = useToast()
+  const t = useTranslations('toast')
   const [isStarting, setIsStarting] = useState(false)
   const { isVSCode } = useVSCode()
 
@@ -35,16 +37,16 @@ export function VSCodeStartButton({ configName, className }: VSCodeStartButtonPr
       }
 
       toast({
-        title: 'Starting Claude Code',
-        description: `Opening terminal for configuration "${configName}"`,
+        title: t('vscodeStarting'),
+        description: t('vscodeOpeningTerminal', { name: configName }),
         variant: 'success',
       })
     }
     catch (error) {
       console.error('Error starting Claude:', error)
       toast({
-        title: 'Failed to start Claude',
-        description: error instanceof Error ? error.message : 'Unknown error occurred',
+        title: t('vscodeStartFailed'),
+        description: error instanceof Error ? error.message : t('unknownError'),
         variant: 'destructive',
       })
     }
@@ -67,7 +69,7 @@ export function VSCodeStartButton({ configName, className }: VSCodeStartButtonPr
       className={`bg-green-50 hover:bg-green-100 border-green-200 text-green-700 hover:text-green-800 dark:bg-green-950 dark:hover:bg-green-900 dark:border-green-800 dark:text-green-300 dark:hover:text-green-200 ${className}`}
     >
       <Terminal className="w-3 h-3 mr-1.5" />
-      {isStarting ? 'Starting...' : 'Start Claude'}
+      {isStarting ? t('starting') : t('startClaude')}
     </Button>
   )
 }
