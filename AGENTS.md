@@ -1,28 +1,28 @@
-# Claude AI Assistant Configuration
+# Codex AI Assistant Configuration
 
-This document serves as a context file for Claude AI to understand the project and work effectively as a professional TypeScript developer.
+This document serves as a context file for Codex AI to understand the project and work effectively as a professional TypeScript developer.
 
 ---
 
 ## Project Background
 
-**Start Claude** is a powerful CLI tool and web-based manager for Claude Code (Anthropic's official CLI). It solves the pain points of managing multiple Claude API configurations, switching between different endpoints, and syncing configurations across devices.
+**Start Codex** is a powerful CLI tool and web-based manager for Codex (Anthropic's official CLI). It solves the pain points of managing multiple Codex API configurations, switching between different endpoints, and syncing configurations across devices.
 
 ### Core Problem Statement
 
-Developers working with Claude Code often need to:
+Developers working with Codex often need to:
 - Manage multiple API keys (personal, work, different projects)
 - Switch between different API endpoints (official, custom proxies, local servers)
 - Sync configurations across multiple machines
 - Load balance between multiple endpoints for reliability
 - Override environment variables without modifying shell configs
 
-Start Claude provides a unified solution for all these needs with both CLI and modern web interfaces.
+Start Codex provides a unified solution for all these needs with both CLI and modern web interfaces.
 
 ### Technical Architecture
 
 ```
-start-claude/
+start-Codex/
 ├── packages/
 │   ├── cli/              # Node.js CLI application (TypeScript)
 │   │   ├── src/
@@ -52,9 +52,9 @@ start-claude/
 ## Key Features
 
 ### 1. Configuration Management
-- **Multi-Config Support**: Manage unlimited Claude configurations
-- **Profile Types**: Official Claude or custom API endpoints
-- **Environment Variables**: Full support for 35+ Claude Code env vars
+- **Multi-Config Support**: Manage unlimited Codex configurations
+- **Profile Types**: Official Codex or custom API endpoints
+- **Environment Variables**: Full support for 35+ Codex env vars
 - **Validation**: Real-time validation with detailed error messages
 
 ### 2. Modern Web Interface (Manager)
@@ -293,6 +293,10 @@ return <button>{t('label')}</button>
 - Prefer `const` over `let`
 - Use arrow functions for callbacks
 
+### Commit Style
+- Use `type(component): desc` for commit messages, for example `feat(manager): update model presets`.
+- Keep `type`, `component`, and `desc` lowercase and concise.
+
 ---
 
 ## Anti-Patterns to Avoid
@@ -341,8 +345,8 @@ return <button>{t('label')}</button>
 ## Quick Reference
 
 ### File Locations
-- **Config files**: `~/.start-claude/config.json`
-- **S3 sync config**: `~/.start-claude/s3-config.json`
+- **Config files**: `~/.start-Codex/config.json`
+- **S3 sync config**: `~/.start-Codex/s3-config.json`
 - **Manager**: `packages/manager/`
 - **CLI**: `packages/cli/`
 - **Translations**: `packages/manager/messages/`

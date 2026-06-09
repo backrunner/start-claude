@@ -363,7 +363,16 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   variant="outline"
                   size="sm"
                   className="h-8 text-xs font-medium hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
-                  onClick={() => handleChange('model', 'claude-opus-4-5-20251101')}
+                  onClick={() => handleChange('model', 'claude-fable-5[1m]')}
+                >
+                  {t('modelPresets.claudeFable')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-medium hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
+                  onClick={() => handleChange('model', 'claude-opus-4-8[1m]')}
                 >
                   {t('modelPresets.claudeOpus')}
                 </Button>
@@ -372,7 +381,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   variant="outline"
                   size="sm"
                   className="h-8 text-xs font-medium hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
-                  onClick={() => handleChange('model', 'claude-sonnet-4-5-20250929')}
+                  onClick={() => handleChange('model', 'claude-sonnet-4-6[1m]')}
                 >
                   {t('modelPresets.claudeSonnet')}
                 </Button>
@@ -381,9 +390,9 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   variant="outline"
                   size="sm"
                   className="h-8 text-xs font-medium hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:hover:bg-green-950/30 dark:hover:text-green-300"
-                  onClick={() => handleChange('model', 'gpt-5.1-codex')}
+                  onClick={() => handleChange('model', 'gpt-5.5')}
                 >
-                  {t('modelPresets.gpt51')}
+                  {t('modelPresets.gpt55')}
                 </Button>
                 <Button
                   type="button"

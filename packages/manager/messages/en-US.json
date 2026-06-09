@@ -32,9 +32,10 @@
     },
     "modelPresets": {
       "title": "Quick Fill",
+      "claudeFable": "Claude Fable",
       "claudeOpus": "Claude Opus",
       "claudeSonnet": "Claude Sonnet",
-      "gpt51": "GPT-5.1",
+      "gpt55": "GPT-5.5",
       "gemini3": "Gemini 3"
     },
     "basicInfo": {
@@ -67,10 +68,10 @@
       "title": "Model & Permissions",
       "description": "Configure the model and permission settings",
       "model": "Model",
-      "modelPlaceholder": "claude-sonnet-4-5-20250929",
+      "modelPlaceholder": "claude-sonnet-4-6[1m]",
       "modelHelpText": "Leave empty to use the default model for this configuration",
       "smallModel": "Small Fast Model",
-      "smallModelPlaceholder": "claude-3-5-haiku-20241022",
+      "smallModelPlaceholder": "claude-fable-5[1m]",
       "smallModelHelpText": "Model used for quick non-essential tasks (ANTHROPIC_SMALL_FAST_MODEL)",
       "useMainModel": "Use Main Model",
       "useMainModelHint": "Fill with the same value as the main model",

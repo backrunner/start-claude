@@ -32,9 +32,10 @@
     },
     "modelPresets": {
       "title": "快速填入",
+      "claudeFable": "Claude Fable",
       "claudeOpus": "Claude Opus",
       "claudeSonnet": "Claude Sonnet",
-      "gpt51": "GPT-5.1",
+      "gpt55": "GPT-5.5",
       "gemini3": "Gemini 3"
     },
     "basicInfo": {
@@ -67,10 +68,10 @@
       "title": "模型和權限",
       "description": "配置模型和權限設定",
       "model": "模型",
-      "modelPlaceholder": "claude-sonnet-4-5-20250929",
+      "modelPlaceholder": "claude-sonnet-4-6[1m]",
       "modelHelpText": "留空則使用預設模型",
       "smallModel": "輕量快速模型",
-      "smallModelPlaceholder": "claude-3-5-haiku-20241022",
+      "smallModelPlaceholder": "claude-fable-5[1m]",
       "smallModelHelpText": "用於處理簡單任務的輕量模型（ANTHROPIC_SMALL_FAST_MODEL）",
       "useMainModel": "使用主模型",
       "useMainModelHint": "填入與主模型相同的值",
