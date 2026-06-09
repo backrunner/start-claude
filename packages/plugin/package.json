@@ -15,7 +15,7 @@
   ],
   "main": "./out/extension.js",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.120.0"
   },
   "activationEvents": [
     "onCommand:startClaude.showManager",
@@ -61,15 +61,15 @@
   },
   "dependencies": {
     "@types/ws": "^8.18.1",
-    "ws": "^8.18.3"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
-    "@types/node": "^20.19.10",
-    "@types/vscode": "^1.74.0",
-    "@vscode/vsce": "^3.2.1",
+    "@types/node": "^20.19.42",
+    "@types/vscode": "^1.120.0",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.24.2",
-    "eslint": "^9.33.0",
-    "rimraf": "^6.0.1",
-    "typescript": "^5.9.2"
+    "eslint": "^9.39.4",
+    "rimraf": "^6.1.3",
+    "typescript": "^5.9.3"
   }
 }
