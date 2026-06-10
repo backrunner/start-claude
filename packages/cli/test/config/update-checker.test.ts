@@ -1,8 +1,10 @@
 import * as childProcess from 'node:child_process'
+import * as fs from 'node:fs'
 import * as https from 'node:https'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import packageJson from '../../../../package.json'
-import { checkBackgroundUpgradeResult, checkForUpdates, performAutoUpdate, performBackgroundUpgrade, relaunchCLI } from '../../src/utils/config/update-checker'
+import { checkBackgroundUpgradeResult, checkForUpdates, performAutoUpdate, performBackgroundUpgrade, relaunchCLI, safeCopy } from '../../src/utils/config/update-checker'
 
 // Get the actual version from package.json
 const CURRENT_VERSION = packageJson.version
@@ -29,6 +31,7 @@ vi.mock('tar', () => ({
 // Mock fs functions
 vi.mock('node:fs', () => ({
   accessSync: vi.fn(),
+  cpSync: vi.fn(),
   createWriteStream: vi.fn(() => ({
     on: vi.fn(),
     write: vi.fn(),
@@ -47,6 +50,7 @@ const mockInstance = {
   shouldCheckForUpdates: vi.fn(),
   setUpdateCheckTimestamp: vi.fn(),
   getUpdateCheckTimestamp: vi.fn(),
+  getClaudeInstallMethod: vi.fn(),
   get: vi.fn(),
   set: vi.fn(),
   delete: vi.fn(),
@@ -61,6 +65,7 @@ vi.mock('../../src/utils/config/cache-manager', () => ({
 
 const mockExec = vi.mocked(childProcess.exec)
 const mockExecSync = vi.mocked(childProcess.execSync)
+const mockCpSync = vi.mocked(fs.cpSync)
 const mockSpawn = vi.mocked(childProcess.spawn)
 const mockHttpsGet = vi.mocked(https.default.get)
 
@@ -76,6 +81,7 @@ describe('updateChecker', () => {
 
     // Default cache behavior
     mockInstance.get.mockReturnValue(null)
+    mockInstance.getClaudeInstallMethod.mockReturnValue(null)
     mockInstance.shouldCheckForUpdates.mockReturnValue(true)
   })
 
@@ -261,7 +267,40 @@ describe('updateChecker', () => {
 
       await checkForUpdates(false)
 
-      expect(mockInstance.setUpdateCheckTimestamp).toHaveBeenCalledWith(expect.any(Number), CURRENT_VERSION)
+      expect(mockInstance.setUpdateCheckTimestamp).toHaveBeenCalledWith(expect.any(Number), '1.0.1')
+    })
+  })
+
+  describe('safeCopy', () => {
+    it('should copy directories with fs.cpSync instead of shell wildcards', () => {
+      const sourcePath = '/tmp/start-claude source'
+      const destPath = '/tmp/start-claude dest'
+
+      const result = safeCopy(sourcePath, destPath)
+
+      expect(result).toEqual({ success: true })
+      expect(mockCpSync).toHaveBeenCalledWith(
+        path.normalize(sourcePath),
+        path.normalize(destPath),
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+      expect(mockExecSync).not.toHaveBeenCalled()
+    })
+
+    it('should return a failed result when directory copy fails', () => {
+      mockCpSync.mockImplementationOnce(() => {
+        throw new Error('copy failed')
+      })
+
+      const result = safeCopy('/tmp/source', '/tmp/dest')
+
+      expect(result).toEqual({
+        success: false,
+        error: 'copy failed',
+      })
     })
   })
 

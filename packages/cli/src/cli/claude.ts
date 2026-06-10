@@ -160,12 +160,34 @@ async function startClaudeProcess(
       }
     }
 
+    let signalHandlersRegistered = false
+    const removeSignalHandlers = (): void => {
+      if (!signalHandlersRegistered) {
+        return
+      }
+
+      process.off('SIGINT', handleSigint)
+      process.off('SIGTERM', handleSigterm)
+      signalHandlersRegistered = false
+    }
+
+    const handleSignal = (signal: NodeJS.Signals): void => {
+      removeSignalHandlers()
+      cleanup()
+      claude.kill(signal)
+    }
+
+    const handleSigint = (): void => handleSignal('SIGINT')
+    const handleSigterm = (): void => handleSignal('SIGTERM')
+
     claude.on('close', (code: number | null) => {
+      removeSignalHandlers()
       cleanup()
       resolve(code ?? 0)
     })
 
     claude.on('error', (error: Error) => {
+      removeSignalHandlers()
       cleanup()
       const ui = new UILogger()
       ui.error(`Failed to start Claude: ${error.message}`)
@@ -173,15 +195,9 @@ async function startClaudeProcess(
     })
 
     // Handle process termination signals
-    process.on('SIGINT', () => {
-      cleanup()
-      claude.kill('SIGINT')
-    })
-
-    process.on('SIGTERM', () => {
-      cleanup()
-      claude.kill('SIGTERM')
-    })
+    process.on('SIGINT', handleSigint)
+    process.on('SIGTERM', handleSigterm)
+    signalHandlersRegistered = true
   })
 }
 

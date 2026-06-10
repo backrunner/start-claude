@@ -188,6 +188,7 @@ export class ConfigManager {
 
     // Clear sensitive data from deleted config
     delete targetConfig.apiKey
+    delete targetConfig.authToken
 
     await this.save(configFile)
     return true
@@ -210,6 +211,7 @@ export class ConfigManager {
 
     // Clear sensitive data from deleted config
     delete targetConfig.apiKey
+    delete targetConfig.authToken
 
     await this.save(configFile)
     return true

@@ -21,6 +21,61 @@ interface ConfigFormProps {
   onFormDataChange?: (formData: ClaudeConfig, isValid: boolean) => void
 }
 
+interface TransformerOption {
+  value: string
+  label: string
+  description: string
+}
+
+const transformerTranslationKeys: Record<string, string> = {
+  auto: 'auto',
+  openai: 'openai',
+  'openai-responses': 'openaiResponses',
+  openrouter: 'openrouter',
+  gemini: 'gemini',
+}
+
+const fallbackTransformers: TransformerOption[] = [
+  {
+    value: 'auto',
+    label: 'Auto',
+    description: 'Automatically detect transformer based on API endpoint domain',
+  },
+  {
+    value: 'openai',
+    label: 'OpenAI Chat Completions',
+    description: 'Use /v1/chat/completions compatible request and response conversion',
+  },
+  {
+    value: 'openai-responses',
+    label: 'OpenAI Responses',
+    description: 'Use /v1/responses compatible request and response conversion',
+  },
+  {
+    value: 'openrouter',
+    label: 'OpenRouter',
+    description: 'Use OpenRouter chat completions compatible conversion',
+  },
+  {
+    value: 'gemini',
+    label: 'Gemini',
+    description: 'Use Google Gemini generateContent conversion',
+  },
+]
+
+const permissionModeValues: Array<NonNullable<ClaudeConfig['permissionMode']>> = [
+  'default',
+  'acceptEdits',
+  'auto',
+  'dontAsk',
+  'plan',
+  'bypassPermissions',
+]
+
+function isPermissionMode(value: string): value is NonNullable<ClaudeConfig['permissionMode']> {
+  return permissionModeValues.includes(value as NonNullable<ClaudeConfig['permissionMode']>)
+}
+
 export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps): ReactNode {
   const t = useTranslations('configForm')
   const [formData, setFormData] = useState<ClaudeConfig>(config || {
@@ -40,8 +95,12 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [transformers, setTransformers] = useState<Array<{ value: string, label: string, description: string }>>([])
+  const [transformers, setTransformers] = useState<TransformerOption[]>(fallbackTransformers)
   const [loadingTransformers, setLoadingTransformers] = useState(false)
+
+  const hasApiCredential = (data: ClaudeConfig): boolean => {
+    return Boolean(data.authToken?.trim() || data.apiKey?.trim())
+  }
 
   // Fetch available transformers
   useEffect(() => {
@@ -51,7 +110,9 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         const response = await fetch('/api/transformers')
         if (response.ok) {
           const data = await response.json()
-          setTransformers(data.transformers || [])
+          if (Array.isArray(data.transformers) && data.transformers.length > 0) {
+            setTransformers(data.transformers)
+          }
         }
       }
       catch (error) {
@@ -69,7 +130,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
       return false
     if (data.profileType !== 'official' && !data.baseUrl?.trim())
       return false
-    if (data.profileType !== 'official' && !data.authToken?.trim())
+    if (data.profileType !== 'official' && !hasApiCredential(data))
       return false
 
     // Validate baseUrl format
@@ -138,6 +199,21 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     }
   }
 
+  const convertLegacyApiKeyToAuthToken = (): void => {
+    const newFormData = {
+      ...formData,
+      authToken: formData.apiKey ?? '',
+      apiKey: '',
+    }
+    setFormData(newFormData)
+    setErrors(prev => ({ ...prev, authToken: '', apiKey: '' }))
+
+    if (onFormDataChange) {
+      const isValid = validateFormData(newFormData)
+      onFormDataChange(newFormData, isValid)
+    }
+  }
+
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
 
@@ -157,7 +233,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
       }
     }
 
-    if (formData.profileType !== 'official' && !formData.authToken?.trim()) {
+    if (formData.profileType !== 'official' && !hasApiCredential(formData)) {
       newErrors.authToken = t('apiConfig.apiKeyRequired')
     }
 
@@ -185,6 +261,24 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
     onSave(formData)
   }
+
+  const getTransformerLabel = (transformer: TransformerOption): string => {
+    const translationKey = transformerTranslationKeys[transformer.value]
+    return translationKey
+      ? t(`modelPermissions.transformers.${translationKey}.label`)
+      : transformer.label
+  }
+
+  const getTransformerDescription = (transformer: TransformerOption): string => {
+    const translationKey = transformerTranslationKeys[transformer.value]
+    return translationKey
+      ? t(`modelPermissions.transformers.${translationKey}.description`)
+      : transformer.description
+  }
+
+  const selectedTransformer = transformers.find(
+    transformer => transformer.value === (formData.transformer || 'auto'),
+  )
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full" id="config-form">
@@ -307,10 +401,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                       variant="outline"
                       size="sm"
                       className="h-10 px-3 text-xs font-medium whitespace-nowrap hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
-                      onClick={() => {
-                        handleChange('authToken', formData.apiKey ?? '')
-                        handleChange('apiKey', '')
-                      }}
+                      onClick={convertLegacyApiKeyToAuthToken}
                       title={t('apiConfig.convertToAuthTokenHint')}
                     >
                       <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />
@@ -461,7 +552,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
               <Select
                 value={formData.permissionMode ?? 'default'}
                 onValueChange={(value) => {
-                  if (value && (value === 'default' || value === 'acceptEdits' || value === 'plan' || value === 'bypassPermissions')) {
+                  if (isPermissionMode(value)) {
                     handleChange('permissionMode', value)
                   }
                 }}
@@ -472,6 +563,8 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 <SelectContent>
                   <SelectItem value="default">{t('modelPermissions.permissionDefault')}</SelectItem>
                   <SelectItem value="acceptEdits">{t('modelPermissions.permissionAcceptEdits')}</SelectItem>
+                  <SelectItem value="auto">{t('modelPermissions.permissionAuto')}</SelectItem>
+                  <SelectItem value="dontAsk">{t('modelPermissions.permissionDontAsk')}</SelectItem>
                   <SelectItem value="plan">{t('modelPermissions.permissionPlanMode')}</SelectItem>
                   <SelectItem value="bypassPermissions">{t('modelPermissions.permissionBypass')}</SelectItem>
                 </SelectContent>
@@ -527,11 +620,16 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                       <SelectContent>
                         {transformers.map(transformer => (
                           <SelectItem key={transformer.value} value={transformer.value}>
-                            {transformer.label}
+                            {getTransformerLabel(transformer)}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {selectedTransformer && (
+                      <p className="rounded-md border bg-background/70 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                        {getTransformerDescription(selectedTransformer)}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

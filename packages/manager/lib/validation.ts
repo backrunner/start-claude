@@ -28,7 +28,7 @@ export const claudeConfigSchema = z.object({
   baseUrl: z.string().url('Invalid base URL').optional().or(z.literal('')),
   apiKey: z.string().optional().or(z.literal('')), // Legacy API Key (ANTHROPIC_API_KEY)
   model: z.string().optional(),
-  permissionMode: z.enum(['default', 'acceptEdits', 'plan', 'bypassPermissions']).optional(),
+  permissionMode: z.enum(['default', 'acceptEdits', 'auto', 'dontAsk', 'plan', 'bypassPermissions']).optional(),
   transformerEnabled: z.boolean().optional().default(false),
   transformer: z.string().optional().default('auto'),
   transformerHeaders: z.record(z.string(), z.string()).optional(),

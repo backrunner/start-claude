@@ -11,6 +11,8 @@ vi.mock('node:fs')
 vi.mock('node:process', () => ({
   default: {
     env: {},
+    off: vi.fn(),
+    on: vi.fn(),
     platform: 'linux',
   },
 }))
@@ -45,6 +47,7 @@ const mockInquirer = await import('inquirer')
 
 // Mock process objects
 const mockClaudeProcess = {
+  kill: vi.fn(),
   on: vi.fn(),
 }
 
@@ -66,12 +69,20 @@ describe('claude', () => {
   }
 
   beforeEach(async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', writable: true })
+
     // Reset process.env
     process.env = {
       ...process.env,
       NODE_ENV: 'test',
     }
 
+    mockClaudeProcess.on.mockImplementation((event: string, callback: Function) => {
+      if (event === 'close') {
+        queueMicrotask(() => callback(0))
+      }
+      return mockClaudeProcess
+    })
     mockSpawn.mockReturnValue(mockClaudeProcess as any)
     mockAccessSync.mockImplementation(() => undefined) // File exists
 

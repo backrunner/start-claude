@@ -1,0 +1,122 @@
+import inquirer from 'inquirer';
+import { ConfigManager } from '../config/manager';
+import { createConfigInEditor } from '../utils/cli/editor';
+import { UILogger } from '../utils/cli/ui';
+export async function handleAddCommand(options) {
+    const ui = new UILogger();
+    ui.displayWelcome();
+    const configManager = ConfigManager.getInstance();
+    if (options.useEditor) {
+        const newConfig = await createConfigInEditor();
+        if (newConfig) {
+            try {
+                if (newConfig.isDefault) {
+                    const configs = await configManager.listConfigs();
+                    configs.forEach((c) => c.isDefault = false);
+                }
+                await configManager.addConfig(newConfig);
+                ui.displaySuccess(`Configuration "${newConfig.name}" added successfully!`);
+            }
+            catch (error) {
+                ui.displayError(error instanceof Error ? error.message : 'Failed to add configuration');
+            }
+        }
+        return;
+    }
+    const profileTypeAnswer = await inquirer.prompt([
+        {
+            type: 'list',
+            name: 'profileType',
+            message: 'Profile type:',
+            choices: [
+                { name: 'Default (custom API settings)', value: 'default' },
+                { name: 'Official (use official Claude login with proxy support)', value: 'official' },
+            ],
+            default: 'default',
+        },
+    ]);
+    const questions = [
+        {
+            type: 'input',
+            name: 'name',
+            message: 'Configuration name:',
+            validate: (input) => {
+                const name = input.trim();
+                if (!name) {
+                    return 'Name is required';
+                }
+                return true;
+            },
+        },
+    ];
+    if (profileTypeAnswer.profileType === 'default') {
+        questions.push({
+            type: 'input',
+            name: 'baseUrl',
+            message: 'Base URL (optional):',
+        }, {
+            type: 'password',
+            name: 'authToken',
+            message: 'API Key (ANTHROPIC_AUTH_TOKEN, optional):',
+            mask: '*',
+        });
+    }
+    else if (profileTypeAnswer.profileType === 'official') {
+        questions.push({
+            type: 'input',
+            name: 'httpProxy',
+            message: 'HTTP Proxy (optional):',
+        }, {
+            type: 'input',
+            name: 'httpsProxy',
+            message: 'HTTPS Proxy (optional):',
+        });
+    }
+    questions.push({
+        type: 'input',
+        name: 'model',
+        message: 'Model (optional):',
+        default: '',
+    }, {
+        type: 'list',
+        name: 'permissionMode',
+        message: 'Permission mode (optional):',
+        choices: [
+            { name: 'Default (ask for permissions)', value: 'default' },
+            { name: 'Accept Edits (auto-accept file edits)', value: 'acceptEdits' },
+            { name: 'Auto (automatically decide when to ask)', value: 'auto' },
+            { name: 'Don\'t Ask (never ask for permissions)', value: 'dontAsk' },
+            { name: 'Plan (planning mode)', value: 'plan' },
+            { name: 'Bypass Permissions (dangerous)', value: 'bypassPermissions' },
+            { name: 'None (use Claude default)', value: null },
+        ],
+        default: null,
+    }, {
+        type: 'confirm',
+        name: 'isDefault',
+        message: 'Set as default configuration?',
+        default: false,
+    });
+    const answers = await inquirer.prompt(questions);
+    const config = {
+        name: answers.name.trim(),
+        profileType: profileTypeAnswer.profileType,
+        baseUrl: profileTypeAnswer.profileType === 'default' ? (answers.baseUrl?.trim() || undefined) : undefined,
+        authToken: profileTypeAnswer.profileType === 'default' ? (answers.authToken?.trim() || undefined) : undefined,
+        httpProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpProxy?.trim() || undefined) : undefined,
+        httpsProxy: profileTypeAnswer.profileType === 'official' ? (answers.httpsProxy?.trim() || undefined) : undefined,
+        model: answers.model?.trim() || undefined,
+        permissionMode: answers.permissionMode || undefined,
+        isDefault: answers.isDefault,
+    };
+    try {
+        await configManager.addConfig(config);
+        if (config.isDefault) {
+            await configManager.setDefaultConfig(config.name);
+        }
+        ui.displaySuccess(`Configuration "${config.name}" added successfully!`);
+    }
+    catch (error) {
+        ui.displayError(error instanceof Error ? error.message : 'Failed to add configuration');
+    }
+}

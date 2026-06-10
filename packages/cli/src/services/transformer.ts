@@ -136,12 +136,17 @@ export class TransformerService {
       const openrouterTransformer = new OpenrouterTransformer()
       this.registerTransformer('openrouter', openrouterTransformer)
 
+      // Register OpenAI Responses transformer for explicit selection
+      const { OpenAIResponsesTransformer } = await import('../transformers/openai-responses')
+      const openaiResponsesTransformer = new OpenAIResponsesTransformer()
+      this.registerTransformer('openai-responses', openaiResponsesTransformer)
+
       // Register Gemini transformer
       const { GeminiTransformer } = await import('../transformers/gemini')
       const geminiTransformer = new GeminiTransformer()
       this.registerTransformer('gemini', geminiTransformer)
 
-      this.logger.displayVerbose('Default transformers registered: OpenAI (default), OpenRouter, Gemini')
+      this.logger.displayVerbose('Default transformers registered: OpenAI (default), OpenAI Responses, OpenRouter, Gemini')
     }
     catch (error) {
       this.logger.displayVerbose(`transformer register error: ${error instanceof Error ? error.message : String(error)}`)

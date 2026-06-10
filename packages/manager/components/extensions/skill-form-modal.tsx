@@ -35,6 +35,7 @@ export function SkillFormModal({
   existingIds,
 }: SkillFormModalProps): ReactNode {
   const t = useTranslations('extensions.skills.form')
+  const toastT = useTranslations('toast')
   const isEdit = !!initialData
 
   const [formData, setFormData] = useState<SkillDefinition>(
@@ -125,8 +126,9 @@ export function SkillFormModal({
       await onSave(skill)
 
       toast({
-        title: isEdit ? t('saveSuccess') : t('addSuccess'),
-        description: isEdit ? t('saveSuccessDescription') : t('addSuccessDescription'),
+        title: isEdit ? toastT('skillUpdated') : toastT('skillAdded'),
+        description: isEdit ? toastT('skillUpdatedDescription') : toastT('skillAddedDescription'),
+        variant: 'success',
       })
 
       onClose()
@@ -134,8 +136,8 @@ export function SkillFormModal({
     catch (error) {
       console.error('Failed to save skill:', error)
       toast({
-        title: t('saveError'),
-        description: t('saveErrorDescription'),
+        title: toastT('skillSaveFailed'),
+        description: toastT('skillSaveFailedDescription'),
         variant: 'destructive',
       })
     }

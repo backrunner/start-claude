@@ -39,19 +39,24 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
   const t = useTranslations('toast')
 
   const toastTranslations = {
+    configFetchFailedDescription: t('configFetchFailedDescription'),
     configSaved: t('configSaved'),
     configSavedCreated: (name: string) => t('configSavedCreated', { name }),
     configSavedUpdated: (name: string) => t('configSavedUpdated', { name }),
     configSaveFailed: t('configSaveFailed'),
+    configSaveFailedDescription: t('configSaveFailedDescription'),
     configsUpdated: t('configsUpdated'),
     configsUpdatedDescription: t('configsUpdatedDescription'),
     configsUpdateFailed: t('configsUpdateFailed'),
+    configsUpdateFailedDescription: t('configsUpdateFailedDescription'),
     configDeleted: t('configDeleted'),
     configDeletedDescription: (name: string) => t('configDeletedDescription', { name }),
     configDeleteFailed: t('configDeleteFailed'),
+    configDeleteFailedDescription: t('configDeleteFailedDescription'),
     settingsSaved: t('settingsSaved'),
     settingsSavedDescription: t('settingsSavedDescription'),
     settingsSaveFailed: t('settingsSaveFailed'),
+    settingsSaveFailedDescription: t('settingsSaveFailedDescription'),
   }
 
   const {
@@ -283,7 +288,7 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
             name: fastest.name,
             time: fastest.responseTime.toFixed(0),
           })
-        : `${healthyCount} of ${totalCount} endpoints are healthy`,
+        : t('switchSuccessSummary', { healthyCount, totalCount }),
     })
 
     // Refresh proxy status to update the card

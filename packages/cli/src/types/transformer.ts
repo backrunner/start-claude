@@ -65,7 +65,7 @@ export interface ProxyConfig {
   baseUrl?: string
   apiKey?: string
   model?: string
-  permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
+  permissionMode?: 'default' | 'acceptEdits' | 'auto' | 'dontAsk' | 'plan' | 'bypassPermissions'
   isDefault?: boolean
   order?: number
   // Proxy configuration

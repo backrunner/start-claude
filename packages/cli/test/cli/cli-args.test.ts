@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { filterProcessArgs, parseBalanceStrategy } from '../../src/cli/common'
+import type { ClaudeConfig } from '../../src/config/types'
+import { buildClaudeArgs, filterProcessArgs, parseBalanceStrategy } from '../../src/cli/common'
 
 describe('cLI argument filtering', () => {
   const originalArgv = process.argv
@@ -93,6 +94,26 @@ describe('cLI argument filtering', () => {
     it('should fallback to Fallback strategy for unknown values', () => {
       const result = parseBalanceStrategy('unknown-strategy')
       expect(result).toEqual({ enabled: true, strategy: 'Fallback' })
+    })
+  })
+
+  describe('buildClaudeArgs', () => {
+    it('should pass auto permission mode from config', () => {
+      const config: ClaudeConfig = {
+        name: 'auto-mode-config',
+        permissionMode: 'auto',
+      }
+
+      expect(buildClaudeArgs({}, config)).toEqual(['--permission-mode', 'auto'])
+    })
+
+    it('should prefer CLI permission mode over config permission mode', () => {
+      const config: ClaudeConfig = {
+        name: 'auto-mode-config',
+        permissionMode: 'auto',
+      }
+
+      expect(buildClaudeArgs({ permissionMode: 'dontAsk' }, config)).toEqual(['--permission-mode', 'dontAsk'])
     })
   })
 })

@@ -6,6 +6,7 @@ import { filterProxyArgs } from '../commands/proxy'
 import { ProxyServer } from '../core/proxy'
 import { TransformerService } from '../services/transformer'
 import { UILogger } from '../utils/cli/ui'
+import { hasConfigApiCredentials } from '../utils/config/credentials'
 import { fileLogger } from '../utils/logging/file-logger'
 import { checkAndHandleExistingProxy, removeLockFile, setupProxyCleanup } from '../utils/network/proxy-lock'
 import { startClaude } from './claude'
@@ -65,14 +66,14 @@ export async function handleProxyMode(
     }
   }
 
-  // Include configs that have complete API credentials (baseUrl, apiKey, and model) OR have transformer enabled
+  // Include configs that have complete API credentials (baseUrl, apiKey/authToken, and model) OR have transformer enabled
   const proxyableConfigs = configs.filter((c) => {
-    const hasCompleteApiCredentials = c.baseUrl && c.apiKey && (TransformerService.isTransformerEnabled(c.transformerEnabled) ? c.model : true)
+    const hasCompleteApiCredentials = hasConfigApiCredentials(c) && (TransformerService.isTransformerEnabled(c.transformerEnabled) ? c.model : true)
     const hasTransformerEnabled = TransformerService.isTransformerEnabled(c.transformerEnabled)
 
     if (hasTransformerEnabled && !hasCompleteApiCredentials) {
       const ui = new UILogger()
-      ui.info(`Configuration "${c.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) - including for transformer fallback`)
+      ui.info(`Configuration "${c.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey or authToken/model) - including for transformer fallback`)
     }
 
     return hasCompleteApiCredentials || hasTransformerEnabled
@@ -82,7 +83,7 @@ export async function handleProxyMode(
     const ui = new UILogger()
     ui.error('No configurations found for proxy mode')
     ui.info('Proxy mode requires configurations with either:')
-    ui.info('  - baseUrl, apiKey, and model (for direct API calls)')
+    ui.info('  - baseUrl, apiKey or authToken, and model (for direct API calls)')
     ui.info('  - transformerEnabled: true (for transformer processing)')
     process.exit(1)
   }
@@ -169,7 +170,7 @@ export async function handleProxyMode(
     ui.info('')
 
     // Determine proxy mode and show appropriate message
-    const apiConfigs = proxyableConfigs.filter(c => c.baseUrl && c.apiKey && c.model)
+    const apiConfigs = proxyableConfigs.filter(c => hasConfigApiCredentials(c) && c.model)
     const transformerConfigs = proxyableConfigs.filter(c => TransformerService.isTransformerEnabled(c.transformerEnabled))
 
     if (apiConfigs.length > 0 && transformerConfigs.length > 0) {

@@ -42,6 +42,7 @@ export function McpServerFormModal({
   existingIds,
 }: McpServerFormModalProps): ReactNode {
   const t = useTranslations('extensions.mcp.form')
+  const toastT = useTranslations('toast')
   const isEdit = !!initialData
 
   const [formData, setFormData] = useState<McpServerDefinition>(
@@ -181,8 +182,9 @@ export function McpServerFormModal({
       await onSave(server)
 
       toast({
-        title: isEdit ? t('saveSuccess') : t('addSuccess'),
-        description: isEdit ? t('saveSuccessDescription') : t('addSuccessDescription'),
+        title: isEdit ? toastT('mcpServerUpdated') : toastT('mcpServerAdded'),
+        description: isEdit ? toastT('mcpServerUpdatedDescription') : toastT('mcpServerAddedDescription'),
+        variant: 'success',
       })
 
       onClose()
@@ -190,8 +192,8 @@ export function McpServerFormModal({
     catch (error) {
       console.error('Failed to save MCP server:', error)
       toast({
-        title: t('saveError'),
-        description: t('saveErrorDescription'),
+        title: toastT('mcpServerSaveFailed'),
+        description: toastT('mcpServerSaveFailedDescription'),
         variant: 'destructive',
       })
     }

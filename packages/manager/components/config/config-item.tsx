@@ -5,7 +5,7 @@ import type { ClaudeConfig } from '@/config/types'
 import { useTranslations } from 'next-intl'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Copy, Edit, FileCheck, GripVertical, Shield, ShieldCheck, ShieldOff, Star, Trash2 } from 'lucide-react'
+import { CircleSlash, Copy, Edit, FileCheck, GripVertical, Shield, ShieldCheck, ShieldOff, Sparkles, Star, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -95,6 +95,48 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
   const isEnabled = config.enabled ?? false
   const isDefault = config.isDefault ?? false
 
+  const renderPermissionBadge = (className: string): ReactNode => {
+    switch (config.permissionMode) {
+      case 'acceptEdits':
+        return (
+          <Badge variant="secondary" className={`${className} bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 hover:bg-green-500/20`}>
+            <ShieldCheck className="h-3 w-3 mr-1" />
+            {t('acceptEditsBadge')}
+          </Badge>
+        )
+      case 'auto':
+        return (
+          <Badge variant="secondary" className={`${className} bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/20 hover:bg-violet-500/20`}>
+            <Sparkles className="h-3 w-3 mr-1" />
+            {t('autoModeBadge')}
+          </Badge>
+        )
+      case 'dontAsk':
+        return (
+          <Badge variant="secondary" className={`${className} bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20 hover:bg-slate-500/20`}>
+            <CircleSlash className="h-3 w-3 mr-1" />
+            {t('dontAskBadge')}
+          </Badge>
+        )
+      case 'plan':
+        return (
+          <Badge variant="secondary" className={`${className} bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20`}>
+            <FileCheck className="h-3 w-3 mr-1" />
+            {t('planModeBadge')}
+          </Badge>
+        )
+      case 'bypassPermissions':
+        return (
+          <Badge variant="destructive" className={`${className} bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20`}>
+            <ShieldOff className="h-3 w-3 mr-1" />
+            {t('bypassBadge')}
+          </Badge>
+        )
+      default:
+        return null
+    }
+  }
+
   return (
     <div ref={setNodeRef} style={style} className={isDragging ? 'opacity-50' : ''}>
       <Card className={`group relative overflow-hidden transition-all duration-300 hover:shadow-xl ${isEnabled ? 'border-l-4 border-l-primary shadow-sm' : ''}`}>
@@ -150,28 +192,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
               </div>
             )}
 
-            {(config.permissionMode ?? 'default') !== 'default' && (
-              <>
-                {config.permissionMode === 'acceptEdits' && (
-                  <Badge variant="secondary" className="text-xs w-fit bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 hover:bg-green-500/20">
-                    <ShieldCheck className="h-3 w-3 mr-1" />
-                    {t('acceptEditsBadge')}
-                  </Badge>
-                )}
-                {config.permissionMode === 'plan' && (
-                  <Badge variant="secondary" className="text-xs w-fit bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20">
-                    <FileCheck className="h-3 w-3 mr-1" />
-                    {t('planModeBadge')}
-                  </Badge>
-                )}
-                {config.permissionMode === 'bypassPermissions' && (
-                  <Badge variant="destructive" className="text-xs w-fit bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
-                    <ShieldOff className="h-3 w-3 mr-1" />
-                    {t('bypassBadge')}
-                  </Badge>
-                )}
-              </>
-            )}
+            {renderPermissionBadge('text-xs w-fit')}
 
             {/* Extensions badge */}
             {hasAnyExtensions && (
@@ -259,28 +280,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                   {config.profileType === 'official' && <Shield className="h-3 w-3 mr-1" />}
                   {config.profileType === 'official' ? t('officialBadge') : t('customApiBadge')}
                 </Badge>
-                {(config.permissionMode ?? 'default') !== 'default' && (
-                  <>
-                    {config.permissionMode === 'acceptEdits' && (
-                      <Badge variant="secondary" className="text-xs flex-shrink-0 bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 hover:bg-green-500/20">
-                        <ShieldCheck className="h-3 w-3 mr-1" />
-                        {t('acceptEditsBadge')}
-                      </Badge>
-                    )}
-                    {config.permissionMode === 'plan' && (
-                      <Badge variant="secondary" className="text-xs flex-shrink-0 bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20">
-                        <FileCheck className="h-3 w-3 mr-1" />
-                        {t('planModeBadge')}
-                      </Badge>
-                    )}
-                    {config.permissionMode === 'bypassPermissions' && (
-                      <Badge variant="destructive" className="text-xs flex-shrink-0 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
-                        <ShieldOff className="h-3 w-3 mr-1" />
-                        {t('bypassBadge')}
-                      </Badge>
-                    )}
-                  </>
-                )}
+                {renderPermissionBadge('text-xs flex-shrink-0')}
                 {/* Extensions badge */}
                 {hasAnyExtensions && (
                   <Badge variant="outline" className="text-xs flex-shrink-0">

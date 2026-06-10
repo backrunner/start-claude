@@ -1,6 +1,6 @@
 import type { Buffer } from 'node:buffer'
 import { exec, execSync, spawn } from 'node:child_process'
-import { accessSync, constants, createWriteStream, mkdirSync, rmSync } from 'node:fs'
+import { accessSync, constants, cpSync, createWriteStream, mkdirSync, rmSync } from 'node:fs'
 import https from 'node:https'
 import os from 'node:os'
 import path from 'node:path'
@@ -118,8 +118,8 @@ export async function checkForUpdates(forceCheck = false): Promise<UpdateInfo | 
 
     const hasUpdate = compareVersions(version, latestVersion) < 0
 
-    // Update the last check timestamp
-    cache.setUpdateCheckTimestamp(Date.now(), version)
+    // Update the last check timestamp and remember the newest published version
+    cache.setUpdateCheckTimestamp(Date.now(), latestVersion)
 
     return {
       currentVersion: version,
@@ -424,57 +424,15 @@ function verifyCLIInstallation(installPath: string): { valid: boolean, missingFi
  * Perform a safe file copy with error detection
  * Returns { success: true } or { success: false, error: string }
  */
-function safeCopy(sourcePath: string, destPath: string): { success: boolean, error?: string } {
+export function safeCopy(sourcePath: string, destPath: string): { success: boolean, error?: string } {
   try {
-    let result: { stdout: Buffer, stderr: Buffer }
-
-    // Normalize paths to ensure correct separators for the platform
     const normalizedSource = path.normalize(sourcePath)
     const normalizedDest = path.normalize(destPath)
 
-    if (process.platform === 'win32') {
-      // Windows: xcopy with error checking
-      // /E = copy subdirectories including empty ones
-      // /I = destination is a directory
-      // /Y = suppress prompting to overwrite
-      // /C = continue copying even if errors occur (but we'll check stderr)
-      // Note: xcopy requires backslash separator and handles wildcards at the end
-      const sourceWithWildcard = `${normalizedSource + path.sep}*`
-
-      result = execSync(`xcopy /E /I /Y /C "${sourceWithWildcard}" "${normalizedDest}"`, {
-        encoding: 'buffer',
-        stdio: ['ignore', 'pipe', 'pipe'], // capture stdout and stderr
-      }) as any
-
-      // Check stderr for errors/warnings
-      const stderr = result.stderr?.toString() || ''
-      if (stderr.includes('File not found') || stderr.includes('Access denied') || stderr.includes('denied')) {
-        return {
-          success: false,
-          error: `xcopy reported errors: ${stderr.trim()}`,
-        }
-      }
-    }
-    else {
-      // Unix: cp with verbose output to detect partial failures
-      // Use normalized path with forward slashes and wildcard
-      const sourceWithWildcard = `${normalizedSource + path.sep}*`
-      const destWithSeparator = normalizedDest + path.sep
-
-      result = execSync(`cp -rf "${sourceWithWildcard}" "${destWithSeparator}"`, {
-        encoding: 'buffer',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }) as any
-
-      // Check stderr for errors
-      const stderr = result.stderr?.toString() || ''
-      if (stderr.length > 0 && (stderr.includes('cannot') || stderr.includes('denied') || stderr.includes('error'))) {
-        return {
-          success: false,
-          error: `cp reported errors: ${stderr.trim()}`,
-        }
-      }
-    }
+    cpSync(normalizedSource, normalizedDest, {
+      recursive: true,
+      force: true,
+    })
 
     return { success: true }
   }

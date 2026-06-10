@@ -42,6 +42,7 @@ export function SubagentFormModal({
   existingIds,
 }: SubagentFormModalProps): ReactNode {
   const t = useTranslations('extensions.subagents.form')
+  const toastT = useTranslations('toast')
   const isEdit = !!initialData
 
   const [formData, setFormData] = useState<SubagentDefinition>(
@@ -134,8 +135,9 @@ export function SubagentFormModal({
       await onSave(subagent)
 
       toast({
-        title: isEdit ? t('saveSuccess') : t('addSuccess'),
-        description: isEdit ? t('saveSuccessDescription') : t('addSuccessDescription'),
+        title: isEdit ? toastT('subagentUpdated') : toastT('subagentAdded'),
+        description: isEdit ? toastT('subagentUpdatedDescription') : toastT('subagentAddedDescription'),
+        variant: 'success',
       })
 
       onClose()
@@ -143,8 +145,8 @@ export function SubagentFormModal({
     catch (error) {
       console.error('Failed to save subagent:', error)
       toast({
-        title: t('saveError'),
-        description: t('saveErrorDescription'),
+        title: toastT('subagentSaveFailed'),
+        description: toastT('subagentSaveFailedDescription'),
         variant: 'destructive',
       })
     }

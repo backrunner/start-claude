@@ -46,7 +46,7 @@ export function VSCodeStartButton({ configName, className }: VSCodeStartButtonPr
       console.error('Error starting Claude:', error)
       toast({
         title: t('vscodeStartFailed'),
-        description: error instanceof Error ? error.message : t('unknownError'),
+        description: t('vscodeStartFailedDescription'),
         variant: 'destructive',
       })
     }

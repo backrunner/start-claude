@@ -253,10 +253,10 @@ export class CacheManager {
   /**
    * Set update check timestamp
    */
-  setUpdateCheckTimestamp(timestamp: number, version?: string): void {
+  setUpdateCheckTimestamp(timestamp: number, latestVersion?: string): void {
     this.set('updateCheck.lastTimestamp', timestamp)
-    if (version) {
-      this.set('updateCheck.lastVersion', version)
+    if (latestVersion) {
+      this.set('updateCheck.lastVersion', latestVersion)
     }
   }
 

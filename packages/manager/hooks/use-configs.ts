@@ -5,19 +5,24 @@ import { useState } from 'react'
 import { useToast } from '@/lib/use-toast'
 
 interface ToastTranslations {
+  configFetchFailedDescription: string
   configSaved: string
   configSavedCreated: (name: string) => string
   configSavedUpdated: (name: string) => string
   configSaveFailed: string
+  configSaveFailedDescription: string
   configsUpdated: string
   configsUpdatedDescription: string
   configsUpdateFailed: string
+  configsUpdateFailedDescription: string
   configDeleted: string
   configDeletedDescription: (name: string) => string
   configDeleteFailed: string
+  configDeleteFailedDescription: string
   settingsSaved: string
   settingsSavedDescription: string
   settingsSaveFailed: string
+  settingsSaveFailedDescription: string
 }
 
 interface UseConfigsReturn {
@@ -34,9 +39,9 @@ interface UseConfigsReturn {
 }
 
 export function useConfigs(
-  initialConfigs?: ClaudeConfig[],
-  initialSettings?: SystemSettings,
-  translations?: ToastTranslations,
+  initialConfigs: ClaudeConfig[],
+  initialSettings: SystemSettings,
+  translations: ToastTranslations,
 ): UseConfigsReturn {
   const { toast } = useToast()
 
@@ -59,7 +64,7 @@ export function useConfigs(
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to fetch configs')
+        throw new Error(errorData.error || translations.configFetchFailedDescription)
       }
 
       const data = await response.json()
@@ -70,7 +75,7 @@ export function useConfigs(
     }
     catch (error) {
       console.error('Error refetching configs:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch configurations'
+      const errorMessage = error instanceof Error ? error.message : translations.configFetchFailedDescription
       setError(errorMessage)
     }
   }
@@ -85,7 +90,7 @@ export function useConfigs(
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to save config')
+        throw new Error(errorData.error || translations.configSaveFailedDescription)
       }
 
       const data = await response.json()
@@ -97,10 +102,10 @@ export function useConfigs(
       }
 
       toast({
-        title: translations?.configSaved ?? 'Configuration saved',
+        title: translations.configSaved,
         description: isEditing
-          ? (translations?.configSavedUpdated(config.name) ?? `Configuration "${config.name}" has been updated successfully.`)
-          : (translations?.configSavedCreated(config.name) ?? `Configuration "${config.name}" has been created successfully.`),
+          ? translations.configSavedUpdated(config.name)
+          : translations.configSavedCreated(config.name),
         variant: 'success',
       })
 
@@ -111,12 +116,12 @@ export function useConfigs(
     }
     catch (error) {
       console.error('Error saving config:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save configuration'
+      const errorMessage = error instanceof Error ? error.message : translations.configSaveFailedDescription
       setError(errorMessage)
 
       toast({
-        title: translations?.configSaveFailed ?? 'Failed to save configuration',
-        description: errorMessage,
+        title: translations.configSaveFailed,
+        description: translations.configSaveFailedDescription,
         variant: 'destructive',
       })
       throw error
@@ -133,7 +138,7 @@ export function useConfigs(
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to update configs')
+        throw new Error(errorData.error || translations.configsUpdateFailedDescription)
       }
 
       const data = await response.json()
@@ -145,8 +150,8 @@ export function useConfigs(
       }
 
       toast({
-        title: translations?.configsUpdated ?? 'Configurations updated',
-        description: customMessage || translations?.configsUpdatedDescription || 'Configuration order has been updated successfully.',
+        title: translations.configsUpdated,
+        description: customMessage || translations.configsUpdatedDescription,
         variant: 'success',
       })
 
@@ -157,12 +162,12 @@ export function useConfigs(
     }
     catch (error) {
       console.error('Error updating configs:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update configurations'
+      const errorMessage = error instanceof Error ? error.message : translations.configsUpdateFailedDescription
       setError(errorMessage)
 
       toast({
-        title: translations?.configsUpdateFailed ?? 'Failed to update configurations',
-        description: errorMessage,
+        title: translations.configsUpdateFailed,
+        description: translations.configsUpdateFailedDescription,
         variant: 'destructive',
       })
       throw error
@@ -182,7 +187,7 @@ export function useConfigs(
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to delete config')
+        throw new Error(errorData.error || translations.configDeleteFailedDescription)
       }
 
       const data = await response.json()
@@ -194,8 +199,8 @@ export function useConfigs(
       }
 
       toast({
-        title: translations?.configDeleted ?? 'Configuration deleted',
-        description: translations?.configDeletedDescription(configName) ?? `Configuration "${configName}" has been deleted successfully.`,
+        title: translations.configDeleted,
+        description: translations.configDeletedDescription(configName),
         variant: 'success',
       })
 
@@ -206,12 +211,12 @@ export function useConfigs(
     }
     catch (error) {
       console.error('Error deleting config:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to delete configuration'
+      const errorMessage = error instanceof Error ? error.message : translations.configDeleteFailedDescription
       setError(errorMessage)
 
       toast({
-        title: translations?.configDeleteFailed ?? 'Failed to delete configuration',
-        description: errorMessage,
+        title: translations.configDeleteFailed,
+        description: translations.configDeleteFailedDescription,
         variant: 'destructive',
       })
       throw error
@@ -228,15 +233,15 @@ export function useConfigs(
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to save settings')
+        throw new Error(errorData.error || translations.settingsSaveFailedDescription)
       }
 
       const data = await response.json()
       setSettings(data.settings)
 
       toast({
-        title: translations?.settingsSaved ?? 'System settings saved',
-        description: translations?.settingsSavedDescription ?? 'System settings have been updated successfully.',
+        title: translations.settingsSaved,
+        description: translations.settingsSavedDescription,
         variant: 'success',
       })
 
@@ -247,12 +252,12 @@ export function useConfigs(
     }
     catch (error) {
       console.error('Error saving system settings:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save system settings'
+      const errorMessage = error instanceof Error ? error.message : translations.settingsSaveFailedDescription
       setError(errorMessage)
 
       toast({
-        title: translations?.settingsSaveFailed ?? 'Failed to save system settings',
-        description: errorMessage,
+        title: translations.settingsSaveFailed,
+        description: translations.settingsSaveFailedDescription,
         variant: 'destructive',
       })
       throw error

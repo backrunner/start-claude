@@ -6,6 +6,7 @@ import * as net from 'node:net'
 import { performance } from 'node:perf_hooks'
 import { SpeedTestStrategy } from '../../config/types'
 import { UILogger } from '../cli/ui'
+import { getConfigApiKey } from '../config/credentials'
 import { fileLogger } from '../logging/file-logger'
 
 export interface SpeedTestResult {
@@ -156,10 +157,11 @@ export class SpeedTestManager {
 
       const isHttps = testUrl.protocol === 'https:'
       const httpModule = isHttps ? https : http
+      const apiKey = getConfigApiKey(endpoint)
 
       if (this.config.debug || this.config.verbose) {
         this.ui.verbose(`📤 Sending POST request to: ${testUrl.toString()}`)
-        this.ui.verbose(`🔑 Using API key: ${endpoint.apiKey?.substring(0, 8)}***`)
+        this.ui.verbose(`🔑 Using API key: ${apiKey?.substring(0, 8)}***`)
         this.ui.verbose(`🤖 Model: ${endpoint.model || 'claude-3-5-haiku-20241022'}`)
         this.ui.verbose(`📦 Payload size: ${Buffer.byteLength(testBody)} bytes`)
       }
@@ -167,7 +169,7 @@ export class SpeedTestManager {
       const requestOptions = {
         method: 'POST',
         headers: {
-          'x-api-key': endpoint.apiKey,
+          'x-api-key': apiKey,
           'Content-Length': Buffer.byteLength(testBody),
           ...GENERAL_TEST_HEADERS,
         },
@@ -238,16 +240,17 @@ export class SpeedTestManager {
 
       const isHttps = testUrl.protocol === 'https:'
       const httpModule = isHttps ? https : http
+      const apiKey = getConfigApiKey(endpoint)
 
       if (this.config.debug || this.config.verbose) {
         this.ui.verbose(`📤 Sending HEAD request to: ${testUrl.toString()}`)
-        this.ui.verbose(`🔑 Using API key: ${endpoint.apiKey?.substring(0, 8)}***`)
+        this.ui.verbose(`🔑 Using API key: ${apiKey?.substring(0, 8)}***`)
       }
 
       const requestOptions = {
         method: 'HEAD',
         headers: {
-          'x-api-key': endpoint.apiKey,
+          'x-api-key': apiKey,
           ...GENERAL_TEST_HEADERS,
         },
         timeout: this.config.timeout,

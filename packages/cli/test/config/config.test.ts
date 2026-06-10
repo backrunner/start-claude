@@ -297,6 +297,72 @@ describe('configManager', () => {
       expect(mockFs.writeFileSync).toHaveBeenCalled()
     })
 
+    it('should clear sensitive fields from removed configuration tombstones', async () => {
+      const mockConfigData = {
+        version: TEST_CONFIG_VERSION,
+        configs: [
+          {
+            id: 'config-1',
+            name: 'test1',
+            baseUrl: 'https://api.test.com',
+            apiKey: 'legacy-key',
+            authToken: 'primary-token',
+            isDefault: false,
+            enabled: true,
+          },
+        ],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
+
+      const result = await configManager.removeConfig('test1')
+
+      expect(result).toBe(true)
+
+      const writeCall = mockFs.writeFileSync.mock.calls.at(-1)
+      const savedData = JSON.parse(writeCall?.[1] as string)
+      const removedConfig = savedData.configs[0]
+
+      expect(removedConfig.isDeleted).toBe(true)
+      expect(removedConfig.apiKey).toBeUndefined()
+      expect(removedConfig.authToken).toBeUndefined()
+    })
+
+    it('should clear sensitive fields when removing configuration by id', async () => {
+      const mockConfigData = {
+        version: TEST_CONFIG_VERSION,
+        configs: [
+          {
+            id: 'config-1',
+            name: 'test1',
+            baseUrl: 'https://api.test.com',
+            apiKey: 'legacy-key',
+            authToken: 'primary-token',
+            isDefault: false,
+            enabled: true,
+          },
+        ],
+        settings: { overrideClaudeCommand: false },
+      }
+
+      mockFs.existsSync.mockReturnValue(true)
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfigData))
+
+      const result = await configManager.removeConfigById('config-1')
+
+      expect(result).toBe(true)
+
+      const writeCall = mockFs.writeFileSync.mock.calls.at(-1)
+      const savedData = JSON.parse(writeCall?.[1] as string)
+      const removedConfig = savedData.configs[0]
+
+      expect(removedConfig.isDeleted).toBe(true)
+      expect(removedConfig.apiKey).toBeUndefined()
+      expect(removedConfig.authToken).toBeUndefined()
+    })
+
     it('should return false for non-existent configuration', async () => {
       const mockConfigData = {
         configs: [{ name: 'test1', isDefault: false }],

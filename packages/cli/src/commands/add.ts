@@ -105,6 +105,8 @@ export async function handleAddCommand(options: { useEditor?: boolean }): Promis
       choices: [
         { name: 'Default (ask for permissions)', value: 'default' },
         { name: 'Accept Edits (auto-accept file edits)', value: 'acceptEdits' },
+        { name: 'Auto (automatically decide when to ask)', value: 'auto' },
+        { name: 'Don\'t Ask (never ask for permissions)', value: 'dontAsk' },
         { name: 'Plan (planning mode)', value: 'plan' },
         { name: 'Bypass Permissions (dangerous)', value: 'bypassPermissions' },
         { name: 'None (use Claude default)', value: null },

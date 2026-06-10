@@ -13,6 +13,7 @@ import { LoadBalancerStrategy, SpeedTestStrategy } from '../config/types'
 import { ConfigService } from '../services/config'
 import { TransformerService } from '../services/transformer'
 import { UILogger } from '../utils/cli/ui'
+import { getConfigApiKey, hasConfigApiCredentials } from '../utils/config/credentials'
 import { fileLogger } from '../utils/logging/file-logger'
 import { SpeedTestManager } from '../utils/network/speed-test'
 import { calculateTokenCount } from '../utils/token-counter'
@@ -168,11 +169,11 @@ export class ProxyServer {
       // Include configs that either have API credentials OR transformer enabled
       // Note: transformer-enabled configs MUST have real external API credentials
       const validConfigs = configs.filter((c) => {
-        const hasApiCredentials = c.baseUrl && c.apiKey
+        const hasApiCredentials = hasConfigApiCredentials(c)
         const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabled(c.transformerEnabled)
 
         if (hasTransformerEnabled && !hasApiCredentials) {
-          throw new Error(`Configuration "${c.name}" has transformerEnabled but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
+          throw new Error(`Configuration "${c.name}" has transformerEnabled but is missing baseUrl or apiKey/authToken. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
         }
 
         return hasApiCredentials || hasTransformerEnabled
@@ -207,10 +208,10 @@ export class ProxyServer {
         // Filter for transformer-enabled configs - they MUST have real API credentials
         const transformerConfigs = configs.filter((c) => {
           const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabled(c.transformerEnabled)
-          const hasApiCredentials = c.baseUrl && c.apiKey
+          const hasApiCredentials = hasConfigApiCredentials(c)
 
           if (hasTransformerEnabled && !hasApiCredentials) {
-            throw new Error(`Configuration "${c.name}" has transformerEnabled but is missing baseUrl or apiKey. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
+            throw new Error(`Configuration "${c.name}" has transformerEnabled but is missing baseUrl or apiKey/authToken. Transformer configurations must include the real external API credentials (e.g., https://openrouter.ai + real API key).`)
           }
 
           return hasTransformerEnabled
@@ -640,7 +641,7 @@ export class ProxyServer {
     try {
       // Validate configs
       const validConfigs = configs.filter((c) => {
-        const hasApiCredentials = c.baseUrl && c.apiKey
+        const hasApiCredentials = hasConfigApiCredentials(c)
         const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabled(c.transformerEnabled)
 
         if (hasTransformerEnabled && !hasApiCredentials) {
@@ -1114,7 +1115,7 @@ export class ProxyServer {
     const headers = { ...originalHeaders }
 
     // Set API key (from ANTHROPIC_API_KEY)
-    headers['x-api-key'] = config.apiKey!
+    headers['x-api-key'] = getConfigApiKey(config)!
 
     // Remove the original authorization header from the client
     delete headers.authorization
@@ -1158,6 +1159,213 @@ export class ProxyServer {
     delete headers.upgrade
 
     return headers
+  }
+
+  private prepareTransformerRequestHeaders(
+    baseHeaders: Record<string, string>,
+    transformerHeaders: Record<string, string> | undefined,
+    requestBody: string,
+    userAgent: string | undefined,
+  ): Record<string, string> {
+    const overrideHeaders = transformerHeaders || {}
+    const hasOverrideAuth = Object.entries(overrideHeaders).some(
+      ([key, value]) => key.toLowerCase() === 'authorization' && Boolean(value),
+    )
+    const hasOverrideApiKey = Object.entries(overrideHeaders).some(
+      ([key, value]) => key.toLowerCase() === 'x-api-key' && Boolean(value),
+    )
+    const headers: Record<string, string> = {}
+    for (const [key, value] of Object.entries(baseHeaders)) {
+      if ((hasOverrideAuth || hasOverrideApiKey) && key.toLowerCase() === 'authorization') {
+        continue
+      }
+      headers[key] = value
+    }
+
+    Object.assign(headers, overrideHeaders, {
+      'Content-Length': Buffer.byteLength(requestBody).toString(),
+      'User-Agent': userAgent || 'start-claude-proxy',
+    })
+
+    const hasExplicitAuth = Object.entries(headers).some(
+      ([key, value]) => key.toLowerCase() === 'authorization' && Boolean(value),
+    )
+    const hasApiKey = Object.entries(headers).some(
+      ([key, value]) => key.toLowerCase() === 'x-api-key' && Boolean(value),
+    )
+
+    if (hasExplicitAuth || hasApiKey) {
+      this.removeAuthorizationHeaderValue(headers, 'Bearer undefined')
+    }
+
+    return headers
+  }
+
+  private responseHeadersToRecord(headers: Headers): Record<string, string> {
+    const result: Record<string, string> = {}
+    headers.forEach((value, key) => {
+      result[key] = value
+    })
+    return result
+  }
+
+  private removeHeader(headers: Record<string, unknown>, headerName: string): void {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === headerName) {
+        delete headers[key]
+      }
+    }
+  }
+
+  private removeAuthorizationHeaderValue(headers: Record<string, string>, valueToRemove: string): void {
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() === 'authorization' && value === valueToRemove) {
+        delete headers[key]
+      }
+    }
+  }
+
+  private detectOpenAIChatSSE(buffer: string): boolean | null {
+    const normalizedBuffer = buffer.replace(/\r\n/g, '\n')
+
+    if (/^event:\s*(message_start|content_block_start|content_block_delta|content_block_stop|message_delta|message_stop|error)$/m.test(normalizedBuffer)) {
+      return false
+    }
+
+    let sawDone = false
+    for (const line of normalizedBuffer.split('\n')) {
+      if (!line.startsWith('data:')) {
+        continue
+      }
+
+      const data = line.slice(5).trim()
+      if (!data) {
+        continue
+      }
+
+      if (data === '[DONE]') {
+        sawDone = true
+        continue
+      }
+
+      try {
+        const parsed = JSON.parse(data) as Record<string, any>
+        if (Array.isArray(parsed.choices) || parsed.error) {
+          return true
+        }
+        if (typeof parsed.type === 'string') {
+          if (
+            parsed.type === 'message_start'
+            || parsed.type === 'message_delta'
+            || parsed.type === 'message_stop'
+            || parsed.type.startsWith('content_block_')
+          ) {
+            return false
+          }
+        }
+      }
+      catch {
+        // Keep reading until we see a complete SSE payload.
+      }
+    }
+
+    return sawDone ? true : null
+  }
+
+  private async isOpenAIChatSSEStream(stream: ReadableStream<Uint8Array>): Promise<boolean> {
+    const reader = stream.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let bytesRead = 0
+
+    try {
+      while (bytesRead < 16384) {
+        const { done, value } = await reader.read()
+        if (done) {
+          break
+        }
+
+        bytesRead += value.byteLength
+        buffer += decoder.decode(value, { stream: true })
+
+        const detected = this.detectOpenAIChatSSE(buffer)
+        if (detected !== null) {
+          return detected
+        }
+      }
+
+      return this.detectOpenAIChatSSE(buffer) === true
+    }
+    finally {
+      void reader.cancel().catch(() => undefined)
+      reader.releaseLock()
+    }
+  }
+
+  private async createTransformerResponseStream(
+    response: Response,
+    fallbackStream: ReadableStream<Uint8Array>,
+  ): Promise<ReadableStream<Uint8Array>> {
+    const responseBody = response.body || fallbackStream
+    const [sniffStream, outputStream] = responseBody.tee()
+
+    if (await this.isOpenAIChatSSEStream(sniffStream)) {
+      return convertOpenAIStreamToAnthropic(outputStream)
+    }
+
+    return outputStream
+  }
+
+  private prepareTransformedBodyHeaders(
+    headers: http.IncomingHttpHeaders,
+    body: string,
+  ): http.IncomingHttpHeaders {
+    const finalHeaders = { ...headers }
+    this.removeHeader(finalHeaders, 'content-encoding')
+    this.removeHeader(finalHeaders, 'content-length')
+    finalHeaders['Content-Length'] = Buffer.byteLength(body).toString()
+    return finalHeaders
+  }
+
+  private prepareTransformedStreamHeaders(headers: http.IncomingHttpHeaders): http.IncomingHttpHeaders {
+    const finalHeaders = { ...headers }
+    this.removeHeader(finalHeaders, 'content-encoding')
+    this.removeHeader(finalHeaders, 'content-length')
+    return finalHeaders
+  }
+
+  private async applyTransformerFormatResponse(
+    response: Response,
+    context: {
+      isTransformer?: boolean
+      transformer?: Transformer
+      transformerName?: string
+    },
+  ): Promise<Response> {
+    if (!context.isTransformer || !context.transformer?.formatResponse) {
+      return response
+    }
+
+    try {
+      const transformedResponse = await context.transformer.formatResponse(response)
+      if (this.debug) {
+        fileLogger.info('TRANSFORM_RESPONSE_OUTPUT', 'Response transformed by formatResponse', {
+          transformerName: context.transformerName,
+          statusCode: transformedResponse.status,
+        })
+      }
+      return transformedResponse
+    }
+    catch (transformError) {
+      if (this.debug) {
+        fileLogger.error('TRANSFORM_RESPONSE_ERROR', 'Failed to transform response with formatResponse', {
+          transformerName: context.transformerName,
+          statusCode: response.status,
+          error: transformError instanceof Error ? transformError.message : 'Unknown error',
+        })
+      }
+      return response
+    }
   }
 
   /**
@@ -1375,18 +1583,32 @@ export class ProxyServer {
         },
       })
 
-      // Convert the stream using the transformer
-      const convertedStream = await convertOpenAIStreamToAnthropic(incomingStream)
+      const responseForTransformation = new Response(incomingStream, {
+        status: proxyRes.statusCode || 200,
+        statusText: proxyRes.statusMessage || 'OK',
+        headers: proxyRes.headers as HeadersInit,
+      })
+      const formattedResponse = await this.applyTransformerFormatResponse(responseForTransformation, {
+        isTransformer: true,
+        transformer: context.transformer,
+        transformerName: context.transformerName,
+      })
+      const formattedHeaders = {
+        ...headers,
+        ...this.responseHeadersToRecord(formattedResponse.headers),
+      }
+
+      const convertedStream = await this.createTransformerResponseStream(formattedResponse, incomingStream)
 
       // Set SSE headers
       if (!res.headersSent) {
-        const finalHeaders = {
-          ...headers,
+        const finalHeaders = this.prepareTransformedStreamHeaders({
+          ...formattedHeaders,
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
-        }
-        res.writeHead(proxyRes.statusCode || 200, finalHeaders)
+        })
+        res.writeHead(formattedResponse.status || proxyRes.statusCode || 200, finalHeaders)
       }
 
       // Stream the converted response directly to the client
@@ -1465,44 +1687,17 @@ export class ProxyServer {
           let finalResponseBody = rawResponseBody
           let finalResponseHeaders = { ...headers }
 
-          // Apply transformer formatResponse if available
           if (context.isTransformer && context.transformer?.formatResponse) {
-            try {
-              const responseForTransformation = new Response(rawResponseBody, {
-                status: proxyRes.statusCode || 200,
-                statusText: proxyRes.statusMessage || 'OK',
-                headers: proxyRes.headers as HeadersInit,
-              })
-
-              const transformedResponse = await context.transformer.formatResponse(responseForTransformation)
-              finalResponseBody = await transformedResponse.text()
-
-              const transformedHeaders: Record<string, string> = {}
-              transformedResponse.headers.forEach((value: string, key: string) => {
-                transformedHeaders[key] = value
-              })
-              finalResponseHeaders = { ...finalResponseHeaders, ...transformedHeaders }
-
-              if (this.debug) {
-                fileLogger.info('TRANSFORM_RESPONSE_OUTPUT', 'Response transformed by formatResponse', {
-                  transformerName: context.transformerName,
-                  statusCode: proxyRes.statusCode || 0,
-                  originalBodySize: rawResponseBody.length,
-                  transformedBodySize: finalResponseBody.length,
-                  originalBody: rawResponseBody,
-                  transformedBody: finalResponseBody,
-                })
-              }
-            }
-            catch (transformError) {
-              if (this.debug) {
-                fileLogger.error('TRANSFORM_RESPONSE_ERROR', 'Failed to transform response with formatResponse', {
-                  transformerName: context.transformerName,
-                  statusCode: proxyRes.statusCode || 0,
-                  error: transformError instanceof Error ? transformError.message : 'Unknown error',
-                  originalBody: rawResponseBody,
-                })
-              }
+            const responseForTransformation = new Response(rawResponseBody, {
+              status: proxyRes.statusCode || 200,
+              statusText: proxyRes.statusMessage || 'OK',
+              headers: proxyRes.headers as HeadersInit,
+            })
+            const transformedResponse = await this.applyTransformerFormatResponse(responseForTransformation, context)
+            finalResponseBody = await transformedResponse.text()
+            finalResponseHeaders = {
+              ...finalResponseHeaders,
+              ...this.responseHeadersToRecord(transformedResponse.headers),
             }
           }
 
@@ -1550,12 +1745,12 @@ export class ProxyServer {
           // Handle case where client expects streaming but got regular response
           if (context.clientExpectsStream && formattedFinalResponseBody) {
             // Convert regular response to SSE format for streaming clients
-            const sseHeaders = {
+            const sseHeaders = this.prepareTransformedStreamHeaders({
               ...finalResponseHeaders,
               'Content-Type': 'text/event-stream',
               'Cache-Control': 'no-cache',
               'Connection': 'keep-alive',
-            }
+            })
 
             if (!res.headersSent) {
               res.writeHead(proxyRes.statusCode || 200, sseHeaders)
@@ -1578,7 +1773,12 @@ export class ProxyServer {
 
           // Send headers and response transparently
           if (!res.headersSent) {
-            res.writeHead(proxyRes.statusCode || 200, finalResponseHeaders)
+            res.writeHead(
+              proxyRes.statusCode || 200,
+              context.isTransformer
+                ? this.prepareTransformedBodyHeaders(finalResponseHeaders, formattedFinalResponseBody)
+                : finalResponseHeaders,
+            )
           }
           res.end(formattedFinalResponseBody)
         }
@@ -1685,13 +1885,13 @@ export class ProxyServer {
               const provider: LLMProvider = {
                 name: endpoint.config.name || 'unknown',
                 baseUrl: endpoint.config.baseUrl || `https://${transformer.domain}`,
-                apiKey: endpoint.config.apiKey || '',
+                apiKey: getConfigApiKey(endpoint.config) || '',
                 model: endpoint.config.model || '',
               }
 
               // Validate that we have proper credentials for the transformer
               if (!provider.baseUrl || !provider.apiKey) {
-                throw new Error(`Transformer-enabled endpoint "${endpoint.config.name}" requires both baseUrl and apiKey for the external API`)
+                throw new Error(`Transformer-enabled endpoint "${endpoint.config.name}" requires both baseUrl and apiKey/authToken for the external API`)
               }
 
               // Step 1: Normalize request (Claude → Intermediate format with config)
@@ -1733,12 +1933,12 @@ export class ProxyServer {
               }
 
               const targetUrl = normalizeResult.config.url
-              const headers = {
-                ...normalizeResult.config.headers,
-                ...(endpoint.config.transformerHeaders || {}), // Add transformer-specific headers
-                'Content-Length': Buffer.byteLength(requestBody).toString(),
-                'User-Agent': req.headers['user-agent'] || 'start-claude-proxy',
-              }
+              const headers = this.prepareTransformerRequestHeaders(
+                normalizeResult.config.headers,
+                endpoint.config.transformerHeaders,
+                requestBody,
+                req.headers['user-agent'],
+              )
 
               if (this.debug) {
                 fileLogger.info('OUTBOUND_REQUEST', 'Sending transformed request to external API', {
@@ -1887,7 +2087,7 @@ export class ProxyServer {
 
           // Regular proxy request (no transformation)
           // Check if this endpoint has API credentials for regular requests
-          if (!endpoint.config.baseUrl || !endpoint.config.apiKey) {
+          if (!hasConfigApiCredentials(endpoint.config)) {
             this.ui.verbose(`Endpoint ${endpoint.config.name} has no API credentials, skipping`)
             this.markEndpointUnhealthy(endpoint, 'Missing API credentials')
 

@@ -27,6 +27,7 @@ export function ExtensionsModal({
   onSave,
 }: ExtensionsModalProps): ReactNode {
   const t = useTranslations('extensions')
+  const toastT = useTranslations('toast')
 
   const [library, setLibrary] = useState<ExtensionsLibrary>(
     initialLibrary || {
@@ -66,16 +67,17 @@ export function ExtensionsModal({
       setSaving(true)
       await onSave(library)
       toast({
-        title: t('saveSuccess'),
-        description: t('saveSuccessDescription'),
+        title: toastT('extensionsSaved'),
+        description: toastT('extensionsSavedDescription'),
+        variant: 'success',
       })
       onClose()
     }
     catch (error) {
       console.error('Failed to save extensions library:', error)
       toast({
-        title: t('saveError'),
-        description: t('saveErrorDescription'),
+        title: toastT('extensionsSaveFailed'),
+        description: toastT('extensionsSaveFailedDescription'),
         variant: 'destructive',
       })
     }
@@ -154,15 +156,16 @@ export function ExtensionsModal({
       setDeletingItem(null)
 
       toast({
-        title: t('deleteSuccess'),
-        description: t('deleteSuccessDescription'),
+        title: toastT('extensionDeleted'),
+        description: toastT('extensionDeletedDescription'),
+        variant: 'success',
       })
     }
     catch (error) {
       console.error('Failed to delete extension:', error)
       toast({
-        title: t('deleteError'),
-        description: t('deleteErrorDescription'),
+        title: toastT('extensionDeleteFailed'),
+        description: toastT('extensionDeleteFailedDescription'),
         variant: 'destructive',
       })
     }

@@ -1,10 +1,12 @@
 export { GeminiTransformer } from './gemini'
 export { OpenaiTransformer } from './openai'
+export { OpenAIResponsesTransformer } from './openai-responses'
 export { OpenrouterTransformer } from './openrouter'
 
 // Export all available transformers
 export const availableTransformers = {
   openai: async () => import('./openai').then(m => m.OpenaiTransformer),
+  'openai-responses': async () => import('./openai-responses').then(m => m.OpenAIResponsesTransformer),
   openrouter: async () => import('./openrouter').then(m => m.OpenrouterTransformer),
   gemini: async () => import('./gemini').then(m => m.GeminiTransformer),
 }

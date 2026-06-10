@@ -7,6 +7,7 @@ import { LoadBalancerStrategy } from '../config/types'
 import { TransformerService } from '../services/transformer'
 import { findClosestMatch, isSimilarEnough } from '../utils/cli/fuzzy-match'
 import { UILogger } from '../utils/cli/ui'
+import { hasConfigApiCredentials } from '../utils/config/credentials'
 
 export interface ProgramOptions {
   config?: string
@@ -588,6 +589,8 @@ async function createNewConfig(
       choices: [
         { name: 'Default (ask for permissions)', value: 'default' },
         { name: 'Accept Edits (auto-accept file edits)', value: 'acceptEdits' },
+        { name: 'Auto (automatically decide when to ask)', value: 'auto' },
+        { name: 'Don\'t Ask (never ask for permissions)', value: 'dontAsk' },
         { name: 'Plan (planning mode)', value: 'plan' },
         { name: 'Bypass Permissions (dangerous)', value: 'bypassPermissions' },
         { name: 'None (use Claude default)', value: null },
@@ -667,19 +670,19 @@ export async function resolveBaseConfig(
         = 'transformerEnabled' in baseConfig
           && TransformerService.isTransformerEnabled(baseConfig.transformerEnabled)
       const missingCompleteApiCredentials
-        = !baseConfig.baseUrl || !baseConfig.apiKey || !baseConfig.model
+        = !hasConfigApiCredentials(baseConfig) || !baseConfig.model
 
       if (hasTransformer && missingCompleteApiCredentials) {
         const ui = new UILogger()
         ui.warning(
-          `Configuration "${baseConfig.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey/model) for API calls`,
+          `Configuration "${baseConfig.name}" is transformer-enabled but missing complete API credentials (baseUrl/apiKey or authToken/model) for API calls`,
         )
         ui.info('Using it for settings and transformer processing only')
       }
       else if (missingCompleteApiCredentials) {
         const ui = new UILogger()
         ui.warning(
-          `Configuration "${baseConfig.name}" is not included in load balancing (missing baseUrl, apiKey, or model)`,
+          `Configuration "${baseConfig.name}" is not included in load balancing (missing baseUrl, apiKey or authToken, or model)`,
         )
         ui.info(
           'Using it for other settings only, load balancing will use available endpoints',

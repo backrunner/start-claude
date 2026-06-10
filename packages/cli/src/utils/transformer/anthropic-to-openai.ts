@@ -25,7 +25,9 @@ interface OpenAIChatRequest extends Omit<LLMChatRequest, 'messages'> {
   reasoning?: {
     effort?: string
     enabled?: boolean
+    max_tokens?: number
   }
+  stop?: string[]
 }
 
 function getThinkLevel(budgetTokens?: number): string {
@@ -36,6 +38,33 @@ function getThinkLevel(budgetTokens?: number): string {
   if (budgetTokens <= 50000)
     return 'medium'
   return 'high'
+}
+
+function convertToolChoice(toolChoice: any): any {
+  if (!toolChoice) {
+    return undefined
+  }
+
+  if (typeof toolChoice === 'string') {
+    return toolChoice === 'any' ? 'required' : toolChoice
+  }
+
+  if (toolChoice.type === 'tool') {
+    return {
+      type: 'function',
+      function: { name: toolChoice.name },
+    }
+  }
+
+  if (toolChoice.type === 'any') {
+    return 'required'
+  }
+
+  if (toolChoice.type === 'auto' || toolChoice.type === 'none' || toolChoice.type === 'required') {
+    return toolChoice.type
+  }
+
+  return toolChoice
 }
 
 /**
@@ -173,32 +202,32 @@ export async function convertAnthropicToOpenAI(
     messages,
     max_tokens: request.max_tokens,
     temperature: request.temperature,
+    top_p: request.top_p,
     stream: request.stream,
     tools: request.tools?.length
       ? convertAnthropicToolsToUnified(request.tools)
       : undefined,
-    tool_choice: request.tool_choice,
+    tool_choice: convertToolChoice(request.tool_choice),
   }
 
   // Handle thinking/reasoning
   if (request.thinking) {
     result.reasoning = {
       effort: getThinkLevel(request.thinking.budget_tokens),
-      enabled: request.thinking.type === 'enabled',
+      enabled: request.thinking.type === 'enabled' || request.thinking.enabled === true,
+      max_tokens: request.thinking.budget_tokens,
+    }
+  }
+  else if (request.reasoning) {
+    result.reasoning = {
+      effort: request.reasoning.effort,
+      enabled: request.reasoning.enabled !== false,
+      max_tokens: request.reasoning.max_tokens,
     }
   }
 
-  // Handle tool choice
-  if (request.tool_choice) {
-    if (request.tool_choice.type === 'tool') {
-      result.tool_choice = {
-        type: 'function',
-        function: { name: request.tool_choice.name },
-      }
-    }
-    else {
-      result.tool_choice = request.tool_choice.type
-    }
+  if (request.stop_sequences?.length) {
+    result.stop = request.stop_sequences
   }
 
   return result
@@ -247,7 +276,12 @@ export function buildOpenAIRequestBody(unifiedRequest: OpenAIChatRequest): Recor
     messages: unifiedRequest.messages || [],
     max_tokens: unifiedRequest.max_tokens,
     temperature: unifiedRequest.temperature,
+    top_p: unifiedRequest.top_p,
     stream: unifiedRequest.stream,
+  }
+
+  if (unifiedRequest.stop?.length) {
+    body.stop = unifiedRequest.stop
   }
 
   // Add tools if present
@@ -264,6 +298,9 @@ export function buildOpenAIRequestBody(unifiedRequest: OpenAIChatRequest): Recor
   if (unifiedRequest.reasoning?.enabled) {
     body.reasoning = {
       effort: unifiedRequest.reasoning.effort || 'medium',
+    }
+    if (typeof unifiedRequest.reasoning.max_tokens === 'number') {
+      body.reasoning.max_tokens = unifiedRequest.reasoning.max_tokens
     }
   }
 

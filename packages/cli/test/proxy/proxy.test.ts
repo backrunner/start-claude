@@ -196,6 +196,26 @@ describe('proxyServer', () => {
       expect(status.total).toBe(1)
     })
 
+    it('should accept authToken as API credentials when apiKey is not set', () => {
+      const authTokenConfigs: ClaudeConfig[] = [
+        {
+          name: 'auth-token-config',
+          profileType: 'default',
+          baseUrl: 'https://api.example.com',
+          authToken: 'sk-auth-token',
+          model: 'claude-sonnet-4-5-20250929',
+          isDefault: false,
+        },
+      ]
+
+      const proxyMode: ProxyMode = { enableLoadBalance: true }
+      const ps = new ProxyServer(authTokenConfigs, proxyMode)
+      const status = ps.getStatus()
+
+      expect(status.total).toBe(1)
+      expect(status.endpoints[0].config.name).toBe('auth-token-config')
+    })
+
     it('should apply system settings for balance mode', () => {
       const proxyMode: ProxyMode = { enableLoadBalance: true }
       const systemSettings = {
@@ -1044,6 +1064,107 @@ describe('proxyServer', () => {
         'Authorization': 'Bearer custom-token',
         'User-Agent': 'custom-user-agent',
       })
+    })
+
+    it('should use authToken fallback for direct proxy x-api-key header', () => {
+      const prepareRequestHeaders = (proxyServer as any).prepareRequestHeaders.bind(proxyServer)
+      const headers = prepareRequestHeaders(
+        {},
+        new URL('https://api.example.com/v1/messages'),
+        {
+          name: 'auth-token-config',
+          baseUrl: 'https://api.example.com',
+          authToken: 'sk-auth-token',
+        },
+      )
+
+      expect(headers['x-api-key']).toBe('sk-auth-token')
+    })
+
+    it('should not keep default Authorization when transformer headers provide x-api-key', () => {
+      const prepareTransformerRequestHeaders = (proxyServer as any).prepareTransformerRequestHeaders.bind(proxyServer)
+      const headers = prepareTransformerRequestHeaders(
+        {
+          Authorization: 'Bearer undefined',
+          'Content-Type': 'application/json',
+        },
+        {
+          'x-api-key': 'provider-key',
+        },
+        '{"model":"test"}',
+        'test-agent',
+      )
+
+      expect(headers.Authorization).toBeUndefined()
+      expect(headers['x-api-key']).toBe('provider-key')
+      expect(headers['Content-Length']).toBe('16')
+      expect(headers['User-Agent']).toBe('test-agent')
+    })
+
+    it('should remove lowercase Bearer undefined authorization when transformer headers provide x-api-key', () => {
+      const prepareTransformerRequestHeaders = (proxyServer as any).prepareTransformerRequestHeaders.bind(proxyServer)
+      const headers = prepareTransformerRequestHeaders(
+        {
+          authorization: 'Bearer undefined',
+          'Content-Type': 'application/json',
+        },
+        {
+          'x-api-key': 'provider-key',
+        },
+        '{}',
+        undefined,
+      )
+
+      expect(headers.authorization).toBeUndefined()
+      expect(headers['x-api-key']).toBe('provider-key')
+      expect(headers['User-Agent']).toBe('start-claude-proxy')
+    })
+
+    it('should let transformer Authorization headers override default auth', () => {
+      const prepareTransformerRequestHeaders = (proxyServer as any).prepareTransformerRequestHeaders.bind(proxyServer)
+      const headers = prepareTransformerRequestHeaders(
+        {
+          Authorization: 'Bearer default-key',
+          'Content-Type': 'application/json',
+        },
+        {
+          authorization: 'Bearer custom-key',
+        },
+        '{}',
+        undefined,
+      )
+
+      expect(headers.Authorization).toBeUndefined()
+      expect(headers.authorization).toBe('Bearer custom-key')
+      expect(headers['User-Agent']).toBe('start-claude-proxy')
+    })
+
+    it('should not reconvert transformer responses that already produce Anthropic SSE', async () => {
+      const createTransformerResponseStream = (proxyServer as any).createTransformerResponseStream.bind(proxyServer)
+      const anthropicSSE = [
+        'event: message_start',
+        'data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}',
+        '',
+        'event: content_block_start',
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+        '',
+        'event: content_block_delta',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}',
+        '',
+        'event: message_stop',
+        'data: {"type":"message_stop"}',
+        '',
+      ].join('\n')
+
+      const response = new Response(anthropicSSE, {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+      const stream = await createTransformerResponseStream(response, response.body!)
+      const text = await new Response(stream).text()
+
+      expect(text).toContain('event: message_start')
+      expect(text).toContain('event: content_block_delta')
+      expect(text).not.toContain('Warning: No content in the stream response')
     })
 
     it('should apply universal response formatting to valid JSON responses', async () => {

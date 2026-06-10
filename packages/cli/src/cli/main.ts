@@ -14,6 +14,7 @@ import {
   promptClaudeInstallation,
 } from '../utils/cli/detection'
 import { UILogger } from '../utils/cli/ui'
+import { hasConfigApiCredentials } from '../utils/config/credentials'
 import { checkForUpdates, handleBackgroundUpgradeResult, performBackgroundUpgrade } from '../utils/config/update-checker'
 import { McpSyncManager } from '../utils/mcp/sync-manager'
 import { SpeedTestManager } from '../utils/network/speed-test'
@@ -174,9 +175,9 @@ program
       }
 
       // Check if the config has necessary endpoint information
-      if (!config.baseUrl || !config.apiKey) {
+      if (!hasConfigApiCredentials(config)) {
         ui.error(
-          `❌ Configuration "${config.name}" missing required endpoint information (baseUrl or apiKey)`,
+          `❌ Configuration "${config.name}" missing required endpoint information (baseUrl and apiKey or authToken)`,
         )
         process.exit(1)
       }

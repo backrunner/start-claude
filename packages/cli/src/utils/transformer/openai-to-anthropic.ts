@@ -27,6 +27,10 @@ interface OpenAIMessage {
       end_index?: number
     }
   }>
+  thinking?: {
+    content?: string
+    signature?: string
+  }
 }
 
 interface OpenAIChoice {
@@ -49,6 +53,13 @@ interface OpenAIResponse {
     prompt_tokens?: number
     completion_tokens?: number
     total_tokens?: number
+    cache_read_input_tokens?: number
+    prompt_tokens_details?: {
+      cached_tokens?: number
+    }
+    output_tokens_details?: {
+      reasoning_tokens?: number
+    }
   }
 }
 
@@ -64,7 +75,15 @@ export function convertOpenAIResponseToAnthropic(openaiResponse: OpenAIResponse)
 
     const content: any[] = []
 
-    if (choice.message.annotations) {
+    if (choice.message.thinking) {
+      content.push({
+        type: 'thinking',
+        thinking: choice.message.thinking.content || '',
+        signature: choice.message.thinking.signature || '',
+      })
+    }
+
+    if (choice.message.annotations?.length) {
       const id = `srvtoolu_${uuidv4()}`
       content.push({
         type: 'server_tool_use',
@@ -138,6 +157,10 @@ export function convertOpenAIResponseToAnthropic(openaiResponse: OpenAIResponse)
       usage: {
         input_tokens: openaiResponse.usage?.prompt_tokens || 0,
         output_tokens: openaiResponse.usage?.completion_tokens || 0,
+        cache_read_input_tokens:
+          openaiResponse.usage?.cache_read_input_tokens
+          || openaiResponse.usage?.prompt_tokens_details?.cached_tokens
+          || 0,
       },
     }
 
@@ -168,6 +191,9 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
       let isThinkingStarted = false
       let contentIndex = 0
       let currentContentBlockIndex = -1 // Track the current content block index
+      let thinkingContentBlockIndex: number | null = null
+      let textContentBlockIndex: number | null = null
+      const openContentBlockIndexes = new Set<number>()
 
       const safeEnqueue = (data: Uint8Array): void => {
         if (!isClosed) {
@@ -189,24 +215,57 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
         }
       }
 
+      const stopContentBlock = (index: number): void => {
+        if (!openContentBlockIndexes.has(index)) {
+          return
+        }
+
+        const contentBlockStop = {
+          type: 'content_block_stop',
+          index,
+        }
+        safeEnqueue(
+          encoder.encode(
+            `event: content_block_stop\ndata: ${JSON.stringify(
+              contentBlockStop,
+            )}\n\n`,
+          ),
+        )
+        openContentBlockIndexes.delete(index)
+
+        if (currentContentBlockIndex === index) {
+          currentContentBlockIndex = -1
+        }
+        if (thinkingContentBlockIndex === index) {
+          thinkingContentBlockIndex = null
+          isThinkingStarted = false
+        }
+        if (textContentBlockIndex === index) {
+          textContentBlockIndex = null
+          hasTextContentStarted = false
+        }
+      }
+
+      const stopOpenContentBlocks = (): void => {
+        Array.from(openContentBlockIndexes)
+          .sort((a, b) => a - b)
+          .forEach(index => stopContentBlock(index))
+      }
+
+      const stopNonToolContentBlocks = (): void => {
+        if (textContentBlockIndex !== null) {
+          stopContentBlock(textContentBlockIndex)
+        }
+        if (thinkingContentBlockIndex !== null) {
+          stopContentBlock(thinkingContentBlockIndex)
+        }
+      }
+
       const safeClose = (): void => {
         if (!isClosed) {
           try {
             // Close any remaining open content block
-            if (currentContentBlockIndex >= 0) {
-              const contentBlockStop = {
-                type: 'content_block_stop',
-                index: currentContentBlockIndex,
-              }
-              safeEnqueue(
-                encoder.encode(
-                  `event: content_block_stop\ndata: ${JSON.stringify(
-                    contentBlockStop,
-                  )}\n\n`,
-                ),
-              )
-              currentContentBlockIndex = -1
-            }
+            stopOpenContentBlocks()
 
             if (stopReasonMessageDelta) {
               safeEnqueue(
@@ -288,7 +347,7 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
 
             if (!line.startsWith('data:'))
               continue
-            const data = line.slice(5)
+            const data = line.slice(5).trim()
 
             if (data === '[DONE]')
               continue
@@ -341,6 +400,14 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
 
               const choice = chunk.choices?.[0]
               if (chunk.usage) {
+                const usage = {
+                  input_tokens: chunk.usage?.prompt_tokens || 0,
+                  output_tokens: chunk.usage?.completion_tokens || 0,
+                  cache_read_input_tokens:
+                    chunk.usage?.cache_read_input_tokens
+                    || chunk.usage?.prompt_tokens_details?.cached_tokens
+                    || 0,
+                }
                 if (!stopReasonMessageDelta) {
                   stopReasonMessageDelta = {
                     type: 'message_delta',
@@ -348,47 +415,26 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                       stop_reason: 'end_turn',
                       stop_sequence: null,
                     },
-                    usage: {
-                      input_tokens: chunk.usage?.prompt_tokens || 0,
-                      output_tokens: chunk.usage?.completion_tokens || 0,
-                      cache_read_input_tokens:
-                        chunk.usage?.cache_read_input_tokens || 0,
-                    },
+                    usage,
                   }
                 }
                 else {
-                  stopReasonMessageDelta.usage = {
-                    input_tokens: chunk.usage?.prompt_tokens || 0,
-                    output_tokens: chunk.usage?.completion_tokens || 0,
-                    cache_read_input_tokens:
-                      chunk.usage?.cache_read_input_tokens || 0,
-                  }
+                  stopReasonMessageDelta.usage = usage
                 }
               }
               if (!choice)
                 continue
 
               if (choice?.delta?.thinking && !isClosed) {
-                // Close any previous content block if open
-                if (currentContentBlockIndex >= 0) {
-                  const contentBlockStop = {
-                    type: 'content_block_stop',
-                    index: currentContentBlockIndex,
-                  }
-                  safeEnqueue(
-                    encoder.encode(
-                      `event: content_block_stop\ndata: ${JSON.stringify(
-                        contentBlockStop,
-                      )}\n\n`,
-                    ),
-                  )
-                  currentContentBlockIndex = -1
+                if (textContentBlockIndex !== null) {
+                  stopContentBlock(textContentBlockIndex)
                 }
 
                 if (!isThinkingStarted) {
+                  const blockIndex = contentIndex++
                   const contentBlockStart = {
                     type: 'content_block_start',
-                    index: contentIndex,
+                    index: blockIndex,
                     content_block: { type: 'thinking', thinking: '' },
                   }
                   safeEnqueue(
@@ -398,13 +444,16 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                       )}\n\n`,
                     ),
                   )
-                  currentContentBlockIndex = contentIndex
+                  currentContentBlockIndex = blockIndex
+                  thinkingContentBlockIndex = blockIndex
+                  openContentBlockIndexes.add(blockIndex)
                   isThinkingStarted = true
                 }
                 if (choice.delta.thinking.signature) {
+                  const blockIndex = thinkingContentBlockIndex ?? currentContentBlockIndex
                   const thinkingSignature = {
                     type: 'content_block_delta',
-                    index: contentIndex,
+                    index: blockIndex,
                     delta: {
                       type: 'signature_delta',
                       signature: choice.delta.thinking.signature,
@@ -417,24 +466,13 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                       )}\n\n`,
                     ),
                   )
-                  const contentBlockStop = {
-                    type: 'content_block_stop',
-                    index: contentIndex,
-                  }
-                  safeEnqueue(
-                    encoder.encode(
-                      `event: content_block_stop\ndata: ${JSON.stringify(
-                        contentBlockStop,
-                      )}\n\n`,
-                    ),
-                  )
-                  currentContentBlockIndex = -1
-                  contentIndex++
+                  stopContentBlock(blockIndex)
                 }
                 else if (choice.delta.thinking.content) {
+                  const blockIndex = thinkingContentBlockIndex ?? currentContentBlockIndex
                   const thinkingChunk = {
                     type: 'content_block_delta',
-                    index: contentIndex,
+                    index: blockIndex,
                     delta: {
                       type: 'thinking_delta',
                       thinking: choice.delta.thinking.content || '',
@@ -452,31 +490,16 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
 
               if (choice?.delta?.content && !isClosed) {
                 contentChunks++
-                // Close any previous content block if open and it's not a text content block
-                if (currentContentBlockIndex >= 0) {
-                  // Check if current content block is text type
-                  const isCurrentTextBlock = hasTextContentStarted
-                  if (!isCurrentTextBlock) {
-                    const contentBlockStop = {
-                      type: 'content_block_stop',
-                      index: currentContentBlockIndex,
-                    }
-                    safeEnqueue(
-                      encoder.encode(
-                        `event: content_block_stop\ndata: ${JSON.stringify(
-                          contentBlockStop,
-                        )}\n\n`,
-                      ),
-                    )
-                    currentContentBlockIndex = -1
-                  }
+                if (thinkingContentBlockIndex !== null) {
+                  stopContentBlock(thinkingContentBlockIndex)
                 }
 
                 if (!hasTextContentStarted) {
+                  const blockIndex = contentIndex++
                   hasTextContentStarted = true
                   const contentBlockStart = {
                     type: 'content_block_start',
-                    index: contentIndex,
+                    index: blockIndex,
                     content_block: {
                       type: 'text',
                       text: '',
@@ -489,13 +512,15 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                       )}\n\n`,
                     ),
                   )
-                  currentContentBlockIndex = contentIndex
+                  currentContentBlockIndex = blockIndex
+                  textContentBlockIndex = blockIndex
+                  openContentBlockIndexes.add(blockIndex)
                 }
 
                 if (!isClosed) {
                   const anthropicChunk = {
                     type: 'content_block_delta',
-                    index: currentContentBlockIndex, // Use current content block index
+                    index: textContentBlockIndex ?? currentContentBlockIndex,
                     delta: {
                       type: 'text_delta',
                       text: choice.delta.content,
@@ -516,30 +541,54 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                 && !isClosed
               ) {
                 // Close text content block if open
-                if (currentContentBlockIndex >= 0 && hasTextContentStarted) {
-                  const contentBlockStop = {
+                if (textContentBlockIndex !== null) {
+                  stopContentBlock(textContentBlockIndex)
+                }
+                if (thinkingContentBlockIndex !== null) {
+                  stopContentBlock(thinkingContentBlockIndex)
+                }
+
+                choice?.delta?.annotations.forEach((annotation: any) => {
+                  const serverToolUseId = `srvtoolu_${uuidv4()}`
+                  const serverToolUseIndex = contentIndex++
+                  const serverToolUseStart = {
+                    type: 'content_block_start',
+                    index: serverToolUseIndex,
+                    content_block: {
+                      type: 'server_tool_use',
+                      id: serverToolUseId,
+                      name: 'web_search',
+                      input: {
+                        query: '',
+                      },
+                    },
+                  }
+                  safeEnqueue(
+                    encoder.encode(
+                      `event: content_block_start\ndata: ${JSON.stringify(
+                        serverToolUseStart,
+                      )}\n\n`,
+                    ),
+                  )
+                  const serverToolUseStop = {
                     type: 'content_block_stop',
-                    index: currentContentBlockIndex,
+                    index: serverToolUseIndex,
                   }
                   safeEnqueue(
                     encoder.encode(
                       `event: content_block_stop\ndata: ${JSON.stringify(
-                        contentBlockStop,
+                        serverToolUseStop,
                       )}\n\n`,
                     ),
                   )
-                  currentContentBlockIndex = -1
-                  hasTextContentStarted = false
-                }
 
-                choice?.delta?.annotations.forEach((annotation: any) => {
-                  contentIndex++
+                  const resultIndex = contentIndex++
                   const contentBlockStart = {
                     type: 'content_block_start',
-                    index: contentIndex,
+                    index: resultIndex,
                     content_block: {
                       type: 'web_search_tool_result',
-                      tool_use_id: `srvtoolu_${uuidv4()}`,
+                      tool_use_id: serverToolUseId,
                       content: [
                         {
                           type: 'web_search_result',
@@ -559,7 +608,7 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
 
                   const contentBlockStop = {
                     type: 'content_block_stop',
-                    index: contentIndex,
+                    index: resultIndex,
                   }
                   safeEnqueue(
                     encoder.encode(
@@ -588,28 +637,14 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                   const isUnknownIndex = !toolCallIndexToContentBlockIndex.has(toolCallIndex)
 
                   if (isUnknownIndex) {
-                    // Close any previous content block if open
-                    if (currentContentBlockIndex >= 0) {
-                      const contentBlockStop = {
-                        type: 'content_block_stop',
-                        index: currentContentBlockIndex,
-                      }
-                      safeEnqueue(
-                        encoder.encode(
-                          `event: content_block_stop\ndata: ${JSON.stringify(
-                            contentBlockStop,
-                          )}\n\n`,
-                        ),
-                      )
-                      currentContentBlockIndex = -1
-                    }
+                    stopNonToolContentBlocks()
 
-                    const newContentBlockIndex = contentIndex
+                    const newContentBlockIndex = contentIndex++
                     toolCallIndexToContentBlockIndex.set(
                       toolCallIndex,
                       newContentBlockIndex,
                     )
-                    contentIndex++ // Increment contentIndex after setting the mapping
+                    openContentBlockIndexes.add(newContentBlockIndex)
                     const toolCallId
                       = toolCall.id || `call_${Date.now()}_${toolCallIndex}`
                     const toolCallName
@@ -726,20 +761,7 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                 }
 
                 // Close any remaining open content block
-                if (currentContentBlockIndex >= 0) {
-                  const contentBlockStop = {
-                    type: 'content_block_stop',
-                    index: currentContentBlockIndex,
-                  }
-                  safeEnqueue(
-                    encoder.encode(
-                      `event: content_block_stop\ndata: ${JSON.stringify(
-                        contentBlockStop,
-                      )}\n\n`,
-                    ),
-                  )
-                  currentContentBlockIndex = -1
-                }
+                stopOpenContentBlocks()
 
                 if (!isClosed) {
                   const stopReasonMapping: Record<string, string> = {
@@ -758,11 +780,13 @@ export async function convertOpenAIStreamToAnthropic(openaiStream: ReadableStrea
                       stop_reason: anthropicStopReason,
                       stop_sequence: null,
                     },
-                    usage: {
+                    usage: stopReasonMessageDelta?.usage || {
                       input_tokens: chunk.usage?.prompt_tokens || 0,
                       output_tokens: chunk.usage?.completion_tokens || 0,
                       cache_read_input_tokens:
-                        chunk.usage?.cache_read_input_tokens || 0,
+                        chunk.usage?.cache_read_input_tokens
+                        || chunk.usage?.prompt_tokens_details?.cached_tokens
+                        || 0,
                     },
                   }
                 }

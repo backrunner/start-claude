@@ -39,6 +39,35 @@ vi.mock('../../src/transformers/openrouter', () => ({
   },
 }))
 
+vi.mock('../../src/transformers/openai-responses', () => ({
+  OpenAIResponsesTransformer: class MockOpenAIResponsesTransformer {
+    static TransformerName = 'openai-responses'
+    isDefault = false
+    async formatRequest(request: any) {
+      return request
+    }
+
+    async formatResponse(response: Response) {
+      return response
+    }
+  },
+}))
+
+vi.mock('../../src/transformers/gemini', () => ({
+  GeminiTransformer: class MockGeminiTransformer {
+    static TransformerName = 'gemini'
+    domain = 'generativelanguage.googleapis.com'
+    isDefault = false
+    async formatRequest(request: any) {
+      return request
+    }
+
+    async formatResponse(response: Response) {
+      return response
+    }
+  },
+}))
+
 describe('transformerService', () => {
   let transformerService: TransformerService
   let mockConfigService: ConfigService
@@ -273,6 +302,8 @@ describe('transformerService', () => {
 
       expect(transformerService.hasTransformer('openai')).toBe(true)
       expect(transformerService.hasTransformer('openrouter')).toBe(true)
+      expect(transformerService.hasTransformer('openai-responses')).toBe(true)
+      expect(transformerService.hasTransformer('gemini')).toBe(true)
     })
 
     it('should load transformers from config', async () => {

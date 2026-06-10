@@ -329,7 +329,7 @@ function parseConfigFromFile(filePath: string): ClaudeConfig | null {
       baseUrl: parsed.baseUrl?.trim() || undefined,
       apiKey: parsed.apiKey?.trim() || undefined,
       model: parsed.model?.trim() || undefined,
-      permissionMode: parsed.permissionMode && ['default', 'acceptEdits', 'plan', 'bypassPermissions'].includes(parsed.permissionMode)
+      permissionMode: parsed.permissionMode && ['default', 'acceptEdits', 'auto', 'dontAsk', 'plan', 'bypassPermissions'].includes(parsed.permissionMode)
         ? parsed.permissionMode
         : undefined,
       isDefault: Boolean(parsed.isDefault),

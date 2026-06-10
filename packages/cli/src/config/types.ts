@@ -5,7 +5,7 @@ export interface ClaudeConfig {
   baseUrl?: string
   apiKey?: string
   model?: string
-  permissionMode?: 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
+  permissionMode?: 'default' | 'acceptEdits' | 'auto' | 'dontAsk' | 'plan' | 'bypassPermissions'
   transformerEnabled?: boolean // Enable transformer for this configuration
   transformer?: string // Specific transformer to use: "auto", "openai", "gemini", "openrouter", etc.
   transformerHeaders?: Record<string, string> // Additional headers to send when using transformers
