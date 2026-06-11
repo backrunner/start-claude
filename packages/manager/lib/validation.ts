@@ -139,6 +139,7 @@ export const syncConfigSchema = z.object({
 // System settings schema
 export const systemSettingsSchema = z.object({
   overrideClaudeCommand: z.boolean().default(false),
+  syncClaudeProviderSettings: z.boolean().default(true),
   balanceMode: balanceModeSchema.optional(),
   sync: syncConfigSchema,
   s3Sync: s3SyncSchema.optional(),

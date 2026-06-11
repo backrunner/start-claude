@@ -1,6 +1,4 @@
 import type { ClaudeConfig, LoadBalancerStrategy } from '../config/types'
-import { Buffer } from 'node:buffer'
-import * as http from 'node:http'
 import process from 'node:process'
 
 import { parseBalanceStrategy } from '../cli/common'
@@ -8,6 +6,7 @@ import { handleProxyMode } from '../cli/proxy'
 import { ConfigManager } from '../config/manager'
 import { S3SyncManager } from '../storage/s3-sync'
 import { UILogger } from '../utils/cli/ui'
+import { sendProxySwitchRequest } from '../utils/network/proxy-control'
 
 export interface ProxyCommandOptions {
   strategy?: string
@@ -16,64 +15,6 @@ export interface ProxyCommandOptions {
   debug?: boolean
   proxy?: string
   skipHealthCheck?: boolean
-}
-
-/**
- * Filter out proxy command and its positional arguments
- * Aligns with filterProcessArgs logic in common.ts but additionally filters:
- * - The 'proxy' command itself
- * - Positional arguments (config names) after 'proxy'
- * - Proxy-specific flags (--strategy, --all)
- */
-export function filterProxyArgs(): string[] {
-  const args = process.argv.slice(2)
-
-  // Proxy-specific flags that should NOT be passed to Claude Code
-  const proxySpecificFlags = [
-    '--strategy',
-    '--all',
-    '--skip-health-check',
-  ]
-
-  // Track if we've seen the proxy command
-  let seenProxyCommand = false
-  let skipNext = false
-
-  return args.filter((arg, index) => {
-    // If we should skip this arg (it's a value for a previous flag)
-    if (skipNext) {
-      skipNext = false
-      return false
-    }
-
-    // Skip the 'proxy' command itself
-    if (arg === 'proxy') {
-      seenProxyCommand = true
-      return false
-    }
-
-    // Skip proxy-specific flags
-    if (proxySpecificFlags.some(flag => arg.startsWith(flag))) {
-      // Check if this flag has a value (not using = syntax)
-      if (arg === '--strategy' && index + 1 < args.length && !args[index + 1].startsWith('-')) {
-        skipNext = true
-      }
-      return false
-    }
-
-    // If it's a flag, keep it (it will be passed to Claude Code)
-    if (arg.startsWith('-')) {
-      return true
-    }
-
-    // If we've seen the proxy command, this is a positional config name argument - filter it out
-    if (seenProxyCommand) {
-      return false
-    }
-
-    // Otherwise keep it (though this shouldn't happen in normal usage)
-    return true
-  })
 }
 
 /**
@@ -111,7 +52,7 @@ export async function handleProxySwitchCommand(
   // Send switch request to the running proxy server
   try {
     ui.info('🔍 Testing new endpoints...')
-    const result = await sendSwitchRequest(port, configs)
+    const result = await sendProxySwitchRequest(port, configs)
 
     if (result.success) {
       // Display endpoint health check results
@@ -163,76 +104,6 @@ export async function handleProxySwitchCommand(
     ui.info(`   Make sure the proxy server is running on port ${port}`)
     process.exit(1)
   }
-}
-
-/**
- * Send switch request to the running proxy server
- */
-async function sendSwitchRequest(
-  port: number,
-  configs: ClaudeConfig[],
-): Promise<{
-  success: boolean
-  message: string
-  healthyEndpoints?: number
-  totalEndpoints?: number
-  endpointDetails?: Array<{ name: string, healthy: boolean, error?: string }>
-  speedTestResults?: Array<{ name: string, responseTime: number }>
-}> {
-  return new Promise((resolve, reject) => {
-    const requestBody = JSON.stringify({ configs })
-
-    const options = {
-      hostname: 'localhost',
-      port,
-      path: '/__switch',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(requestBody),
-      },
-    }
-
-    const req = http.request(options, (res) => {
-      let data = ''
-
-      res.on('data', (chunk) => {
-        data += chunk
-      })
-
-      res.on('end', () => {
-        try {
-          const response = JSON.parse(data)
-
-          // Handle both success and error responses
-          if (response.success) {
-            resolve(response)
-          }
-          else if (response.error) {
-            // Server returned an error response
-            resolve({
-              success: false,
-              message: response.error.message || 'Unknown error',
-              endpointDetails: response.endpointDetails,
-            })
-          }
-          else {
-            reject(new Error('Invalid response format from server'))
-          }
-        }
-        catch {
-          reject(new Error(`Invalid response from server: ${data}`))
-        }
-      })
-    })
-
-    req.on('error', (error) => {
-      reject(error)
-    })
-
-    req.write(requestBody)
-    req.end()
-  })
 }
 
 /**

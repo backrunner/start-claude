@@ -86,6 +86,7 @@ describe('configManager', () => {
         configs: [],
         settings: {
           overrideClaudeCommand: false,
+          syncClaudeProviderSettings: true,
         },
       })
     })
@@ -107,7 +108,10 @@ describe('configManager', () => {
       expect(config.version).toBe(TEST_CONFIG_VERSION)
       expect(config.configs).toHaveLength(1)
       expect(config.configs[0]).toMatchObject({ name: 'test', baseUrl: 'https://api.test.com', isDefault: true, enabled: true })
-      expect(config.settings).toEqual(mockConfig.settings)
+      expect(config.settings).toEqual({
+        ...mockConfig.settings,
+        syncClaudeProviderSettings: true,
+      })
     })
 
     it('should handle corrupted config file', async () => {
@@ -122,6 +126,7 @@ describe('configManager', () => {
         configs: [],
         settings: {
           overrideClaudeCommand: false,
+          syncClaudeProviderSettings: true,
         },
       })
       expect(mockFs.copyFileSync).toHaveBeenCalled() // Backup created
@@ -168,7 +173,10 @@ describe('configManager', () => {
 
       expect(config.version).toBe(TEST_CONFIG_VERSION)
       expect(config.configs).toEqual([])
-      expect(config.settings).toEqual({ overrideClaudeCommand: false })
+      expect(config.settings).toEqual({
+        overrideClaudeCommand: false,
+        syncClaudeProviderSettings: true,
+      })
     })
   })
 
@@ -464,7 +472,10 @@ describe('configManager', () => {
 
       const result = await configManager.getSettings()
 
-      expect(result).toEqual(settings)
+      expect(result).toEqual({
+        ...settings,
+        syncClaudeProviderSettings: true,
+      })
     })
   })
 
@@ -520,7 +531,10 @@ describe('configManager', () => {
       expect(result.version).toBe(TEST_CONFIG_VERSION)
       expect(result.configs).toHaveLength(1)
       expect(result.configs[0]).toMatchObject({ name: 'test', isDefault: true, enabled: true })
-      expect(result.settings).toEqual(mockConfigData.settings)
+      expect(result.settings).toEqual({
+        ...mockConfigData.settings,
+        syncClaudeProviderSettings: true,
+      })
     })
   })
 

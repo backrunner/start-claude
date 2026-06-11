@@ -1,44 +1,10 @@
-import { Buffer } from 'node:buffer';
-import * as http from 'node:http';
 import process from 'node:process';
 import { parseBalanceStrategy } from '../cli/common';
 import { handleProxyMode } from '../cli/proxy';
 import { ConfigManager } from '../config/manager';
 import { S3SyncManager } from '../storage/s3-sync';
 import { UILogger } from '../utils/cli/ui';
-export function filterProxyArgs() {
-    const args = process.argv.slice(2);
-    const proxySpecificFlags = [
-        '--strategy',
-        '--all',
-        '--skip-health-check',
-    ];
-    let seenProxyCommand = false;
-    let skipNext = false;
-    return args.filter((arg, index) => {
-        if (skipNext) {
-            skipNext = false;
-            return false;
-        }
-        if (arg === 'proxy') {
-            seenProxyCommand = true;
-            return false;
-        }
-        if (proxySpecificFlags.some(flag => arg.startsWith(flag))) {
-            if (arg === '--strategy' && index + 1 < args.length && !args[index + 1].startsWith('-')) {
-                skipNext = true;
-            }
-            return false;
-        }
-        if (arg.startsWith('-')) {
-            return true;
-        }
-        if (seenProxyCommand) {
-            return false;
-        }
-        return true;
-    });
-}
+import { sendProxySwitchRequest } from '../utils/network/proxy-control';
 export async function handleProxySwitchCommand(configNames, options, port = 2333) {
     const ui = new UILogger(options.verbose);
     const configManager = ConfigManager.getInstance();
@@ -60,7 +26,7 @@ export async function handleProxySwitchCommand(configNames, options, port = 2333
     ui.info(`🔄 Switching proxy to ${configs.length} configuration${configs.length > 1 ? 's' : ''}: ${configs.map(c => c.name).join(', ')}`);
     try {
         ui.info('🔍 Testing new endpoints...');
-        const result = await sendSwitchRequest(port, configs);
+        const result = await sendProxySwitchRequest(port, configs);
         if (result.success) {
             if (result.endpointDetails && result.endpointDetails.length > 0) {
                 for (const detail of result.endpointDetails) {
@@ -105,53 +71,6 @@ export async function handleProxySwitchCommand(configNames, options, port = 2333
         ui.info(`   Make sure the proxy server is running on port ${port}`);
         process.exit(1);
     }
-}
-async function sendSwitchRequest(port, configs) {
-    return new Promise((resolve, reject) => {
-        const requestBody = JSON.stringify({ configs });
-        const options = {
-            hostname: 'localhost',
-            port,
-            path: '/__switch',
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(requestBody),
-            },
-        };
-        const req = http.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => {
-                data += chunk;
-            });
-            res.on('end', () => {
-                try {
-                    const response = JSON.parse(data);
-                    if (response.success) {
-                        resolve(response);
-                    }
-                    else if (response.error) {
-                        resolve({
-                            success: false,
-                            message: response.error.message || 'Unknown error',
-                            endpointDetails: response.endpointDetails,
-                        });
-                    }
-                    else {
-                        reject(new Error('Invalid response format from server'));
-                    }
-                }
-                catch {
-                    reject(new Error(`Invalid response from server: ${data}`));
-                }
-            });
-        });
-        req.on('error', (error) => {
-            reject(error);
-        });
-        req.write(requestBody);
-        req.end();
-    });
 }
 export async function handleProxyCommand(configNames, options) {
     const ui = new UILogger(options.verbose);

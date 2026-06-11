@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { filterProxyArgs } from '../../src/commands/proxy'
+import { filterProxyArgs } from '../../src/utils/cli/proxy-args'
 
 describe('proxy command argument filtering', () => {
   const originalArgv = process.argv

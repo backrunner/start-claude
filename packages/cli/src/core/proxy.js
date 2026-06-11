@@ -468,12 +468,17 @@ export class ProxyServer {
                 if (hasTransformerEnabled && !hasApiCredentials) {
                     return false;
                 }
+                if (this.enableTransform && !this.enableLoadBalance) {
+                    return hasTransformerEnabled && hasApiCredentials;
+                }
                 return hasApiCredentials || hasTransformerEnabled;
             });
             if (validConfigs.length === 0) {
                 return {
                     success: false,
-                    message: 'No valid configurations provided',
+                    message: this.enableTransform && !this.enableLoadBalance
+                        ? 'No transformer-enabled configurations with complete API credentials provided'
+                        : 'No valid configurations provided',
                 };
             }
             validConfigs.sort((a, b) => {

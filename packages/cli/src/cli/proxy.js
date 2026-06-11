@@ -1,8 +1,10 @@
 import process from 'node:process';
-import { filterProxyArgs } from '../commands/proxy';
+import { SpeedTestStrategy } from '../config/types';
 import { ProxyServer } from '../core/proxy';
 import { TransformerService } from '../services/transformer';
 import { UILogger } from '../utils/cli/ui';
+import { filterProxyArgs } from '../utils/cli/proxy-args';
+import { buildProxyClaudeProviderConfig, syncClaudeProviderSettings } from '../utils/claude/provider-settings';
 import { hasConfigApiCredentials } from '../utils/config/credentials';
 import { fileLogger } from '../utils/logging/file-logger';
 import { checkAndHandleExistingProxy, removeLockFile, setupProxyCleanup } from '../utils/network/proxy-lock';
@@ -23,6 +25,7 @@ export async function handleProxyMode(configManager, options, configArg, systemS
         };
         const ui = new UILogger();
         ui.success('🔄 Using existing proxy server');
+        await handleClaudeProviderSettingsSync(buildProxyProviderConfig(baseConfig, 2333, 'sk-claude-proxy-server'), systemSettings, options);
         const exitCode = await startClaude(baseConfig, allArgs, cliOverrides);
         process.exit(exitCode);
     }
@@ -65,13 +68,27 @@ export async function handleProxyMode(configManager, options, configArg, systemS
     try {
         const hasTransformerEnabled = proxyableConfigs.some(c => TransformerService.isTransformerEnabled(c.transformerEnabled));
         const baseConfig = await resolveBaseConfig(configManager, options, configArg, proxyableConfigs);
-        let effectiveSystemSettings = systemSettings;
+        let effectiveSystemSettings = systemSettings ?? undefined;
         if (cliStrategy) {
+            const balanceMode = systemSettings?.balanceMode;
             effectiveSystemSettings = {
-                ...systemSettings,
+                ...(systemSettings || { overrideClaudeCommand: false }),
                 balanceMode: {
-                    ...systemSettings?.balanceMode,
+                    enableByDefault: balanceMode?.enableByDefault ?? false,
                     strategy: cliStrategy,
+                    healthCheck: {
+                        enabled: balanceMode?.healthCheck?.enabled ?? true,
+                        intervalMs: balanceMode?.healthCheck?.intervalMs ?? 30000,
+                    },
+                    failedEndpoint: {
+                        banDurationSeconds: balanceMode?.failedEndpoint?.banDurationSeconds ?? 300,
+                    },
+                    speedFirst: balanceMode?.speedFirst ?? {
+                        responseTimeWindowMs: 300000,
+                        minSamples: 3,
+                        speedTestIntervalSeconds: 300,
+                        speedTestStrategy: SpeedTestStrategy.ResponseTime,
+                    },
                 },
             };
         }
@@ -150,6 +167,7 @@ export async function handleProxyMode(configManager, options, configArg, systemS
         };
         process.on('SIGINT', handleShutdown);
         process.on('SIGTERM', handleShutdown);
+        await handleClaudeProviderSettingsSync(buildProxyProviderConfig(baseConfig, 2333, proxyServer.getProxyApiKey()), effectiveSystemSettings, options);
         const exitCode = await startClaude(baseConfig, allArgs, cliOverrides);
         await proxyServer.stop();
         removeLockFile();
@@ -160,4 +178,27 @@ export async function handleProxyMode(configManager, options, configArg, systemS
         ui.error(`Failed to start proxy server: ${error instanceof Error ? error.message : 'Unknown error'}`);
         process.exit(1);
     }
+}
+async function handleClaudeProviderSettingsSync(config, systemSettings, options = {}) {
+    if (!config) {
+        return;
+    }
+    const ui = new UILogger(options.verbose || options.debug);
+    if (systemSettings?.syncClaudeProviderSettings === false) {
+        ui.verbose('Claude Code provider settings sync disabled');
+        return;
+    }
+    try {
+        const result = await syncClaudeProviderSettings(config);
+        ui.verbose(`Claude Code provider settings synced: ${result.settingsPath}`);
+    }
+    catch (error) {
+        ui.warning(`Failed to sync Claude Code provider settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+function buildProxyProviderConfig(config, port, authToken) {
+    if (!config) {
+        return undefined;
+    }
+    return buildProxyClaudeProviderConfig(config, { port, authToken });
 }

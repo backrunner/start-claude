@@ -48,6 +48,7 @@ export class ConfigFileManager {
       configs: [],
       settings: {
         overrideClaudeCommand: false,
+        syncClaudeProviderSettings: true,
       },
     }
   }
@@ -341,6 +342,7 @@ export class ConfigFileManager {
     // Convert legacy settings to new SystemSettings format
     const newSettings: SystemSettings = {
       overrideClaudeCommand: legacyConfig.settings.overrideClaudeCommand,
+      syncClaudeProviderSettings: true,
       s3Sync: legacyConfig.settings.s3Sync,
     }
 
@@ -411,8 +413,9 @@ export class ConfigFileManager {
 
     // Ensure settings exist with defaults
     if (!config.settings) {
-      config.settings = { overrideClaudeCommand: false }
+      config.settings = { overrideClaudeCommand: false, syncClaudeProviderSettings: true }
     }
+    config.settings.syncClaudeProviderSettings = config.settings.syncClaudeProviderSettings !== false
 
     // Normalize each config and ensure it has a UUID
     config.configs = config.configs.map(cfg => ({

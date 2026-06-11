@@ -209,6 +209,12 @@
       "failedEndpointBanDuration": "失敗 API 暫停時長",
       "failedEndpointBanDurationHelpText": "API 失敗後暫停使用的時長（60-3600 秒）"
     },
+    "claudeProviderSettings": {
+      "title": "Claude Code 配置檔",
+      "description": "將選中的 provider 同步到 Claude Code 原生設定檔",
+      "syncFile": "同步 provider 檔案",
+      "syncFileDescription": "啟動前將 provider 環境變數寫入 ~/.claude/settings.json。寫入失敗只提示警告，不影響本次啟動。"
+    },
     "cloudSync": {
       "title": "雲端儲存同步",
       "description": "透過 iCloud、OneDrive 或自訂資料夾同步配置",

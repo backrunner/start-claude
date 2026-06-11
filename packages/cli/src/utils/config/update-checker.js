@@ -1,4 +1,4 @@
-import { exec, execSync, spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { accessSync, constants, cpSync, createWriteStream, mkdirSync, rmSync } from 'node:fs';
 import https from 'node:https';
 import os from 'node:os';
@@ -15,6 +15,9 @@ const __dirname = path.dirname(__filename);
 const CACHE_KEY_FAILURE_COUNT = 'upgrade.consecutiveFailures';
 const CACHE_KEY_USER_DISMISSED = 'upgrade.userDismissedPrompt';
 const FAILURE_THRESHOLD = 10;
+const BACKGROUND_RUNNING_TTL_MS = 5 * 60 * 1000;
+export const BACKGROUND_UPGRADE_ARG = '--start-claude-background-upgrade';
+export const BACKGROUND_UPGRADE_ENV = 'START_CLAUDE_BACKGROUND_UPGRADE';
 function isPrereleaseVersion(version) {
     return version.includes('-') || version.includes('beta') || version.includes('alpha') || version.includes('rc');
 }
@@ -161,11 +164,29 @@ function hasWritePermission(dirPath) {
         return false;
     }
 }
+function detectPackageManagerFromInstallPath(installPath) {
+    if (!installPath) {
+        return null;
+    }
+    const normalizedPath = path.normalize(installPath).toLowerCase().replace(/\\/g, '/');
+    if (normalizedPath.includes('/.pnpm/') || normalizedPath.includes('pnpm')) {
+        return 'pnpm';
+    }
+    if (normalizedPath.includes('/.bun/') || normalizedPath.includes('bun')) {
+        return 'bun';
+    }
+    if (normalizedPath.includes('/yarn/') || normalizedPath.includes('/.config/yarn/')) {
+        return 'yarn';
+    }
+    if (normalizedPath.includes('/node_modules/start-claude')) {
+        return 'npm';
+    }
+    return null;
+}
 function detectPackageManager() {
-    const cache = CacheManager.getInstance();
-    const cachedMethod = cache.getClaudeInstallMethod();
-    if (cachedMethod && ['npm', 'pnpm', 'yarn', 'bun'].includes(cachedMethod)) {
-        return cachedMethod;
+    const installedPackageManager = detectPackageManagerFromInstallPath(getGlobalInstallPath());
+    if (installedPackageManager) {
+        return installedPackageManager;
     }
     if (findExecutable('pnpm')) {
         return 'pnpm';
@@ -178,16 +199,75 @@ function detectPackageManager() {
     }
     return 'npm';
 }
+function pathExists(filePath) {
+    try {
+        accessSync(filePath, constants.F_OK);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+function resolveCliEntryPath() {
+    const argvEntry = process.argv[1];
+    if (argvEntry) {
+        const resolvedArgvEntry = path.resolve(argvEntry);
+        if (pathExists(resolvedArgvEntry)) {
+            return resolvedArgvEntry;
+        }
+    }
+    const bundledEntryName = path.basename(__filename).toLowerCase();
+    if (!['cli.js', 'cli.cjs', 'cli.mjs'].includes(bundledEntryName)) {
+        return null;
+    }
+    const bundledEntryPath = path.resolve(__filename);
+    if (pathExists(bundledEntryPath)) {
+        return bundledEntryPath;
+    }
+    return null;
+}
+function isNodeRunnableEntryPath(entryPath) {
+    const ext = path.extname(entryPath).toLowerCase();
+    return ext === '.js' || ext === '.cjs' || ext === '.mjs' || ext === '.ts';
+}
+function buildCliInvocation(args) {
+    const entryPath = resolveCliEntryPath();
+    if (entryPath) {
+        if (isNodeRunnableEntryPath(entryPath)) {
+            return {
+                command: process.execPath,
+                args: [...process.execArgv, entryPath, ...args],
+                shell: false,
+            };
+        }
+        return {
+            command: entryPath,
+            args,
+            shell: process.platform === 'win32',
+        };
+    }
+    const binaryName = process.argv[1] ? path.basename(process.argv[1]) : 'start-claude';
+    return {
+        command: binaryName,
+        args,
+        shell: process.platform === 'win32',
+    };
+}
 async function downloadLatestTarball(destPath, version) {
     return new Promise((resolve, reject) => {
         const timeout = 30000;
-        https.get('https://registry.npmjs.org/start-claude', {
+        const metadataReq = https.get('https://registry.npmjs.org/start-claude', {
             timeout,
             headers: {
                 'Accept': 'application/json',
                 'User-Agent': 'start-claude-cli',
             },
         }, (res) => {
+            if (res.statusCode && res.statusCode >= 400) {
+                reject(new Error(`npm registry returned ${res.statusCode}`));
+                res.resume?.();
+                return;
+            }
             let data = '';
             res.on('data', (chunk) => {
                 data += chunk.toString();
@@ -226,23 +306,36 @@ async function downloadLatestTarball(destPath, version) {
                         reject(new Error(`No tarball URL found for version ${targetVersion}`));
                         return;
                     }
-                    https.get(tarballUrl, {
+                    const tarballReq = https.get(tarballUrl, {
                         timeout,
                         headers: {
                             'User-Agent': 'start-claude-cli',
                         },
                     }, (tarRes) => {
+                        if (tarRes.statusCode && tarRes.statusCode >= 400) {
+                            reject(new Error(`tarball download returned ${tarRes.statusCode}`));
+                            tarRes.resume?.();
+                            return;
+                        }
                         const fileStream = createWriteStream(destPath);
                         pipeline(tarRes, fileStream)
                             .then(() => resolve())
                             .catch(reject);
-                    }).on('error', reject);
+                    });
+                    tarballReq.on('error', reject);
+                    tarballReq.on('timeout', () => {
+                        tarballReq.destroy();
+                        reject(new Error('Tarball download timeout'));
+                    });
                 }
                 catch (error) {
                     reject(error);
                 }
             });
-        }).on('error', reject).on('timeout', () => {
+        });
+        metadataReq.on('error', reject);
+        metadataReq.on('timeout', () => {
+            metadataReq.destroy();
             reject(new Error('Download timeout'));
         });
     });
@@ -418,25 +511,11 @@ async function performSilentUpgrade() {
 }
 async function performPackageManagerUpdate(useSudo = false) {
     const packageManager = detectPackageManager();
-    const updateCommand = packageManager === 'npm'
-        ? 'npm install -g start-claude@latest'
-        : packageManager === 'yarn'
-            ? 'yarn global add start-claude@latest'
-            : packageManager === 'bun'
-                ? 'bun add -g start-claude@latest'
-                : 'pnpm add -g start-claude@latest';
-    const finalCommand = useSudo ? `sudo ${updateCommand}` : updateCommand;
+    const updateCommand = getPackageManagerUpdateCommand(packageManager);
+    const command = useSudo ? 'sudo' : updateCommand.command;
+    const args = useSudo ? [updateCommand.command, ...updateCommand.args] : updateCommand.args;
     try {
-        const result = await new Promise((resolve, reject) => {
-            exec(finalCommand, { timeout: 60000 }, (error, stdout, stderr) => {
-                if (error) {
-                    reject(error);
-                }
-                else {
-                    resolve({ stdout, stderr });
-                }
-            });
-        });
+        const result = await runPackageManagerCommand(command, args, useSudo);
         if (result.stderr && (result.stderr.includes('error') || result.stderr.includes('failed'))) {
             throw new Error(result.stderr.trim());
         }
@@ -459,9 +538,53 @@ async function performPackageManagerUpdate(useSudo = false) {
             error: errorMessage,
             usedSudo: useSudo,
             method: 'package-manager',
-            shouldRetryWithPackageManager: !useSudo && isPermissionError && process.platform === 'darwin',
+            shouldRetryWithPackageManager: !useSudo && isPermissionError && process.platform !== 'win32',
         };
     }
+}
+function getPackageManagerUpdateCommand(packageManager) {
+    if (packageManager === 'npm') {
+        return { command: 'npm', args: ['install', '-g', 'start-claude@latest'] };
+    }
+    if (packageManager === 'yarn') {
+        return { command: 'yarn', args: ['global', 'add', 'start-claude@latest'] };
+    }
+    if (packageManager === 'bun') {
+        return { command: 'bun', args: ['add', '-g', 'start-claude@latest'] };
+    }
+    return { command: 'pnpm', args: ['add', '-g', 'start-claude@latest'] };
+}
+function runPackageManagerCommand(command, args, inheritStdio) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(command, args, {
+            shell: process.platform === 'win32' && command !== 'sudo',
+            stdio: inheritStdio ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout?.on('data', (chunk) => {
+            stdout += chunk.toString();
+        });
+        child.stderr?.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+        const timeout = setTimeout(() => {
+            child.kill();
+            reject(new Error('Package manager update timed out'));
+        }, 60000);
+        child.once('error', (error) => {
+            clearTimeout(timeout);
+            reject(error);
+        });
+        child.once('close', (code) => {
+            clearTimeout(timeout);
+            if (code === 0) {
+                resolve({ stdout, stderr });
+                return;
+            }
+            reject(new Error(stderr.trim() || `Package manager update failed with exit code ${code ?? 'unknown'}`));
+        });
+    });
 }
 export async function performAutoUpdate(usePackageManager = false, useSudo = false) {
     const cache = CacheManager.getInstance();
@@ -471,46 +594,83 @@ export async function performAutoUpdate(usePackageManager = false, useSudo = fal
     }
     return performSilentUpgrade();
 }
+function recordBackgroundUpgradeResult(result) {
+    const cache = CacheManager.getInstance();
+    cache.set('upgrade.backgroundResult', {
+        ...result,
+        timestamp: Date.now(),
+    });
+    if (result.success) {
+        cache.set(CACHE_KEY_FAILURE_COUNT, 0);
+        cache.delete(CACHE_KEY_USER_DISMISSED);
+        return;
+    }
+    const failures = cache.get(CACHE_KEY_FAILURE_COUNT) || 0;
+    cache.set(CACHE_KEY_FAILURE_COUNT, failures + 1);
+}
+function recordBackgroundUpgradeError(error) {
+    recordBackgroundUpgradeResult({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        shouldRetryWithPackageManager: true,
+    });
+}
+export function isBackgroundUpgradeProcess() {
+    return process.argv.includes(BACKGROUND_UPGRADE_ARG) && process.env[BACKGROUND_UPGRADE_ENV] === '1';
+}
+export async function runBackgroundUpgradeWorker() {
+    const cache = CacheManager.getInstance();
+    try {
+        const result = await performSilentUpgrade();
+        recordBackgroundUpgradeResult(result);
+    }
+    catch (error) {
+        recordBackgroundUpgradeError(error);
+    }
+    finally {
+        cache.delete('upgrade.backgroundRunning');
+    }
+}
 export async function performBackgroundUpgrade() {
     try {
         const cache = CacheManager.getInstance();
         if (cache.get('upgrade.backgroundRunning')) {
             return;
         }
-        cache.set('upgrade.backgroundRunning', true, 5 * 60 * 1000);
-        setTimeout(() => {
-            void (async () => {
-                try {
-                    const result = await performSilentUpgrade();
-                    cache.set('upgrade.backgroundResult', {
-                        ...result,
-                        timestamp: Date.now(),
-                    });
-                    if (result.success) {
-                        cache.set(CACHE_KEY_FAILURE_COUNT, 0);
-                        cache.delete(CACHE_KEY_USER_DISMISSED);
-                    }
-                    else {
-                        const failures = cache.get(CACHE_KEY_FAILURE_COUNT) || 0;
-                        cache.set(CACHE_KEY_FAILURE_COUNT, failures + 1);
-                    }
-                }
-                catch (error) {
-                    cache.set('upgrade.backgroundResult', {
-                        success: false,
-                        error: error instanceof Error ? error.message : 'Unknown error',
-                        timestamp: Date.now(),
-                    });
-                    const failures = cache.get(CACHE_KEY_FAILURE_COUNT) || 0;
-                    cache.set(CACHE_KEY_FAILURE_COUNT, failures + 1);
-                }
-                finally {
-                    cache.delete('upgrade.backgroundRunning');
-                }
-            })();
-        }, 100);
+        cache.set('upgrade.backgroundRunning', true, BACKGROUND_RUNNING_TTL_MS);
+        const invocation = buildCliInvocation([BACKGROUND_UPGRADE_ARG]);
+        if (!invocation) {
+            recordBackgroundUpgradeResult({
+                success: false,
+                error: 'Could not determine CLI entry point for background upgrade',
+                shouldRetryWithPackageManager: true,
+            });
+            cache.delete('upgrade.backgroundRunning');
+            return;
+        }
+        const child = spawn(invocation.command, invocation.args, {
+            detached: true,
+            stdio: 'ignore',
+            shell: invocation.shell,
+            windowsHide: true,
+            env: {
+                ...process.env,
+                [BACKGROUND_UPGRADE_ENV]: '1',
+            },
+        });
+        child.once('error', (error) => {
+            recordBackgroundUpgradeError(error);
+            cache.delete('upgrade.backgroundRunning');
+        });
+        child.unref();
     }
     catch {
+        try {
+            const cache = CacheManager.getInstance();
+            cache.delete('upgrade.backgroundRunning');
+        }
+        catch {
+        }
     }
 }
 export function checkBackgroundUpgradeResult() {
@@ -531,33 +691,17 @@ export function checkBackgroundUpgradeResult() {
         return null;
     }
 }
-function isGlobalInstall() {
-    if (!process.argv[1]) {
-        return false;
-    }
-    const scriptPath = process.argv[1];
-    if (scriptPath.endsWith('.js') || scriptPath.endsWith('.cjs') || scriptPath.endsWith('.mjs')) {
-        return isGlobalNodePath(scriptPath);
-    }
-    return true;
-}
 export function relaunchCLI() {
     const args = process.argv.slice(2);
-    const executable = process.argv[0];
-    let commandToRun;
-    if (isGlobalInstall()) {
-        const binaryName = process.argv[1] && !process.argv[1].includes('/')
-            ? process.argv[1]
-            : 'start-claude';
-        commandToRun = [binaryName, ...args];
+    const invocation = buildCliInvocation(args);
+    if (!invocation) {
+        process.exit(1);
+        return;
     }
-    else {
-        const scriptPath = process.argv[1];
-        commandToRun = [scriptPath, ...args];
-    }
-    const child = spawn(executable, commandToRun, {
+    const child = spawn(invocation.command, invocation.args, {
         detached: true,
         stdio: 'inherit',
+        shell: invocation.shell,
     });
     child.unref();
     process.exit(0);
@@ -566,6 +710,10 @@ function checkNeedsSudo() {
     if (process.platform !== 'darwin')
         return false;
     try {
+        const installPath = getGlobalInstallPath();
+        if (installPath && hasWritePermission(installPath)) {
+            return false;
+        }
         const globalDir = execSync('npm root -g', { encoding: 'utf-8' }).trim();
         accessSync(globalDir, constants.W_OK);
         return false;

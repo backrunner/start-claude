@@ -188,6 +188,7 @@ export interface ExtensionsLibrary {
  */
 export interface SystemSettings {
   overrideClaudeCommand: boolean
+  syncClaudeProviderSettings?: boolean
   statusLine?: StatusLineConfig
   balanceMode?: {
     enableByDefault: boolean

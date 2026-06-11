@@ -32,6 +32,7 @@ export class ConfigFileManager {
             configs: [],
             settings: {
                 overrideClaudeCommand: false,
+                syncClaudeProviderSettings: true,
             },
         };
     }
@@ -213,6 +214,7 @@ export class ConfigFileManager {
         logger.displayInfo('Migrating legacy configuration to version 1...');
         const newSettings = {
             overrideClaudeCommand: legacyConfig.settings.overrideClaudeCommand,
+            syncClaudeProviderSettings: true,
             s3Sync: legacyConfig.settings.s3Sync,
         };
         const migratedConfigs = legacyConfig.configs.map(config => ({
@@ -255,8 +257,9 @@ export class ConfigFileManager {
             config.configs = [];
         }
         if (!config.settings) {
-            config.settings = { overrideClaudeCommand: false };
+            config.settings = { overrideClaudeCommand: false, syncClaudeProviderSettings: true };
         }
+        config.settings.syncClaudeProviderSettings = config.settings.syncClaudeProviderSettings !== false;
         config.configs = config.configs.map(cfg => ({
             ...cfg,
             id: cfg.id || randomUUID(),

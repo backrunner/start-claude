@@ -1,4 +1,4 @@
-import type { ClaudeConfig } from '../config/types'
+import type { ClaudeConfig, SystemSettings } from '../config/types'
 import type { ProgramOptions } from './common'
 
 import process from 'node:process'
@@ -14,8 +14,9 @@ import {
   promptClaudeInstallation,
 } from '../utils/cli/detection'
 import { UILogger } from '../utils/cli/ui'
+import { syncClaudeProviderSettings } from '../utils/claude/provider-settings'
 import { hasConfigApiCredentials } from '../utils/config/credentials'
-import { checkForUpdates, handleBackgroundUpgradeResult, performBackgroundUpgrade } from '../utils/config/update-checker'
+import { checkForUpdates, handleBackgroundUpgradeResult, isBackgroundUpgradeProcess, performBackgroundUpgrade, runBackgroundUpgradeWorker } from '../utils/config/update-checker'
 import { McpSyncManager } from '../utils/mcp/sync-manager'
 import { SpeedTestManager } from '../utils/network/speed-test'
 import { StatusLineManager } from '../utils/statusline/manager'
@@ -85,6 +86,27 @@ async function handleMcpSync(options: { verbose?: boolean } = {}): Promise<void>
   catch (error) {
     // Don't fail the entire startup for MCP sync issues
     ui.verbose(`⚠️ MCP sync error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+async function handleClaudeProviderSettingsSync(
+  config: ClaudeConfig,
+  options: { verbose?: boolean } = {},
+): Promise<void> {
+  const ui = new UILogger(options.verbose)
+
+  try {
+    const settings = await configManager.getSettings()
+    if (settings.syncClaudeProviderSettings === false) {
+      ui.verbose('Claude Code provider settings sync disabled')
+      return
+    }
+
+    const result = await syncClaudeProviderSettings(config)
+    ui.verbose(`Claude Code provider settings synced: ${result.settingsPath}`)
+  }
+  catch (error) {
+    ui.warning(`Failed to sync Claude Code provider settings: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
@@ -245,7 +267,7 @@ program
       ui.verbose(`Failed WSL config detection: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
 
-    let systemSettings: unknown = null
+    let systemSettings: SystemSettings | null = null
 
     // Perform multiple async operations in parallel for faster startup
     const [
@@ -362,6 +384,7 @@ program
 
     if (config) {
       ui.displayBoxedConfig(config)
+      await handleClaudeProviderSettingsSync(config, options)
     }
     else {
       ui.info('🔧 No configuration found, starting Claude Code directly')
@@ -428,6 +451,15 @@ program
   .command('get <name> [property]')
   .description('Get configuration property value or display all properties')
   .action(async (name, property) => (await import('../commands/config')).handleGetCommand(name, property))
+
+program
+  .command('switch <name>')
+  .description('Switch Claude Code provider settings without starting Claude')
+  .option('--verbose', 'Enable verbose output')
+  .option('-p, --port <number>', 'Proxy server port (default: 2333)', '2333')
+  .action(async (name, options) =>
+    (await import('../commands/switch')).handleSwitchCommand(name, options),
+  )
 
 const overrideCmd = program
   .command('override')
@@ -815,10 +847,17 @@ cacheCmd
     (await import('../commands/cache')).handleCacheStatusCommand(options),
   )
 
-// Ensure migrations run before parsing commands
-ensureMigrationsRun().then(() => {
+async function main(): Promise<void> {
+  if (isBackgroundUpgradeProcess()) {
+    await runBackgroundUpgradeWorker()
+    return
+  }
+
+  await ensureMigrationsRun()
   program.parse()
-}).catch((error) => {
+}
+
+main().catch((error) => {
   const ui = new UILogger()
   ui.displayError(`Fatal error during initialization: ${error instanceof Error ? error.message : 'Unknown error'}`)
   process.exit(1)

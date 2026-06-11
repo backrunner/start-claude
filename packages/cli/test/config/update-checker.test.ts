@@ -4,14 +4,16 @@ import * as https from 'node:https'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import packageJson from '../../../../package.json'
-import { checkBackgroundUpgradeResult, checkForUpdates, performAutoUpdate, performBackgroundUpgrade, relaunchCLI, safeCopy } from '../../src/utils/config/update-checker'
+import { BACKGROUND_UPGRADE_ARG, BACKGROUND_UPGRADE_ENV, checkBackgroundUpgradeResult, checkForUpdates, isBackgroundUpgradeProcess, performAutoUpdate, performBackgroundUpgrade, relaunchCLI, safeCopy } from '../../src/utils/config/update-checker'
 
 // Get the actual version from package.json
 const CURRENT_VERSION = packageJson.version
+const ORIGINAL_ARGV = process.argv
+const ORIGINAL_EXEC_ARGV = process.execArgv
+const ORIGINAL_PLATFORM = process.platform
 
 // Mock child_process
 vi.mock('node:child_process', () => ({
-  exec: vi.fn(),
   execSync: vi.fn(),
   spawn: vi.fn(),
 }))
@@ -63,11 +65,43 @@ vi.mock('../../src/utils/config/cache-manager', () => ({
   },
 }))
 
-const mockExec = vi.mocked(childProcess.exec)
 const mockExecSync = vi.mocked(childProcess.execSync)
+const mockAccessSync = vi.mocked(fs.accessSync)
 const mockCpSync = vi.mocked(fs.cpSync)
 const mockSpawn = vi.mocked(childProcess.spawn)
 const mockHttpsGet = vi.mocked(https.default.get)
+
+function mockSpawnResult(code = 0, stdout = '', stderr = ''): { once: ReturnType<typeof vi.fn>, unref: ReturnType<typeof vi.fn> } {
+  const child = {
+    stdout: {
+      on: vi.fn((event: string, handler: (chunk: Buffer) => void) => {
+        if (event === 'data' && stdout) {
+          handler(Buffer.from(stdout))
+        }
+        return child.stdout
+      }),
+    },
+    stderr: {
+      on: vi.fn((event: string, handler: (chunk: Buffer) => void) => {
+        if (event === 'data' && stderr) {
+          handler(Buffer.from(stderr))
+        }
+        return child.stderr
+      }),
+    },
+    once: vi.fn((event: string, handler: (value?: any) => void) => {
+      if (event === 'close') {
+        queueMicrotask(() => handler(code))
+      }
+      return child
+    }),
+    kill: vi.fn(),
+    unref: vi.fn(),
+  }
+
+  mockSpawn.mockReturnValue(child as any)
+  return child
+}
 
 describe('updateChecker', () => {
   beforeEach(() => {
@@ -78,15 +112,40 @@ describe('updateChecker', () => {
       value: ['node', '/path/to/cli.js', '--config', 'test'],
       writable: true,
     })
+    Object.defineProperty(process, 'execArgv', {
+      value: [],
+      writable: true,
+    })
+    Object.defineProperty(process, 'platform', {
+      value: ORIGINAL_PLATFORM,
+      writable: true,
+      configurable: true,
+    })
 
     // Default cache behavior
     mockInstance.get.mockReturnValue(null)
     mockInstance.getClaudeInstallMethod.mockReturnValue(null)
     mockInstance.shouldCheckForUpdates.mockReturnValue(true)
+
+    mockSpawnResult()
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    Object.defineProperty(process, 'argv', {
+      value: ORIGINAL_ARGV,
+      writable: true,
+    })
+    Object.defineProperty(process, 'execArgv', {
+      value: ORIGINAL_EXEC_ARGV,
+      writable: true,
+    })
+    Object.defineProperty(process, 'platform', {
+      value: ORIGINAL_PLATFORM,
+      writable: true,
+      configurable: true,
+    })
+    delete process.env[BACKGROUND_UPGRADE_ENV]
   })
 
   describe('checkForUpdates', () => {
@@ -320,42 +379,38 @@ describe('updateChecker', () => {
     })
 
     it('should use package manager when usePackageManager is true', async () => {
-      mockExec.mockImplementation((cmd, options, callback) => {
-        if (typeof callback === 'function') {
-          callback(null, 'success', '')
-        }
-        return {} as any
-      })
+      mockSpawnResult(0, 'success', '')
 
       const result = await performAutoUpdate(true, false)
 
       expect(result.success).toBe(true)
       expect(result.method).toBe('package-manager')
       expect(result.usedSudo).toBe(false)
-      expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('start-claude@latest'),
-        { timeout: 60000 },
-        expect.any(Function),
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'pnpm',
+        ['add', '-g', 'start-claude@latest'],
+        expect.objectContaining({
+          shell: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }),
       )
     })
 
     it('should use package manager with sudo when requested', async () => {
-      mockExec.mockImplementation((cmd, options, callback) => {
-        if (typeof callback === 'function') {
-          callback(null, 'success', '')
-        }
-        return {} as any
-      })
+      mockSpawnResult(0, 'success', '')
 
       const result = await performAutoUpdate(true, true)
 
       expect(result.success).toBe(true)
       expect(result.method).toBe('package-manager')
       expect(result.usedSudo).toBe(true)
-      expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('sudo'),
-        { timeout: 60000 },
-        expect.any(Function),
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'sudo',
+        ['pnpm', 'add', '-g', 'start-claude@latest'],
+        expect.objectContaining({
+          shell: false,
+          stdio: 'inherit',
+        }),
       )
     })
 
@@ -366,12 +421,7 @@ describe('updateChecker', () => {
         configurable: true,
       })
 
-      mockExec.mockImplementation((cmd, options, callback) => {
-        if (typeof callback === 'function') {
-          callback(new Error('EACCES: permission denied'), '', '')
-        }
-        return {} as any
-      })
+      mockSpawnResult(1, '', 'EACCES: permission denied')
 
       const result = await performAutoUpdate(true, false)
 
@@ -379,31 +429,139 @@ describe('updateChecker', () => {
       expect(result.shouldRetryWithPackageManager).toBe(true)
       expect(result.error).toContain('EACCES')
     })
+
+    it('should allow package manager retry on Unix permission errors', async () => {
+      Object.defineProperty(process, 'platform', {
+        value: 'linux',
+        writable: true,
+        configurable: true,
+      })
+
+      mockSpawnResult(1, '', 'EACCES: permission denied')
+
+      const result = await performAutoUpdate(true, false)
+
+      expect(result.success).toBe(false)
+      expect(result.shouldRetryWithPackageManager).toBe(true)
+    })
+
+    it('should not suggest sudo retry on Windows permission errors', async () => {
+      Object.defineProperty(process, 'platform', {
+        value: 'win32',
+        writable: true,
+        configurable: true,
+      })
+
+      mockSpawnResult(1, '', 'EPERM: operation not permitted')
+
+      const result = await performAutoUpdate(true, false)
+
+      expect(result.success).toBe(false)
+      expect(result.shouldRetryWithPackageManager).toBe(false)
+    })
   })
 
   describe('performBackgroundUpgrade', () => {
-    beforeEach(() => {
-      vi.useFakeTimers()
-    })
-
-    afterEach(() => {
-      vi.useRealTimers()
-    })
-
     it('should not start if already running', async () => {
       mockInstance.get.mockReturnValue(true) // Background upgrade already running
 
       await performBackgroundUpgrade()
 
       expect(mockInstance.set).not.toHaveBeenCalled()
+      expect(mockSpawn).not.toHaveBeenCalled()
     })
 
-    it('should set running flag and schedule upgrade', async () => {
+    it('should set running flag and spawn a detached worker process', async () => {
       mockInstance.get.mockReturnValue(null) // Not running
 
       await performBackgroundUpgrade()
 
       expect(mockInstance.set).toHaveBeenCalledWith('upgrade.backgroundRunning', true, 300000)
+      expect(mockSpawn).toHaveBeenCalledWith(
+        process.execPath,
+        ['/path/to/cli.js', BACKGROUND_UPGRADE_ARG],
+        expect.objectContaining({
+          detached: true,
+          stdio: 'ignore',
+          shell: false,
+          windowsHide: true,
+          env: expect.objectContaining({
+            [BACKGROUND_UPGRADE_ENV]: '1',
+          }),
+        }),
+      )
+      expect(mockSpawn.mock.results[0].value.unref).toHaveBeenCalled()
+    })
+
+    it('should use shell for detached Windows binary shims', async () => {
+      Object.defineProperty(process, 'platform', {
+        value: 'win32',
+        writable: true,
+        configurable: true,
+      })
+      Object.defineProperty(process, 'argv', {
+        value: ['node', 'C:\\Users\\test\\AppData\\Roaming\\npm\\start-claude.cmd'],
+        writable: true,
+      })
+
+      await performBackgroundUpgrade()
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        expect.stringContaining('start-claude.cmd'),
+        [BACKGROUND_UPGRADE_ARG],
+        expect.objectContaining({
+          shell: true,
+          windowsHide: true,
+        }),
+      )
+    })
+
+    it('should not use the internal module path when the current shim cannot be resolved', async () => {
+      Object.defineProperty(process, 'argv', {
+        value: ['node', '/missing/start-claude'],
+        writable: true,
+      })
+      mockAccessSync.mockImplementation((filePath) => {
+        if (String(filePath) === '/missing/start-claude') {
+          throw new Error('missing')
+        }
+      })
+
+      await performBackgroundUpgrade()
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'start-claude',
+        [BACKGROUND_UPGRADE_ARG],
+        expect.objectContaining({
+          detached: true,
+          stdio: 'ignore',
+        }),
+      )
+    })
+  })
+
+  describe('isBackgroundUpgradeProcess', () => {
+    it('should require both the internal arg and environment marker', () => {
+      expect(isBackgroundUpgradeProcess()).toBe(false)
+
+      Object.defineProperty(process, 'argv', {
+        value: ['node', '/path/to/cli.js', BACKGROUND_UPGRADE_ARG],
+        writable: true,
+      })
+      expect(isBackgroundUpgradeProcess()).toBe(false)
+
+      Object.defineProperty(process, 'argv', {
+        value: ['node', '/path/to/cli.js'],
+        writable: true,
+      })
+      process.env[BACKGROUND_UPGRADE_ENV] = '1'
+      expect(isBackgroundUpgradeProcess()).toBe(false)
+
+      Object.defineProperty(process, 'argv', {
+        value: ['node', '/path/to/cli.js', BACKGROUND_UPGRADE_ARG],
+        writable: true,
+      })
+      expect(isBackgroundUpgradeProcess()).toBe(true)
     })
   })
 
@@ -441,7 +599,7 @@ describe('updateChecker', () => {
   })
 
   describe('relaunchCLI', () => {
-    it('should spawn new process with same arguments and exit', () => {
+    it('should relaunch local node entry with same arguments and exit', () => {
       const mockChild = {
         unref: vi.fn(),
       }
@@ -458,11 +616,12 @@ describe('updateChecker', () => {
         relaunchCLI()
 
         expect(mockSpawn).toHaveBeenCalledWith(
-          'node',
-          [process.argv[1], '--config', 'test'],
+          process.execPath,
+          ['/path/to/cli.js', '--config', 'test'],
           {
             detached: true,
             stdio: 'inherit',
+            shell: false,
           },
         )
         expect(mockChild.unref).toHaveBeenCalled()
@@ -470,6 +629,42 @@ describe('updateChecker', () => {
       }
       finally {
         // Restore original process.exit
+        process.exit = originalExit
+      }
+    })
+
+    it('should relaunch global binary shim directly', () => {
+      const mockChild = {
+        unref: vi.fn(),
+      }
+      mockSpawn.mockReturnValue(mockChild as any)
+      Object.defineProperty(process, 'argv', {
+        value: ['node', '/usr/local/bin/start-claude', '--config', 'test'],
+        writable: true,
+      })
+
+      // eslint-disable-next-line ts/unbound-method
+      const originalExit = process.exit
+      const mockExit = vi.fn()
+      // @ts-expect-error - Mocking process.exit for testing
+      process.exit = mockExit
+
+      try {
+        relaunchCLI()
+
+        expect(mockSpawn).toHaveBeenCalledWith(
+          '/usr/local/bin/start-claude',
+          ['--config', 'test'],
+          {
+            detached: true,
+            stdio: 'inherit',
+            shell: false,
+          },
+        )
+        expect(mockChild.unref).toHaveBeenCalled()
+        expect(mockExit).toHaveBeenCalledWith(0)
+      }
+      finally {
         process.exit = originalExit
       }
     })

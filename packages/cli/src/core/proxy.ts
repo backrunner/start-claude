@@ -639,7 +639,7 @@ export class ProxyServer {
     speedTestResults?: Array<{ name: string, responseTime: number }>
   }> {
     try {
-      // Validate configs
+      // Validate configs against the currently enabled proxy modes.
       const validConfigs = configs.filter((c) => {
         const hasApiCredentials = hasConfigApiCredentials(c)
         const hasTransformerEnabled = 'transformerEnabled' in c && TransformerService.isTransformerEnabled(c.transformerEnabled)
@@ -649,13 +649,19 @@ export class ProxyServer {
           return false
         }
 
+        if (this.enableTransform && !this.enableLoadBalance) {
+          return hasTransformerEnabled && hasApiCredentials
+        }
+
         return hasApiCredentials || hasTransformerEnabled
       })
 
       if (validConfigs.length === 0) {
         return {
           success: false,
-          message: 'No valid configurations provided',
+          message: this.enableTransform && !this.enableLoadBalance
+            ? 'No transformer-enabled configurations with complete API credentials provided'
+            : 'No valid configurations provided',
         }
       }
 

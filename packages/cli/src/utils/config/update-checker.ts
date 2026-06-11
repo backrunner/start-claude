@@ -1,5 +1,5 @@
 import type { Buffer } from 'node:buffer'
-import { exec, execSync, spawn } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 import { accessSync, constants, cpSync, createWriteStream, mkdirSync, rmSync } from 'node:fs'
 import https from 'node:https'
 import os from 'node:os'
@@ -20,6 +20,10 @@ const __dirname = path.dirname(__filename)
 const CACHE_KEY_FAILURE_COUNT = 'upgrade.consecutiveFailures'
 const CACHE_KEY_USER_DISMISSED = 'upgrade.userDismissedPrompt'
 const FAILURE_THRESHOLD = 10
+const BACKGROUND_RUNNING_TTL_MS = 5 * 60 * 1000
+
+export const BACKGROUND_UPGRADE_ARG = '--start-claude-background-upgrade'
+export const BACKGROUND_UPGRADE_ENV = 'START_CLAUDE_BACKGROUND_UPGRADE'
 
 export interface UpdateInfo {
   currentVersion: string
@@ -265,17 +269,41 @@ function hasWritePermission(dirPath: string): boolean {
   }
 }
 
-/**
- * Detect package manager to use for updates
- * Uses cached installation method if available, then PATH lookup (fast, no execution)
- */
-function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' | 'bun' {
-  const cache = CacheManager.getInstance()
+type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun'
 
-  // First, check cached installation method
-  const cachedMethod = cache.getClaudeInstallMethod()
-  if (cachedMethod && ['npm', 'pnpm', 'yarn', 'bun'].includes(cachedMethod)) {
-    return cachedMethod as 'pnpm' | 'npm' | 'yarn' | 'bun'
+function detectPackageManagerFromInstallPath(installPath: string | null): PackageManager | null {
+  if (!installPath) {
+    return null
+  }
+
+  const normalizedPath = path.normalize(installPath).toLowerCase().replace(/\\/g, '/')
+
+  if (normalizedPath.includes('/.pnpm/') || normalizedPath.includes('pnpm')) {
+    return 'pnpm'
+  }
+
+  if (normalizedPath.includes('/.bun/') || normalizedPath.includes('bun')) {
+    return 'bun'
+  }
+
+  if (normalizedPath.includes('/yarn/') || normalizedPath.includes('/.config/yarn/')) {
+    return 'yarn'
+  }
+
+  if (normalizedPath.includes('/node_modules/start-claude')) {
+    return 'npm'
+  }
+
+  return null
+}
+
+/**
+ * Detect package manager to use for start-claude updates.
+ */
+function detectPackageManager(): PackageManager {
+  const installedPackageManager = detectPackageManagerFromInstallPath(getGlobalInstallPath())
+  if (installedPackageManager) {
+    return installedPackageManager
   }
 
   // Fallback to checking available package managers via PATH lookup (fast, no execution)
@@ -294,6 +322,70 @@ function detectPackageManager(): 'pnpm' | 'npm' | 'yarn' | 'bun' {
   return 'npm' // Fallback to npm
 }
 
+function pathExists(filePath: string): boolean {
+  try {
+    accessSync(filePath, constants.F_OK)
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+function resolveCliEntryPath(): string | null {
+  const argvEntry = process.argv[1]
+  if (argvEntry) {
+    const resolvedArgvEntry = path.resolve(argvEntry)
+    if (pathExists(resolvedArgvEntry)) {
+      return resolvedArgvEntry
+    }
+  }
+
+  const bundledEntryName = path.basename(__filename).toLowerCase()
+  if (!['cli.js', 'cli.cjs', 'cli.mjs'].includes(bundledEntryName)) {
+    return null
+  }
+
+  const bundledEntryPath = path.resolve(__filename)
+  if (pathExists(bundledEntryPath)) {
+    return bundledEntryPath
+  }
+
+  return null
+}
+
+function isNodeRunnableEntryPath(entryPath: string): boolean {
+  const ext = path.extname(entryPath).toLowerCase()
+  return ext === '.js' || ext === '.cjs' || ext === '.mjs' || ext === '.ts'
+}
+
+function buildCliInvocation(args: string[]): { command: string, args: string[], shell: boolean } | null {
+  const entryPath = resolveCliEntryPath()
+
+  if (entryPath) {
+    if (isNodeRunnableEntryPath(entryPath)) {
+      return {
+        command: process.execPath,
+        args: [...process.execArgv, entryPath, ...args],
+        shell: false,
+      }
+    }
+
+    return {
+      command: entryPath,
+      args,
+      shell: process.platform === 'win32',
+    }
+  }
+
+  const binaryName = process.argv[1] ? path.basename(process.argv[1]) : 'start-claude'
+  return {
+    command: binaryName,
+    args,
+    shell: process.platform === 'win32',
+  }
+}
+
 /**
  * Download a specific version of start-claude tarball from npm
  * Only downloads stable (non-prerelease) versions
@@ -303,13 +395,19 @@ async function downloadLatestTarball(destPath: string, version?: string): Promis
     const timeout = 30000 // 30 seconds
 
     // Fetch full package metadata to get tarball URL for specific version
-    https.get('https://registry.npmjs.org/start-claude', {
+    const metadataReq = https.get('https://registry.npmjs.org/start-claude', {
       timeout,
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'start-claude-cli',
       },
     }, (res: any) => {
+      if (res.statusCode && res.statusCode >= 400) {
+        reject(new Error(`npm registry returned ${res.statusCode}`))
+        res.resume?.()
+        return
+      }
+
       let data = ''
 
       res.on('data', (chunk: Buffer) => {
@@ -367,24 +465,40 @@ async function downloadLatestTarball(destPath: string, version?: string): Promis
           }
 
           // Download the tarball
-          https.get(tarballUrl, {
+          const tarballReq = https.get(tarballUrl, {
             timeout,
             headers: {
               'User-Agent': 'start-claude-cli',
             },
           }, (tarRes: any) => {
+            if (tarRes.statusCode && tarRes.statusCode >= 400) {
+              reject(new Error(`tarball download returned ${tarRes.statusCode}`))
+              tarRes.resume?.()
+              return
+            }
+
             const fileStream = createWriteStream(destPath)
 
             pipeline(tarRes, fileStream)
               .then(() => resolve())
               .catch(reject)
-          }).on('error', reject)
+          })
+
+          tarballReq.on('error', reject)
+          tarballReq.on('timeout', () => {
+            tarballReq.destroy()
+            reject(new Error('Tarball download timeout'))
+          })
         }
         catch (error) {
           reject(error)
         }
       })
-    }).on('error', reject).on('timeout', () => {
+    })
+
+    metadataReq.on('error', reject)
+    metadataReq.on('timeout', () => {
+      metadataReq.destroy()
       reject(new Error('Download timeout'))
     })
   })
@@ -629,27 +743,12 @@ async function performSilentUpgrade(): Promise<UpdateResult> {
  */
 async function performPackageManagerUpdate(useSudo: boolean = false): Promise<UpdateResult> {
   const packageManager = detectPackageManager()
-  const updateCommand = packageManager === 'npm'
-    ? 'npm install -g start-claude@latest'
-    : packageManager === 'yarn'
-      ? 'yarn global add start-claude@latest'
-      : packageManager === 'bun'
-        ? 'bun add -g start-claude@latest'
-        : 'pnpm add -g start-claude@latest'
-
-  const finalCommand = useSudo ? `sudo ${updateCommand}` : updateCommand
+  const updateCommand = getPackageManagerUpdateCommand(packageManager)
+  const command = useSudo ? 'sudo' : updateCommand.command
+  const args = useSudo ? [updateCommand.command, ...updateCommand.args] : updateCommand.args
 
   try {
-    const result = await new Promise<{ stdout: string, stderr: string }>((resolve, reject) => {
-      exec(finalCommand, { timeout: 60000 }, (error, stdout, stderr) => {
-        if (error) {
-          reject(error)
-        }
-        else {
-          resolve({ stdout, stderr })
-        }
-      })
-    })
+    const result = await runPackageManagerCommand(command, args, useSudo)
 
     // Check if the update was successful
     if (result.stderr && (result.stderr.includes('error') || result.stderr.includes('failed'))) {
@@ -680,9 +779,65 @@ async function performPackageManagerUpdate(useSudo: boolean = false): Promise<Up
       error: errorMessage,
       usedSudo: useSudo,
       method: 'package-manager',
-      shouldRetryWithPackageManager: !useSudo && isPermissionError && process.platform === 'darwin',
+      shouldRetryWithPackageManager: !useSudo && isPermissionError && process.platform !== 'win32',
     }
   }
+}
+
+function getPackageManagerUpdateCommand(packageManager: PackageManager): { command: string, args: string[] } {
+  if (packageManager === 'npm') {
+    return { command: 'npm', args: ['install', '-g', 'start-claude@latest'] }
+  }
+
+  if (packageManager === 'yarn') {
+    return { command: 'yarn', args: ['global', 'add', 'start-claude@latest'] }
+  }
+
+  if (packageManager === 'bun') {
+    return { command: 'bun', args: ['add', '-g', 'start-claude@latest'] }
+  }
+
+  return { command: 'pnpm', args: ['add', '-g', 'start-claude@latest'] }
+}
+
+function runPackageManagerCommand(command: string, args: string[], inheritStdio: boolean): Promise<{ stdout: string, stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      shell: process.platform === 'win32' && command !== 'sudo',
+      stdio: inheritStdio ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString()
+    })
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+
+    const timeout = setTimeout(() => {
+      child.kill()
+      reject(new Error('Package manager update timed out'))
+    }, 60000)
+
+    child.once('error', (error: Error) => {
+      clearTimeout(timeout)
+      reject(error)
+    })
+
+    child.once('close', (code: number | null) => {
+      clearTimeout(timeout)
+      if (code === 0) {
+        resolve({ stdout, stderr })
+        return
+      }
+
+      reject(new Error(stderr.trim() || `Package manager update failed with exit code ${code ?? 'unknown'}`))
+    })
+  })
 }
 
 /**
@@ -704,6 +859,51 @@ export async function performAutoUpdate(usePackageManager: boolean = false, useS
   return performSilentUpgrade()
 }
 
+function recordBackgroundUpgradeResult(result: UpdateResult): void {
+  const cache = CacheManager.getInstance()
+
+  cache.set('upgrade.backgroundResult', {
+    ...result,
+    timestamp: Date.now(),
+  })
+
+  if (result.success) {
+    cache.set(CACHE_KEY_FAILURE_COUNT, 0)
+    cache.delete(CACHE_KEY_USER_DISMISSED)
+    return
+  }
+
+  const failures = cache.get(CACHE_KEY_FAILURE_COUNT) || 0
+  cache.set(CACHE_KEY_FAILURE_COUNT, failures + 1)
+}
+
+function recordBackgroundUpgradeError(error: unknown): void {
+  recordBackgroundUpgradeResult({
+    success: false,
+    error: error instanceof Error ? error.message : 'Unknown error',
+    shouldRetryWithPackageManager: true,
+  })
+}
+
+export function isBackgroundUpgradeProcess(): boolean {
+  return process.argv.includes(BACKGROUND_UPGRADE_ARG) && process.env[BACKGROUND_UPGRADE_ENV] === '1'
+}
+
+export async function runBackgroundUpgradeWorker(): Promise<void> {
+  const cache = CacheManager.getInstance()
+
+  try {
+    const result = await performSilentUpgrade()
+    recordBackgroundUpgradeResult(result)
+  }
+  catch (error) {
+    recordBackgroundUpgradeError(error)
+  }
+  finally {
+    cache.delete('upgrade.backgroundRunning')
+  }
+}
+
 /**
  * Perform background upgrade - this runs in the background without blocking the CLI
  * The upgrade happens silently, and results are saved to cache for next startup
@@ -719,52 +919,47 @@ export async function performBackgroundUpgrade(): Promise<void> {
     }
 
     // Mark that a background upgrade is running
-    cache.set('upgrade.backgroundRunning', true, 5 * 60 * 1000) // 5 minute TTL
+    cache.set('upgrade.backgroundRunning', true, BACKGROUND_RUNNING_TTL_MS)
 
-    // Run the upgrade asynchronously without blocking
-    // Using setTimeout to ensure it runs after the CLI starts
-    setTimeout(() => {
-      void (async () => {
-        try {
-          const result = await performSilentUpgrade()
+    const invocation = buildCliInvocation([BACKGROUND_UPGRADE_ARG])
+    if (!invocation) {
+      recordBackgroundUpgradeResult({
+        success: false,
+        error: 'Could not determine CLI entry point for background upgrade',
+        shouldRetryWithPackageManager: true,
+      })
+      cache.delete('upgrade.backgroundRunning')
+      return
+    }
 
-          // Save the result to cache
-          cache.set('upgrade.backgroundResult', {
-            ...result,
-            timestamp: Date.now(),
-          })
+    const child = spawn(invocation.command, invocation.args, {
+      detached: true,
+      stdio: 'ignore',
+      shell: invocation.shell,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        [BACKGROUND_UPGRADE_ENV]: '1',
+      },
+    })
 
-          // Track success/failure for silent upgrade prompting
-          if (result.success) {
-            cache.set(CACHE_KEY_FAILURE_COUNT, 0)
-            cache.delete(CACHE_KEY_USER_DISMISSED)
-          }
-          else {
-            const failures = cache.get(CACHE_KEY_FAILURE_COUNT) || 0
-            cache.set(CACHE_KEY_FAILURE_COUNT, failures + 1)
-          }
-        }
-        catch (error) {
-          // Catch any unexpected errors (performSilentUpgrade should return errors, not throw)
-          cache.set('upgrade.backgroundResult', {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-            timestamp: Date.now(),
-          })
+    child.once('error', (error: Error) => {
+      recordBackgroundUpgradeError(error)
+      cache.delete('upgrade.backgroundRunning')
+    })
 
-          // Increment failure count on exception
-          const failures = cache.get(CACHE_KEY_FAILURE_COUNT) || 0
-          cache.set(CACHE_KEY_FAILURE_COUNT, failures + 1)
-        }
-        finally {
-          cache.delete('upgrade.backgroundRunning')
-        }
-      })()
-    }, 100) // Small delay to ensure CLI has started
+    child.unref()
   }
   catch {
     // Silently fail if there's any error in the synchronous setup code
     // This ensures the CLI never crashes due to upgrade logic
+    try {
+      const cache = CacheManager.getInstance()
+      cache.delete('upgrade.backgroundRunning')
+    }
+    catch {
+      // Ignore cache cleanup errors
+    }
   }
 }
 
@@ -800,57 +995,24 @@ export function checkBackgroundUpgradeResult(): { result: UpdateResult, latestVe
 }
 
 /**
- * Detect if the CLI is running from a global installation
- */
-function isGlobalInstall(): boolean {
-  // Check if we're running via the global binary (not via node script.js)
-  // When running globally, process.argv[1] should be the global binary path
-  // or we can check if the script path is in a global node path
-  if (!process.argv[1]) {
-    return false
-  }
-
-  const scriptPath = process.argv[1]
-
-  // Check if we're running via direct node execution (local development)
-  if (scriptPath.endsWith('.js') || scriptPath.endsWith('.cjs') || scriptPath.endsWith('.mjs')) {
-    // Check if the script is in a global Node.js installation path
-    return isGlobalNodePath(scriptPath)
-  }
-
-  // If we're running via a binary (like start-claude command), it's global
-  return true
-}
-
-/**
  * Restarts the CLI with the same arguments after an update
  * This ensures the user continues with their original command
  */
 export function relaunchCLI(): void {
   // Get the original command and arguments
   const args = process.argv.slice(2) // Remove 'node' and script path
-  const executable = process.argv[0] // node executable
+  const invocation = buildCliInvocation(args)
 
-  let commandToRun: string[]
-
-  if (isGlobalInstall()) {
-    // Running globally - use the binary name directly
-    // Find the binary name from process.argv[1] or use 'start-claude'
-    const binaryName = process.argv[1] && !process.argv[1].includes('/')
-      ? process.argv[1]
-      : 'start-claude'
-    commandToRun = [binaryName, ...args]
-  }
-  else {
-    // Running locally - use node with the script path
-    const scriptPath = process.argv[1] // script path
-    commandToRun = [scriptPath, ...args]
+  if (!invocation) {
+    process.exit(1)
+    return
   }
 
   // Spawn a new process with the same arguments
-  const child = spawn(executable, commandToRun, {
+  const child = spawn(invocation.command, invocation.args, {
     detached: true,
     stdio: 'inherit',
+    shell: invocation.shell,
   })
 
   // Allow the parent process to exit independently
@@ -868,6 +1030,11 @@ function checkNeedsSudo(): boolean {
     return false
 
   try {
+    const installPath = getGlobalInstallPath()
+    if (installPath && hasWritePermission(installPath)) {
+      return false
+    }
+
     const globalDir = execSync('npm root -g', { encoding: 'utf-8' }).trim()
     accessSync(globalDir, constants.W_OK)
     return false

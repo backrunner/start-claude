@@ -209,6 +209,12 @@
       "failedEndpointBanDuration": "失敗エンドポイント禁止期間",
       "failedEndpointBanDurationHelpText": "再試行前に失敗したエンドポイントを除外する時間（60-3600 秒）"
     },
+    "claudeProviderSettings": {
+      "title": "Claude Code 設定ファイル",
+      "description": "選択した provider を Claude Code のネイティブ設定ファイルへ同期します",
+      "syncFile": "provider ファイルを同期",
+      "syncFileDescription": "起動前に provider の環境変数を ~/.claude/settings.json に書き込みます。失敗しても警告のみ表示し、今回の起動はブロックしません。"
+    },
     "cloudSync": {
       "title": "クラウドストレージ同期",
       "description": "iCloud、OneDrive、またはカスタムフォルダーを使用してデバイス間で設定を同期",

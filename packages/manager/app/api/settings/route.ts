@@ -20,7 +20,11 @@ let hasSyncedThisSession = false
 async function getSettings(): Promise<any> {
   try {
     const configFile = await configManager.load()
-    const settings = configFile.settings || { overrideClaudeCommand: false }
+    const settings = configFile.settings || {
+      overrideClaudeCommand: false,
+      syncClaudeProviderSettings: true,
+    }
+    settings.syncClaudeProviderSettings = settings.syncClaudeProviderSettings !== false
 
     // Sync Claude Code config files on first load
     if (!hasSyncedThisSession) {
@@ -136,6 +140,7 @@ async function getSettings(): Promise<any> {
     console.error('Error reading settings:', error)
     return {
       overrideClaudeCommand: false,
+      syncClaudeProviderSettings: true,
       balanceMode: {
         enableByDefault: false,
         strategy: LoadBalancerStrategy.Fallback,

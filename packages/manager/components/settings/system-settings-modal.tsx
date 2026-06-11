@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react'
 import type { SystemSettings } from '@/config/types'
 import { useTranslations } from 'next-intl'
-import { Activity, AlertCircle, Cloud, CloudOff, Database, FolderSync, Globe, HardDrive, Key, Lock, RefreshCw, Settings2, Timer, Zap } from 'lucide-react'
+import { Activity, AlertCircle, Cloud, CloudOff, Database, FileJson, FolderSync, Globe, HardDrive, Key, Lock, RefreshCw, Settings2, Timer, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,6 +59,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
   const t = useTranslations('settings')
   const [settings, setSettings] = useState<SystemSettings>({
     overrideClaudeCommand: initialSettings?.overrideClaudeCommand || false,
+    syncClaudeProviderSettings: initialSettings?.syncClaudeProviderSettings !== false,
     balanceMode: {
       enableByDefault: initialSettings?.balanceMode?.enableByDefault || false,
       strategy: initialSettings?.balanceMode?.strategy || LoadBalancerStrategy.Fallback,
@@ -640,6 +641,40 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       {t('healthCheck.failedEndpointBanDurationHelpText')}
                     </p>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Claude Code Provider Settings - Full Width */}
+            <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-cyan-500/10 border-2 hover:border-cyan-500/30 group">
+              <CardHeader className="pb-5 bg-gradient-to-br from-cyan-50/50 via-transparent to-transparent dark:from-cyan-950/20">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-cyan-600 shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-500/50 transition-all duration-300">
+                    <FileJson className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl font-bold">{t('claudeProviderSettings.title')}</CardTitle>
+                    <CardDescription className="text-sm mt-0.5">{t('claudeProviderSettings.description')}</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
+                  <div className="flex-1">
+                    <Label htmlFor="syncClaudeProviderSettings" className="font-semibold text-base cursor-pointer">{t('claudeProviderSettings.syncFile')}</Label>
+                    <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                      {t('claudeProviderSettings.syncFileDescription')}
+                    </p>
+                  </div>
+                  <Switch
+                    id="syncClaudeProviderSettings"
+                    checked={settings.syncClaudeProviderSettings !== false}
+                    onCheckedChange={checked => setSettings(prev => ({
+                      ...prev,
+                      syncClaudeProviderSettings: checked,
+                    }))}
+                    className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-cyan-500 data-[state=checked]:to-cyan-600 data-[state=unchecked]:bg-cyan-200 dark:data-[state=unchecked]:bg-cyan-900/30 border-transparent"
+                  />
                 </div>
               </CardContent>
             </Card>

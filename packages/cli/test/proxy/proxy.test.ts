@@ -935,6 +935,31 @@ describe('proxyServer', () => {
       expect(status.endpoints[0].config.name).toBe('transformer-config')
     })
 
+    it('should reject switching transformer-only mode to a non-transformer config', async () => {
+      const transformerConfig: ClaudeConfig = {
+        name: 'transformer-config',
+        profileType: 'default',
+        baseUrl: 'https://api.openai.com',
+        apiKey: 'sk-transformer-key',
+        transformerEnabled: true,
+        isDefault: false,
+      }
+      const regularConfig: ClaudeConfig = {
+        name: 'regular-api',
+        profileType: 'default',
+        baseUrl: 'https://api.regular.com',
+        apiKey: 'sk-regular-key',
+        isDefault: false,
+      }
+
+      const ps = new ProxyServer([transformerConfig], { enableTransform: true })
+      const result = await ps.switchConfigs([regularConfig])
+
+      expect(result.success).toBe(false)
+      expect(result.message).toBe('No transformer-enabled configurations with complete API credentials provided')
+      expect(ps.getStatus().endpoints[0].config.name).toBe('transformer-config')
+    })
+
     it('should create stub endpoint when no transformer configs in transformer-only mode', () => {
       const regularConfigs: ClaudeConfig[] = [
         {

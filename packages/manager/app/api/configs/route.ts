@@ -165,7 +165,11 @@ async function getConfigs(): Promise<ClaudeConfig[]> {
 async function getSettings(): Promise<SystemSettings> {
   try {
     const configFile = await configManager.load()
-    const settings = configFile.settings || { overrideClaudeCommand: false }
+    const settings = configFile.settings || {
+      overrideClaudeCommand: false,
+      syncClaudeProviderSettings: true,
+    }
+    settings.syncClaudeProviderSettings = settings.syncClaudeProviderSettings !== false
 
     // Ensure balanceMode structure exists with defaults
     if (!settings.balanceMode) {
@@ -209,6 +213,7 @@ async function getSettings(): Promise<SystemSettings> {
     console.error('Error reading settings:', error)
     return {
       overrideClaudeCommand: false,
+      syncClaudeProviderSettings: true,
       balanceMode: {
         enableByDefault: false,
         strategy: LoadBalancerStrategy.Fallback,

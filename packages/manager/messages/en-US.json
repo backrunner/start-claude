@@ -209,6 +209,12 @@
       "failedEndpointBanDuration": "Failed Endpoint Ban Duration",
       "failedEndpointBanDurationHelpText": "Time to exclude failed endpoints before retry (60-3600 seconds)"
     },
+    "claudeProviderSettings": {
+      "title": "Claude Code Provider File",
+      "description": "Sync the selected provider into Claude Code's native settings file",
+      "syncFile": "Sync provider file",
+      "syncFileDescription": "Write provider env values to ~/.claude/settings.json before launch. Failures only show a warning and do not block startup."
+    },
     "cloudSync": {
       "title": "Cloud Storage Sync",
       "description": "Sync configurations across devices using iCloud, OneDrive, or custom folder",
