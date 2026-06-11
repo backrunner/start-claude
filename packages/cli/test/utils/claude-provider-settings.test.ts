@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildClaudeProviderEnv,
   buildProxyClaudeProviderConfig,
+  getClaudeCodeSettingsPath,
   syncClaudeProviderSettings,
 } from '../../src/utils/claude/provider-settings'
 
@@ -24,6 +25,10 @@ describe('claude provider settings sync', () => {
     return join(dir, '.claude', 'settings.json')
   }
 
+  function createTempStatePath(settingsPath: string): string {
+    return join(dirname(dirname(settingsPath)), '.start-claude', 'claude-provider-settings-state.json')
+  }
+
   function readJson(path: string): unknown {
     return JSON.parse(readFileSync(path, 'utf-8'))
   }
@@ -32,6 +37,20 @@ describe('claude provider settings sync', () => {
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, typeof value === 'string' ? value : JSON.stringify(value))
   }
+
+  it('targets settings.json even when a legacy claude.json exists', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'start-claude-provider-settings-'))
+    tempDirs.push(dir)
+    const legacyPath = join(dir, '.claude', 'claude.json')
+
+    writeSettings(legacyPath, {
+      env: {
+        ANTHROPIC_BASE_URL: 'https://legacy.example.com',
+      },
+    })
+
+    expect(getClaudeCodeSettingsPath(dir, undefined)).toBe(join(dir, '.claude', 'settings.json'))
+  })
 
   it('materializes known env values with config fields taking priority', () => {
     const config: ClaudeConfig = {
@@ -46,7 +65,11 @@ describe('claude provider settings sync', () => {
       disableTelemetry: true,
       env: {
         ANTHROPIC_BASE_URL: 'https://stale.example.com',
+        ANTHROPIC_DEFAULT_FABLE_MODEL: 'provider-fable',
         ANTHROPIC_DEFAULT_SONNET_MODEL: 'provider-sonnet',
+        ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION: 'Sonnet via custom provider',
+        ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES: 'thinking,interleaved_thinking',
+        DISABLE_PROMPT_CACHING_SONNET: '1',
         UNRELATED_ENV: 'keep-out',
       },
     }
@@ -56,9 +79,13 @@ describe('claude provider settings sync', () => {
       ANTHROPIC_API_KEY: 'sk-api',
       ANTHROPIC_AUTH_TOKEN: 'sk-auth',
       ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929',
+      ANTHROPIC_DEFAULT_FABLE_MODEL: 'provider-fable',
       ANTHROPIC_DEFAULT_SONNET_MODEL: 'provider-sonnet',
+      ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION: 'Sonnet via custom provider',
+      ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES: 'thinking,interleaved_thinking',
       ANTHROPIC_CUSTOM_HEADERS: 'Authorization: Bearer custom\nX-Test: 1',
       CLAUDE_CODE_MAX_OUTPUT_TOKENS: '4096',
+      DISABLE_PROMPT_CACHING_SONNET: '1',
       DISABLE_TELEMETRY: '1',
     })
   })
@@ -84,17 +111,46 @@ describe('claude provider settings sync', () => {
       },
     })
 
-    await syncClaudeProviderSettings(config, { settingsPath })
+    await syncClaudeProviderSettings(config, {
+      settingsPath,
+      statePath: createTempStatePath(settingsPath),
+    })
 
     expect(readJson(settingsPath)).toEqual({
       hooks: { Stop: [] },
       statusLine: { type: 'command', command: 'statusline' },
       permissions: { allow: ['Bash'] },
       env: {
-        PATH: '/usr/bin',
         ANTHROPIC_BASE_URL: 'https://api.prod.example.com',
         ANTHROPIC_AUTH_TOKEN: 'sk-prod',
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'old-model',
         DISABLE_COST_WARNINGS: '0',
+        PATH: '/usr/bin',
+      },
+    })
+  })
+
+  it('removes keys previously written by start-claude when the next profile omits them', async () => {
+    const settingsPath = createTempSettingsPath()
+    const statePath = createTempStatePath(settingsPath)
+
+    await syncClaudeProviderSettings({
+      name: 'first',
+      baseUrl: 'https://first.example.com',
+      authToken: 'sk-first',
+      model: 'claude-sonnet-4-5-20250929',
+    }, { settingsPath, statePath })
+
+    await syncClaudeProviderSettings({
+      name: 'second',
+      baseUrl: 'https://second.example.com',
+      authToken: 'sk-second',
+    }, { settingsPath, statePath })
+
+    expect(readJson(settingsPath)).toEqual({
+      env: {
+        ANTHROPIC_BASE_URL: 'https://second.example.com',
+        ANTHROPIC_AUTH_TOKEN: 'sk-second',
       },
     })
   })
@@ -102,16 +158,53 @@ describe('claude provider settings sync', () => {
   it('creates a missing settings file', async () => {
     const settingsPath = createTempSettingsPath()
 
+    const statePath = createTempStatePath(settingsPath)
+
     await syncClaudeProviderSettings({
       name: 'created',
       baseUrl: 'https://created.example.com',
       apiKey: 'sk-created',
-    }, { settingsPath })
+    }, { settingsPath, statePath })
 
     expect(readJson(settingsPath)).toEqual({
       env: {
         ANTHROPIC_BASE_URL: 'https://created.example.com',
         ANTHROPIC_API_KEY: 'sk-created',
+      },
+    })
+
+    expect(readJson(statePath)).toEqual({
+      version: 1,
+      settings: {
+        [settingsPath]: {
+          envKeys: [
+            'ANTHROPIC_API_KEY',
+            'ANTHROPIC_BASE_URL',
+          ],
+        },
+      },
+    })
+  })
+
+  it('writes to CLAUDE_CONFIG_DIR from profile env', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'start-claude-provider-settings-'))
+    tempDirs.push(dir)
+    const configDir = join(dir, 'custom-claude')
+    const settingsPath = join(configDir, 'settings.json')
+
+    await syncClaudeProviderSettings({
+      name: 'custom-dir',
+      baseUrl: 'https://custom-dir.example.com',
+      authToken: 'sk-custom-dir',
+      env: {
+        CLAUDE_CONFIG_DIR: configDir,
+      },
+    })
+
+    expect(readJson(settingsPath)).toEqual({
+      env: {
+        ANTHROPIC_BASE_URL: 'https://custom-dir.example.com',
+        ANTHROPIC_AUTH_TOKEN: 'sk-custom-dir',
       },
     })
   })
@@ -161,12 +254,18 @@ describe('claude provider settings sync', () => {
       name: 'official',
       profileType: 'official',
       model: 'claude-sonnet-4-5-20250929',
-    }, { settingsPath })
+    }, {
+      settingsPath,
+      statePath: createTempStatePath(settingsPath),
+    })
 
     expect(readJson(settingsPath)).toEqual({
       env: {
-        PATH: '/usr/bin',
+        ANTHROPIC_API_KEY: 'sk-old',
+        ANTHROPIC_AUTH_TOKEN: 'sk-old-auth',
+        ANTHROPIC_BASE_URL: 'https://old.example.com',
         ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929',
+        PATH: '/usr/bin',
       },
     })
   })

@@ -2,17 +2,30 @@ import type { ClaudeConfig } from '../../config/types'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+import process from 'node:process'
 
 export interface ClaudeProviderSettingsSyncResult {
   settingsPath: string
   env: Record<string, string>
 }
 
-type ClaudeCodeSettings = {
+interface ClaudeProviderSettingsSyncOptions {
+  settingsPath?: string
+  statePath?: string
+}
+
+interface ClaudeCodeSettings {
   env?: Record<string, unknown>
   [key: string]: unknown
 }
+
+interface ClaudeProviderSettingsState {
+  version: 1
+  settings: Record<string, { envKeys: string[] }>
+}
+
+const providerSettingsStateVersion = 1
 
 const basicEnvMap: Array<[keyof ClaudeConfig, string]> = [
   ['baseUrl', 'ANTHROPIC_BASE_URL'],
@@ -65,12 +78,27 @@ const booleanEnvMap: Array<[keyof ClaudeConfig, string]> = [
 
 const additionalManagedEnvKeys = [
   'ANTHROPIC_REASONING_MODEL',
+  'ANTHROPIC_DEFAULT_FABLE_MODEL',
+  'ANTHROPIC_DEFAULT_FABLE_MODEL_NAME',
+  'ANTHROPIC_DEFAULT_FABLE_MODEL_DESCRIPTION',
+  'ANTHROPIC_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES',
   'ANTHROPIC_DEFAULT_OPUS_MODEL',
   'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES',
   'ANTHROPIC_DEFAULT_SONNET_MODEL',
   'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES',
+  'DISABLE_PROMPT_CACHING',
+  'DISABLE_PROMPT_CACHING_FABLE',
+  'DISABLE_PROMPT_CACHING_HAIKU',
+  'DISABLE_PROMPT_CACHING_OPUS',
+  'DISABLE_PROMPT_CACHING_SONNET',
 ]
 
 const officialProfileProviderEnvKeys = [
@@ -89,15 +117,15 @@ export const MANAGED_CLAUDE_PROVIDER_ENV_KEYS = new Set([
   ...additionalManagedEnvKeys,
 ])
 
-export function getClaudeCodeSettingsPath(homeDir = homedir()): string {
-  const settingsPath = join(homeDir, '.claude', 'settings.json')
-  const legacyPath = join(homeDir, '.claude', 'claude.json')
+export function getClaudeCodeSettingsPath(
+  homeDir = homedir(),
+  configDir = process.env.CLAUDE_CONFIG_DIR,
+): string {
+  return join(resolveClaudeConfigDir(configDir, homeDir), 'settings.json')
+}
 
-  if (existsSync(settingsPath) || !existsSync(legacyPath)) {
-    return settingsPath
-  }
-
-  return legacyPath
+export function getClaudeProviderSettingsStatePath(homeDir = homedir()): string {
+  return join(homeDir, '.start-claude', 'claude-provider-settings-state.json')
 }
 
 export function buildClaudeProviderEnv(config: ClaudeConfig): Record<string, string> {
@@ -183,15 +211,23 @@ export function buildProxyClaudeProviderConfig(
 
 export async function syncClaudeProviderSettings(
   config: ClaudeConfig,
-  options: { settingsPath?: string } = {},
+  options: ClaudeProviderSettingsSyncOptions = {},
 ): Promise<ClaudeProviderSettingsSyncResult> {
-  const settingsPath = options.settingsPath || getClaudeCodeSettingsPath()
+  const settingsPath = options.settingsPath || getClaudeCodeSettingsPath(
+    homedir(),
+    getClaudeConfigDir(config),
+  )
+  const statePath = options.statePath || getClaudeProviderSettingsStatePath()
   const settings = loadClaudeCodeSettings(settingsPath)
+  const state = loadClaudeProviderSettingsState(statePath)
+  const stateSettingsKey = resolve(settingsPath)
   const providerEnv = buildClaudeProviderEnv(config)
   const currentEnv = isRecord(settings.env) ? { ...settings.env } : {}
 
-  MANAGED_CLAUDE_PROVIDER_ENV_KEYS.forEach((key) => {
-    delete currentEnv[key]
+  state.settings[stateSettingsKey]?.envKeys.forEach((key) => {
+    if (!(key in providerEnv)) {
+      delete currentEnv[key]
+    }
   })
 
   settings.env = {
@@ -200,6 +236,7 @@ export async function syncClaudeProviderSettings(
   }
 
   writeClaudeCodeSettings(settingsPath, settings)
+  updateClaudeProviderSettingsState(statePath, state, stateSettingsKey, Object.keys(providerEnv))
 
   return {
     settingsPath,
@@ -238,8 +275,112 @@ function writeClaudeCodeSettings(settingsPath: string, settings: ClaudeCodeSetti
   }
 }
 
+function loadClaudeProviderSettingsState(statePath: string): ClaudeProviderSettingsState {
+  if (!existsSync(statePath)) {
+    return createEmptyProviderSettingsState()
+  }
+
+  let parsed: unknown
+  try {
+    const content = readFileSync(statePath, 'utf-8')
+    parsed = JSON.parse(content)
+  }
+  catch {
+    return createEmptyProviderSettingsState()
+  }
+
+  if (!isRecord(parsed) || !isRecord(parsed.settings)) {
+    return createEmptyProviderSettingsState()
+  }
+
+  const settings: ClaudeProviderSettingsState['settings'] = {}
+
+  Object.entries(parsed.settings).forEach(([settingsPath, value]) => {
+    if (!isRecord(value) || !Array.isArray(value.envKeys)) {
+      return
+    }
+
+    const envKeys = value.envKeys.filter((key): key is string => typeof key === 'string')
+    settings[settingsPath] = { envKeys }
+  })
+
+  return {
+    version: providerSettingsStateVersion,
+    settings,
+  }
+}
+
+function updateClaudeProviderSettingsState(
+  statePath: string,
+  state: ClaudeProviderSettingsState,
+  settingsPath: string,
+  envKeys: string[],
+): void {
+  if (envKeys.length > 0) {
+    state.settings[settingsPath] = {
+      envKeys: [...new Set(envKeys)].sort(),
+    }
+  }
+  else {
+    delete state.settings[settingsPath]
+  }
+
+  writeClaudeProviderSettingsState(statePath, state)
+}
+
+function writeClaudeProviderSettingsState(
+  statePath: string,
+  state: ClaudeProviderSettingsState,
+): void {
+  const stateDir = dirname(statePath)
+  mkdirSync(stateDir, { recursive: true })
+
+  const tempPath = join(stateDir, `${basename(statePath)}.tmp.${randomUUID()}`)
+
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`)
+    renameSync(tempPath, statePath)
+  }
+  catch (error) {
+    rmSync(tempPath, { force: true })
+    throw error
+  }
+}
+
+function createEmptyProviderSettingsState(): ClaudeProviderSettingsState {
+  return {
+    version: providerSettingsStateVersion,
+    settings: {},
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getClaudeConfigDir(config: ClaudeConfig): string | undefined {
+  const configDir = config.env?.CLAUDE_CONFIG_DIR
+  return typeof configDir === 'string' && configDir.trim().length > 0
+    ? configDir
+    : process.env.CLAUDE_CONFIG_DIR
+}
+
+function resolveClaudeConfigDir(configDir: string | undefined, homeDir: string): string {
+  const trimmedConfigDir = configDir?.trim()
+
+  if (!trimmedConfigDir) {
+    return join(homeDir, '.claude')
+  }
+
+  if (trimmedConfigDir === '~') {
+    return homeDir
+  }
+
+  if (trimmedConfigDir.startsWith('~/') || trimmedConfigDir.startsWith('~\\')) {
+    return join(homeDir, trimmedConfigDir.slice(2))
+  }
+
+  return isAbsolute(trimmedConfigDir) ? trimmedConfigDir : resolve(trimmedConfigDir)
 }
 
 function sanitizeProxyClientEnv(env: ClaudeConfig['env']): ClaudeConfig['env'] {
