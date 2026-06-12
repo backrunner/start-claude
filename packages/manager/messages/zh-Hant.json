@@ -5,7 +5,109 @@
     "settings": "設定",
     "extensions": "擴充功能",
     "addConfig": "新增配置",
-    "reloadPage": "重新載入頁面"
+    "reloadPage": "重新載入頁面",
+    "modeClaude": "Claude",
+    "modeCodex": "Codex",
+    "modeGemini": "Gemini"
+  },
+  "products": {
+    "codex": {
+      "subtitle": "管理 OpenAI Codex CLI 配置",
+      "emptyTitle": "還沒有 Codex 配置",
+      "emptyDescription": "建立 Codex 配置，用於 OpenAI Key、相容閘道、模型預設值和沙箱行為。",
+      "createButton": "建立 Codex 配置"
+    },
+    "gemini": {
+      "subtitle": "管理 Google Gemini CLI 配置",
+      "emptyTitle": "還沒有 Gemini 配置",
+      "emptyDescription": "建立 Gemini 配置，用於 API Key、Google 帳號登入、Vertex AI 專案和模型預設值。",
+      "createButton": "建立 Gemini 配置"
+    }
+  },
+  "productItem": {
+    "default": "預設",
+    "setDefault": "設為預設",
+    "edit": "編輯",
+    "delete": "刪除",
+    "duplicate": "複製",
+    "authModes": {
+      "api-key": "API Key",
+      "oauth": "帳號",
+      "vertex-ai": "Vertex AI"
+    }
+  },
+  "productForm": {
+    "createTitle": "建立 {product} 配置",
+    "editTitle": "編輯 {product} 配置",
+    "description": "調整 {product} 的啟動、認證和原生 CLI 設定寫入方式。",
+    "basic": {
+      "title": "配置",
+      "description": "名稱、認證方式和預設模型",
+      "name": "配置名稱",
+      "namePlaceholder": "例如：Work {product}",
+      "authMode": "認證方式",
+      "model": "模型",
+      "default": "預設配置",
+      "defaultDescription": "未指定名稱啟動 {product} 時使用此配置"
+    },
+    "auth": {
+      "title": "認證",
+      "description": "Provider 憑證和端點覆寫",
+      "apiKey": "API Key",
+      "apiKeyEnvVar": "API Key 環境變數",
+      "baseUrl": "Base URL",
+      "googleCloudProject": "Google Cloud 專案",
+      "googleCloudLocation": "Google Cloud 區域",
+      "googleApplicationCredentials": "服務帳號 JSON"
+    },
+    "advanced": {
+      "title": "執行階段",
+      "description": "沙箱、審批和額外環境變數",
+      "sandboxMode": "沙箱模式",
+      "approvalPolicy": "審批策略",
+      "env": "環境變數",
+      "enabled": "啟用",
+      "enabledDescription": "此配置可被選擇並啟動"
+    },
+    "authModes": {
+      "api-key": "API Key",
+      "oauth": "帳號登入",
+      "vertex-ai": "Vertex AI"
+    },
+    "sandboxModes": {
+      "read-only": "唯讀",
+      "workspace-write": "工作區寫入",
+      "danger-full-access": "完全存取"
+    },
+    "approvalPolicies": {
+      "untrusted": "不信任",
+      "on-request": "按需請求",
+      "on-failure": "失敗時請求",
+      "never": "永不"
+    },
+    "validation": {
+      "nameRequired": "配置名稱為必填項",
+      "apiKeyRequired": "API Key 為必填項",
+      "baseUrlInvalid": "URL 格式無效"
+    },
+    "cancel": "取消",
+    "create": "建立配置",
+    "update": "更新配置",
+    "saving": "儲存中..."
+  },
+  "productSettings": {
+    "title": "{product} 設定",
+    "description": "配置 {product} 配置檔的同步行為。",
+    "sync": {
+      "enabled": "雲端同步",
+      "enabledDescription": "將配置儲存到同步資料夾，而不是僅儲存在本機配置目錄",
+      "provider": "提供商",
+      "custom": "自訂資料夾",
+      "path": "同步路徑"
+    },
+    "cancel": "取消",
+    "save": "儲存設定",
+    "saving": "儲存中..."
   },
   "search": {
     "placeholder": "搜尋配置...",

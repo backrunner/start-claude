@@ -5,7 +5,109 @@
     "settings": "设置",
     "extensions": "扩展",
     "addConfig": "添加配置",
-    "reloadPage": "重新加载页面"
+    "reloadPage": "重新加载页面",
+    "modeClaude": "Claude",
+    "modeCodex": "Codex",
+    "modeGemini": "Gemini"
+  },
+  "products": {
+    "codex": {
+      "subtitle": "管理 OpenAI Codex CLI 配置",
+      "emptyTitle": "还没有 Codex 配置",
+      "emptyDescription": "创建 Codex 配置，用于 OpenAI Key、兼容网关、模型默认值和沙箱行为。",
+      "createButton": "创建 Codex 配置"
+    },
+    "gemini": {
+      "subtitle": "管理 Google Gemini CLI 配置",
+      "emptyTitle": "还没有 Gemini 配置",
+      "emptyDescription": "创建 Gemini 配置，用于 API Key、Google 账号登录、Vertex AI 项目和模型默认值。",
+      "createButton": "创建 Gemini 配置"
+    }
+  },
+  "productItem": {
+    "default": "默认",
+    "setDefault": "设为默认",
+    "edit": "编辑",
+    "delete": "删除",
+    "duplicate": "复制",
+    "authModes": {
+      "api-key": "API Key",
+      "oauth": "账号",
+      "vertex-ai": "Vertex AI"
+    }
+  },
+  "productForm": {
+    "createTitle": "创建 {product} 配置",
+    "editTitle": "编辑 {product} 配置",
+    "description": "调整 {product} 的启动、认证和原生 CLI 设置写入方式。",
+    "basic": {
+      "title": "配置",
+      "description": "名称、认证方式和默认模型",
+      "name": "配置名称",
+      "namePlaceholder": "例如：Work {product}",
+      "authMode": "认证方式",
+      "model": "模型",
+      "default": "默认配置",
+      "defaultDescription": "未指定名称启动 {product} 时使用此配置"
+    },
+    "auth": {
+      "title": "认证",
+      "description": "Provider 凭证和端点覆盖",
+      "apiKey": "API Key",
+      "apiKeyEnvVar": "API Key 环境变量",
+      "baseUrl": "Base URL",
+      "googleCloudProject": "Google Cloud 项目",
+      "googleCloudLocation": "Google Cloud 区域",
+      "googleApplicationCredentials": "服务账号 JSON"
+    },
+    "advanced": {
+      "title": "运行时",
+      "description": "沙箱、审批和额外环境变量",
+      "sandboxMode": "沙箱模式",
+      "approvalPolicy": "审批策略",
+      "env": "环境变量",
+      "enabled": "启用",
+      "enabledDescription": "此配置可被选择并启动"
+    },
+    "authModes": {
+      "api-key": "API Key",
+      "oauth": "账号登录",
+      "vertex-ai": "Vertex AI"
+    },
+    "sandboxModes": {
+      "read-only": "只读",
+      "workspace-write": "工作区写入",
+      "danger-full-access": "完全访问"
+    },
+    "approvalPolicies": {
+      "untrusted": "不可信",
+      "on-request": "按需请求",
+      "on-failure": "失败时请求",
+      "never": "从不"
+    },
+    "validation": {
+      "nameRequired": "配置名称为必填项",
+      "apiKeyRequired": "API Key 为必填项",
+      "baseUrlInvalid": "URL 格式无效"
+    },
+    "cancel": "取消",
+    "create": "创建配置",
+    "update": "更新配置",
+    "saving": "保存中..."
+  },
+  "productSettings": {
+    "title": "{product} 设置",
+    "description": "配置 {product} 配置文件的同步行为。",
+    "sync": {
+      "enabled": "云同步",
+      "enabledDescription": "将配置保存到同步文件夹，而不是仅保存在本地配置目录",
+      "provider": "提供商",
+      "custom": "自定义文件夹",
+      "path": "同步路径"
+    },
+    "cancel": "取消",
+    "save": "保存设置",
+    "saving": "保存中..."
   },
   "search": {
     "placeholder": "搜索配置...",

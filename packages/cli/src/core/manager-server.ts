@@ -13,14 +13,16 @@ import { findAvailablePort } from '../utils/network/port-finder'
 export class ManagerServer {
   private childProcess: ChildProcess | null = null
   private port = 2334
+  private startupPath = '/'
   private stopHeartbeat: (() => void) | null = null
   private debug = false
 
-  constructor(port?: number, debug?: boolean) {
+  constructor(port?: number, debug?: boolean, startupPath = '/') {
     if (port) {
       this.port = port
     }
     this.debug = debug || false
+    this.startupPath = startupPath.startsWith('/') ? startupPath : `/${startupPath}`
   }
 
   async start(): Promise<void> {
@@ -30,8 +32,8 @@ export class ManagerServer {
     const existingInstance = await checkExistingInstance()
     if (existingInstance) {
       ui.displayWarning(`Manager is already running on port ${existingInstance.port} (PID: ${existingInstance.pid})`)
-      ui.displayInfo(`Opening existing manager at http://localhost:${existingInstance.port}`)
-      await open(`http://localhost:${existingInstance.port}`)
+      ui.displayInfo(`Opening existing manager at http://localhost:${existingInstance.port}${this.startupPath}`)
+      await open(`http://localhost:${existingInstance.port}${this.startupPath}`)
       return
     }
 
@@ -161,7 +163,7 @@ export class ManagerServer {
             resolved = true
             clearTimeout(timeout)
             ui.displaySuccess(`✨ Claude Configuration Manager is running on port ${this.port}!`)
-            ui.displayInfo(`Opening manager at http://localhost:${this.port}`)
+            ui.displayInfo(`Opening manager at http://localhost:${this.port}${this.startupPath}`)
             ui.displayInfo('Press Ctrl+C to stop the manager')
             resolve()
           })
@@ -188,7 +190,7 @@ export class ManagerServer {
       })
 
       // Open browser
-      await open(`http://localhost:${this.port}`)
+      await open(`http://localhost:${this.port}${this.startupPath}`)
     }
     catch (error) {
       // Stop heartbeat and remove lock file if startup failed

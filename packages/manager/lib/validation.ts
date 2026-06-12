@@ -96,6 +96,36 @@ export const claudeConfigSchema = z.object({
   path: ['authToken'],
 })
 
+export const externalProductConfigSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1, 'Configuration name is required').max(100, 'Name too long'),
+  authMode: z.enum(['api-key', 'oauth', 'vertex-ai']).optional(),
+  baseUrl: z.string().url('Invalid base URL').optional().or(z.literal('')),
+  apiKey: z.string().optional().or(z.literal('')),
+  apiKeyEnvVar: z.string().optional(),
+  model: z.string().optional(),
+  wireApi: z.enum(['responses', 'chat']).optional(),
+  approvalPolicy: z.enum(['untrusted', 'on-request', 'on-failure', 'never']).optional(),
+  sandboxMode: z.enum(['read-only', 'workspace-write', 'danger-full-access']).optional(),
+  googleCloudProject: z.string().optional(),
+  googleCloudLocation: z.string().optional(),
+  googleApplicationCredentials: z.string().optional(),
+  isDefault: z.boolean().optional().default(false),
+  order: z.number().int().min(0).optional(),
+  enabled: z.boolean().optional().default(true),
+  deletedAt: z.string().optional(),
+  isDeleted: z.boolean().optional(),
+  env: z.record(z.string(), z.string()).optional(),
+}).refine((data) => {
+  if ((data.authMode || 'api-key') === 'api-key') {
+    return Boolean(data.apiKey?.trim())
+  }
+  return true
+}, {
+  message: 'API key is required',
+  path: ['apiKey'],
+})
+
 // S3 sync configuration schema
 export const s3SyncSchema = z.object({
   bucket: z.string().min(1, 'S3 bucket name is required'),
@@ -152,6 +182,14 @@ export const configCreateRequestSchema = z.object({
 
 export const configUpdateRequestSchema = z.object({
   configs: z.array(claudeConfigSchema).min(0),
+})
+
+export const externalProductConfigCreateRequestSchema = z.object({
+  config: externalProductConfigSchema,
+})
+
+export const externalProductConfigUpdateRequestSchema = z.object({
+  configs: z.array(externalProductConfigSchema).min(0),
 })
 
 export const settingsUpdateRequestSchema = z.object({

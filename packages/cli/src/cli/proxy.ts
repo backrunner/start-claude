@@ -1,6 +1,6 @@
 import type { ConfigManager } from '../config/manager'
 import type { ClaudeConfig, LoadBalancerStrategy, SystemSettings } from '../config/types'
-import type { ProgramOptions } from './common'
+import type { ConfigSelector, ProgramOptions } from './common'
 import process from 'node:process'
 import { SpeedTestStrategy } from '../config/types'
 import { ProxyServer } from '../core/proxy'
@@ -12,7 +12,7 @@ import { hasConfigApiCredentials } from '../utils/config/credentials'
 import { fileLogger } from '../utils/logging/file-logger'
 import { checkAndHandleExistingProxy, removeLockFile, setupProxyCleanup } from '../utils/network/proxy-lock'
 import { startClaude } from './claude'
-import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, resolveBaseConfig } from './common'
+import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, isDebugEnabled, resolveBaseConfig } from './common'
 
 /**
  * Handle proxy mode (includes load balancer and transformer functionality)
@@ -24,19 +24,28 @@ export async function handleProxyMode(
   systemSettings?: SystemSettings | null,
   forcedConfigs?: ClaudeConfig[], // Allow forced configs for transformer mode
   cliStrategy?: LoadBalancerStrategy, // CLI-specified strategy override
+  startConfigSelector?: ConfigSelector,
 ): Promise<void> {
   // Determine if we're called from proxy command or transformer auto-enable
   // If forcedConfigs is provided, we're from proxy command
   const isFromProxyCommand = forcedConfigs !== undefined
+  const debugEnabled = isDebugEnabled(options)
+  const verboseEnabled = options.verbose || debugEnabled
 
   // Check if proxy server is already running
   const shouldStartNewProxy = await checkAndHandleExistingProxy()
   if (!shouldStartNewProxy) {
     // Proxy server is already running, just start Claude Code with existing proxy
-    const baseConfig = await resolveBaseConfig(configManager, options, configArg, forcedConfigs || await configManager.listConfigs())
+    const baseConfig = await resolveBaseConfig(
+      configManager,
+      options,
+      configArg,
+      forcedConfigs || await configManager.listConfigs(),
+      startConfigSelector,
+    )
     const claudeArgs = buildClaudeArgs(options, baseConfig)
     // Use appropriate filter based on context
-    const filteredArgs = isFromProxyCommand ? filterProxyArgs() : filterProcessArgs(configArg)
+    const filteredArgs = isFromProxyCommand ? filterProxyArgs() : filterProcessArgs(startConfigSelector ?? configArg)
     const allArgs = [...claudeArgs, ...filteredArgs]
 
     const cliOverrides = {
@@ -51,7 +60,7 @@ export async function handleProxyMode(
     await handleClaudeProviderSettingsSync(
       buildProxyProviderConfig(baseConfig, 2333, 'sk-claude-proxy-server'),
       systemSettings,
-      options,
+      { verbose: options.verbose, debug: debugEnabled },
     )
 
     // Start Claude Code with the existing proxy server configuration
@@ -65,7 +74,7 @@ export async function handleProxyMode(
   // If a specific config was requested, use only that config
   let configs: ClaudeConfig[] = forcedConfigs || await configManager.listConfigs()
 
-  const requestedConfigName = options.config || configArg
+  const requestedConfigName = startConfigSelector?.value ?? (options.config || configArg)
   if (requestedConfigName && !forcedConfigs) {
     // User specified a particular config, so only use that one for the proxy
     const specificConfig = await configManager.getConfig(requestedConfigName)
@@ -115,7 +124,7 @@ export async function handleProxyMode(
     const hasTransformerEnabled = proxyableConfigs.some(c => TransformerService.isTransformerEnabled(c.transformerEnabled))
 
     // Set up a proxy configuration that preserves other settings - resolve early for transformer matching
-    const baseConfig = await resolveBaseConfig(configManager, options, configArg, proxyableConfigs)
+    const baseConfig = await resolveBaseConfig(configManager, options, configArg, proxyableConfigs, startConfigSelector)
 
     // Override system settings with CLI strategy if provided
     let effectiveSystemSettings: SystemSettings | undefined = systemSettings ?? undefined
@@ -146,8 +155,8 @@ export async function handleProxyMode(
     const proxyServer = new ProxyServer(proxyableConfigs, {
       enableLoadBalance: isFromProxyCommand || proxyableConfigs.length > 1, // Always enable for proxy command, or when multiple configs
       enableTransform: hasTransformerEnabled,
-      debug: options.debug || false,
-      verbose: options.verbose || options.debug || false, // Enable verbose by default in debug mode
+      debug: debugEnabled,
+      verbose: verboseEnabled,
     }, effectiveSystemSettings, options.proxy)
 
     // Perform initial health checks (skip if --skip-health-check is specified)
@@ -163,7 +172,7 @@ export async function handleProxyMode(
     await proxyServer.startServer(2333)
 
     // Show debug logging information if enabled
-    if (options.debug) {
+    if (debugEnabled) {
       const ui = new UILogger()
       ui.info('')
       ui.info(`📝 Debug logging enabled - logs will be written to: ${fileLogger.getLogFilePath()}`)
@@ -215,7 +224,7 @@ export async function handleProxyMode(
     // Build arguments to pass to claude command (same as normal mode)
     const claudeArgs = buildClaudeArgs(options, baseConfig)
     // Use appropriate filter based on context
-    const filteredArgs = isFromProxyCommand ? filterProxyArgs() : filterProcessArgs(configArg)
+    const filteredArgs = isFromProxyCommand ? filterProxyArgs() : filterProcessArgs(startConfigSelector ?? configArg)
     const allArgs = [...claudeArgs, ...filteredArgs]
 
     // Create CLI overrides with load balancer settings
@@ -243,7 +252,7 @@ export async function handleProxyMode(
     await handleClaudeProviderSettingsSync(
       buildProxyProviderConfig(baseConfig, 2333, proxyServer.getProxyApiKey()),
       effectiveSystemSettings,
-      options,
+      { verbose: options.verbose, debug: debugEnabled },
     )
     const exitCode = await startClaude(baseConfig, allArgs, cliOverrides)
 
@@ -268,7 +277,7 @@ async function handleClaudeProviderSettingsSync(
     return
   }
 
-  const ui = new UILogger(options.verbose || options.debug)
+  const ui = new UILogger(options.verbose || isDebugEnabled(options))
 
   if (systemSettings?.syncClaudeProviderSettings === false) {
     ui.verbose('Claude Code provider settings sync disabled')

@@ -26,7 +26,9 @@ import {
   buildClaudeArgs,
   buildCliOverrides,
   filterProcessArgs,
+  isDebugEnabled,
   resolveConfig,
+  resolveStartConfigSelectorAsync,
 } from './common'
 import { handleProxyMode } from './proxy'
 
@@ -131,34 +133,73 @@ program
   .name(name)
   .version(version, '-v, --version', 'Display version number')
   .description('Start Claude Code with specified configuration')
+  .allowUnknownOption()
+  .allowExcessArguments()
 
 program
   .option('--config <name>', 'Use specific configuration')
   .option('--list', 'List all configurations')
   .option('--health-check', 'Perform health check on the endpoint without starting proxy server')
-  .option('--add-dir <dir>', 'Add directory to search path', (value, previous: string[] = []) => [...previous, value])
-  .option('--allowedTools <tools>', 'Comma-separated list of allowed tools', value => value.split(','))
-  .option('--disallowedTools <tools>', 'Comma-separated list of disallowed tools', value => value.split(','))
+  .option('--add-dir <directories...>', 'Additional directories to allow tool access to')
+  .option('--agent <agent>', 'Agent for the current session')
   .option('--agents <json>', 'Define custom subagents via JSON string')
-  .option('-p, --print [query]', 'Print output to stdout with optional query')
-  .option('--output-format <format>', 'Output format')
+  .option('--allow-dangerously-skip-permissions', 'Allow bypassing permission checks as an option')
+  .option('--allowedTools, --allowed-tools <tools...>', 'Comma or space-separated list of allowed tools')
+  .option('--append-system-prompt <prompt>', 'Append a system prompt')
+  .option('--bare', 'Enable Claude bare mode')
+  .option('--betas <betas...>', 'Beta headers to include in API requests')
+  .option('--brief', 'Enable brief mode')
+  .option('--chrome', 'Enable Claude in Chrome integration')
+  .option('--no-chrome', 'Disable Claude in Chrome integration')
+  .option('-c, --continue', 'Continue previous session')
+  .option('--dangerously-skip-permissions', 'Skip permission checks (dangerous)')
+  .option('-d, --debug [filter]', 'Enable debug mode with optional category filtering')
+  .option('--debug-file <path>', 'Write debug logs to a specific file path')
+  .option('--disable-slash-commands', 'Disable slash commands')
+  .option('--disallowedTools, --disallowed-tools <tools...>', 'Comma or space-separated list of disallowed tools')
+  .option('--effort <level>', 'Effort level')
+  .option('--exclude-dynamic-system-prompt-sections', 'Move per-machine system prompt sections into the first user message')
+  .option('--fallback-model <model>', 'Fallback model')
+  .option('--file <specs...>', 'File resources to download at startup')
+  .option('--fork-session', 'Fork session when resuming')
+  .option('--from-pr [value]', 'Resume a session linked to a PR')
+  .option('--ide', 'Automatically connect to IDE on startup')
+  .option('--include-hook-events', 'Include hook lifecycle events in stream output')
+  .option('--include-partial-messages', 'Include partial message chunks')
   .option('--input-format <format>', 'Input format')
-  .option('--verbose', 'Enable verbose output')
-  .option('--debug', 'Enable debug mode')
+  .option('--json-schema <schema>', 'JSON Schema for structured output validation')
+  .option('--max-budget-usd <amount>', 'Maximum dollar amount to spend on API calls')
   .option('--max-turns <number>', 'Maximum number of turns', Number.parseInt)
+  .option('--mcp-config <configs...>', 'Load MCP servers from JSON files or strings')
+  .option('--mcp-debug', 'Enable MCP debug mode')
   .option('--model <model>', 'Override model for this session')
+  .option('-n, --name <name>', 'Set a display name for this session')
+  .option('--no-session-persistence', 'Disable session persistence')
+  .option('--output-format <format>', 'Output format')
   .option('--permission-mode <mode>', 'Permission mode')
   .option('--permission-prompt-tool', 'Enable permission prompt tool')
-  .option('--resume', 'Resume previous session')
-  .option('--continue', 'Continue previous session')
+  .option('--plugin-dir <path>', 'Load a plugin from a directory or zip', (value, previous: string[] = []) => [...previous, value])
+  .option('--plugin-url <url>', 'Fetch a plugin zip from a URL', (value, previous: string[] = []) => [...previous, value])
+  .option('-p, --print [query]', 'Print output to stdout with optional query')
+  .option('--prompt-suggestions [value]', 'Enable prompt suggestions')
+  .option('--remote-control [name]', 'Start with Remote Control enabled')
+  .option('--remote-control-session-name-prefix <prefix>', 'Remote Control session name prefix')
+  .option('--replay-user-messages', 'Re-emit user messages from stdin')
+  .option('-r, --resume [value]', 'Resume previous session')
+  .option('--safe-mode', 'Start with customizations disabled')
+  .option('--session-id <uuid>', 'Use a specific session ID')
+  .option('--setting-sources <sources>', 'Comma-separated setting sources')
+  .option('--settings <file-or-json>', 'Path to settings JSON or JSON string')
+  .option('--strict-mcp-config', 'Only use MCP servers from --mcp-config')
+  .option('--system-prompt <prompt>', 'System prompt')
+  .option('--tmux', 'Create a tmux session for the worktree')
+  .option('--tools <tools...>', 'List of available built-in tools')
+  .option('--verbose', 'Enable verbose output')
+  .option('-w, --worktree [name]', 'Create a new git worktree')
   .option('--check-updates', 'Force check for updates')
   .option(
     '--force-config-check',
     'Force check for remote config updates (bypass interval limit)',
-  )
-  .option(
-    '--dangerously-skip-permissions',
-    'Skip permission checks (dangerous)',
   )
   .option(
     '-e, --env <key=value>',
@@ -171,6 +212,14 @@ program
   .argument('[config]', 'Configuration name (alternative to --config)')
   .action(async (configArg: string | undefined, options: ProgramOptions) => {
     const ui = new UILogger(options.verbose)
+    const startConfigSelector = await resolveStartConfigSelectorAsync(
+      process.argv.slice(2),
+      {
+        optionConfig: options.config,
+        positionalConfig: configArg,
+        configExists: async name => Boolean(await configManager.getConfig(name)),
+      },
+    )
 
     if (options.list === true) {
       ui.displayWelcome()
@@ -189,6 +238,8 @@ program
         s3SyncManager,
         options,
         configArg,
+        false,
+        startConfigSelector,
       )
 
       if (!config) {
@@ -214,7 +265,7 @@ program
           {
             timeout: 10000, // 10 second timeout for health checks
             verbose: options.verbose || false,
-            debug: options.debug || false,
+            debug: isDebugEnabled(options),
           },
         )
 
@@ -317,7 +368,7 @@ program
 
     // Check if we need proxy for transformer-enabled configs
     let shouldUseProxy = false
-    const configName = options.config || configArg
+    const configName = startConfigSelector.value
     let config: ClaudeConfig | undefined
 
     if (configName) {
@@ -346,6 +397,9 @@ program
         options,
         configArg,
         systemSettings,
+        undefined,
+        undefined,
+        startConfigSelector,
       )
       return
     }
@@ -366,7 +420,7 @@ program
       }
     }
 
-    config = await resolveConfig(configManager, s3SyncManager, options, configArg, hasS3Synced)
+    config = await resolveConfig(configManager, s3SyncManager, options, configArg, hasS3Synced, startConfigSelector)
 
     // Handle statusline and MCP sync in parallel for faster startup with error resilience
     try {
@@ -392,7 +446,7 @@ program
 
     // Build arguments to pass to claude command
     const claudeArgs = buildClaudeArgs(options, config)
-    const filteredArgs = filterProcessArgs(configArg)
+    const filteredArgs = filterProcessArgs(startConfigSelector)
     const allArgs = [...claudeArgs, ...filteredArgs]
 
     // Create CLI overrides for environment variables and API settings

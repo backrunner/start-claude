@@ -5,7 +5,109 @@
     "settings": "Settings",
     "extensions": "Extensions",
     "addConfig": "Add Config",
-    "reloadPage": "Reload page"
+    "reloadPage": "Reload page",
+    "modeClaude": "Claude",
+    "modeCodex": "Codex",
+    "modeGemini": "Gemini"
+  },
+  "products": {
+    "codex": {
+      "subtitle": "Manage OpenAI Codex CLI profiles",
+      "emptyTitle": "No Codex Profiles Yet",
+      "emptyDescription": "Create a Codex profile for OpenAI keys, compatible gateways, model defaults, and sandbox behavior.",
+      "createButton": "Create Codex Profile"
+    },
+    "gemini": {
+      "subtitle": "Manage Google Gemini CLI profiles",
+      "emptyTitle": "No Gemini Profiles Yet",
+      "emptyDescription": "Create a Gemini profile for API keys, Google account auth, Vertex AI projects, and model defaults.",
+      "createButton": "Create Gemini Profile"
+    }
+  },
+  "productItem": {
+    "default": "Default",
+    "setDefault": "Set default",
+    "edit": "Edit",
+    "delete": "Delete",
+    "duplicate": "Duplicate",
+    "authModes": {
+      "api-key": "API key",
+      "oauth": "Account",
+      "vertex-ai": "Vertex AI"
+    }
+  },
+  "productForm": {
+    "createTitle": "Create {product} Profile",
+    "editTitle": "Edit {product} Profile",
+    "description": "Tune how {product} starts, authenticates, and writes its native CLI settings.",
+    "basic": {
+      "title": "Profile",
+      "description": "Name, authentication mode, and default model",
+      "name": "Profile Name",
+      "namePlaceholder": "e.g., Work {product}",
+      "authMode": "Authentication",
+      "model": "Model",
+      "default": "Default Profile",
+      "defaultDescription": "Use this profile when starting {product} without a name"
+    },
+    "auth": {
+      "title": "Authentication",
+      "description": "Provider credentials and endpoint overrides",
+      "apiKey": "API Key",
+      "apiKeyEnvVar": "API Key Environment Variable",
+      "baseUrl": "Base URL",
+      "googleCloudProject": "Google Cloud Project",
+      "googleCloudLocation": "Google Cloud Location",
+      "googleApplicationCredentials": "Service Account JSON"
+    },
+    "advanced": {
+      "title": "Runtime",
+      "description": "Sandbox, approval, and extra environment variables",
+      "sandboxMode": "Sandbox Mode",
+      "approvalPolicy": "Approval Policy",
+      "env": "Environment Variables",
+      "enabled": "Enabled",
+      "enabledDescription": "Profile can be selected and launched"
+    },
+    "authModes": {
+      "api-key": "API key",
+      "oauth": "Account login",
+      "vertex-ai": "Vertex AI"
+    },
+    "sandboxModes": {
+      "read-only": "Read only",
+      "workspace-write": "Workspace write",
+      "danger-full-access": "Danger full access"
+    },
+    "approvalPolicies": {
+      "untrusted": "Untrusted",
+      "on-request": "On request",
+      "on-failure": "On failure",
+      "never": "Never"
+    },
+    "validation": {
+      "nameRequired": "Configuration name is required",
+      "apiKeyRequired": "API key is required",
+      "baseUrlInvalid": "Invalid URL format"
+    },
+    "cancel": "Cancel",
+    "create": "Create Profile",
+    "update": "Update Profile",
+    "saving": "Saving..."
+  },
+  "productSettings": {
+    "title": "{product} Settings",
+    "description": "Configure sync behavior for {product} profiles.",
+    "sync": {
+      "enabled": "Cloud Sync",
+      "enabledDescription": "Store profiles in a synced folder instead of only the local config directory",
+      "provider": "Provider",
+      "custom": "Custom Folder",
+      "path": "Sync Path"
+    },
+    "cancel": "Cancel",
+    "save": "Save Settings",
+    "saving": "Saving..."
   },
   "search": {
     "placeholder": "Search configurations...",

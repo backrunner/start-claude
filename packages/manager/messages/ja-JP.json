@@ -5,7 +5,109 @@
     "settings": "設定",
     "extensions": "拡張機能",
     "addConfig": "設定を追加",
-    "reloadPage": "ページを再読み込み"
+    "reloadPage": "ページを再読み込み",
+    "modeClaude": "Claude",
+    "modeCodex": "Codex",
+    "modeGemini": "Gemini"
+  },
+  "products": {
+    "codex": {
+      "subtitle": "OpenAI Codex CLI プロファイルを管理",
+      "emptyTitle": "Codex プロファイルがまだありません",
+      "emptyDescription": "OpenAI キー、互換ゲートウェイ、モデル既定値、サンドボックス動作用の Codex プロファイルを作成します。",
+      "createButton": "Codex プロファイルを作成"
+    },
+    "gemini": {
+      "subtitle": "Google Gemini CLI プロファイルを管理",
+      "emptyTitle": "Gemini プロファイルがまだありません",
+      "emptyDescription": "API キー、Google アカウント認証、Vertex AI プロジェクト、モデル既定値用の Gemini プロファイルを作成します。",
+      "createButton": "Gemini プロファイルを作成"
+    }
+  },
+  "productItem": {
+    "default": "既定",
+    "setDefault": "既定に設定",
+    "edit": "編集",
+    "delete": "削除",
+    "duplicate": "複製",
+    "authModes": {
+      "api-key": "API キー",
+      "oauth": "アカウント",
+      "vertex-ai": "Vertex AI"
+    }
+  },
+  "productForm": {
+    "createTitle": "{product} プロファイルを作成",
+    "editTitle": "{product} プロファイルを編集",
+    "description": "{product} の起動、認証、ネイティブ CLI 設定の書き込み方法を調整します。",
+    "basic": {
+      "title": "プロファイル",
+      "description": "名前、認証方式、既定モデル",
+      "name": "プロファイル名",
+      "namePlaceholder": "例：Work {product}",
+      "authMode": "認証",
+      "model": "モデル",
+      "default": "既定プロファイル",
+      "defaultDescription": "名前を指定せずに {product} を起動したときに使用します"
+    },
+    "auth": {
+      "title": "認証",
+      "description": "Provider 認証情報とエンドポイント上書き",
+      "apiKey": "API キー",
+      "apiKeyEnvVar": "API キー環境変数",
+      "baseUrl": "Base URL",
+      "googleCloudProject": "Google Cloud プロジェクト",
+      "googleCloudLocation": "Google Cloud ロケーション",
+      "googleApplicationCredentials": "サービスアカウント JSON"
+    },
+    "advanced": {
+      "title": "ランタイム",
+      "description": "サンドボックス、承認、追加環境変数",
+      "sandboxMode": "サンドボックスモード",
+      "approvalPolicy": "承認ポリシー",
+      "env": "環境変数",
+      "enabled": "有効",
+      "enabledDescription": "このプロファイルを選択して起動できます"
+    },
+    "authModes": {
+      "api-key": "API キー",
+      "oauth": "アカウントログイン",
+      "vertex-ai": "Vertex AI"
+    },
+    "sandboxModes": {
+      "read-only": "読み取り専用",
+      "workspace-write": "ワークスペース書き込み",
+      "danger-full-access": "完全アクセス"
+    },
+    "approvalPolicies": {
+      "untrusted": "信頼しない",
+      "on-request": "要求時",
+      "on-failure": "失敗時",
+      "never": "なし"
+    },
+    "validation": {
+      "nameRequired": "設定名は必須です",
+      "apiKeyRequired": "API キーは必須です",
+      "baseUrlInvalid": "URL 形式が無効です"
+    },
+    "cancel": "キャンセル",
+    "create": "プロファイルを作成",
+    "update": "プロファイルを更新",
+    "saving": "保存中..."
+  },
+  "productSettings": {
+    "title": "{product} 設定",
+    "description": "{product} プロファイルの同期動作を設定します。",
+    "sync": {
+      "enabled": "クラウド同期",
+      "enabledDescription": "ローカル設定ディレクトリだけでなく、同期フォルダーにプロファイルを保存します",
+      "provider": "プロバイダー",
+      "custom": "カスタムフォルダー",
+      "path": "同期パス"
+    },
+    "cancel": "キャンセル",
+    "save": "設定を保存",
+    "saving": "保存中..."
   },
   "search": {
     "placeholder": "設定を検索...",

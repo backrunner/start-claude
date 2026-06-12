@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ClaudeConfig } from '../../src/config/types'
-import { buildClaudeArgs, filterProcessArgs, parseBalanceStrategy } from '../../src/cli/common'
+import { buildClaudeArgs, filterProcessArgs, parseBalanceStrategy, resolveStartConfigSelector } from '../../src/cli/common.ts'
 
 describe('cLI argument filtering', () => {
   const originalArgv = process.argv
@@ -52,6 +52,67 @@ describe('cLI argument filtering', () => {
       // Config names should be handled by filterProxyArgs in proxy command module
       expect(result).toEqual(['config1', 'config2'])
       expect(result).not.toContain('proxy')
+    })
+
+    it('should not drop prompt arguments after an explicit config selector', () => {
+      process.argv = ['node', 'start-claude', '--config', 'myconfig', 'fix this bug']
+      const selector = resolveStartConfigSelector(process.argv.slice(2), {
+        optionConfig: 'myconfig',
+        positionalConfig: 'fix this bug',
+      })
+
+      expect(selector).toEqual({ value: 'myconfig', source: 'option' })
+      expect(filterProcessArgs(selector)).toEqual(['fix this bug'])
+    })
+
+    it('should preserve Claude flags whose names only share handled prefixes', () => {
+      process.argv = [
+        'node',
+        'start-claude',
+        '--debug-file',
+        'debug.log',
+        '--remote-control-session-name-prefix',
+        'desk',
+        'prompt.txt',
+      ]
+
+      expect(filterProcessArgs()).toEqual(['prompt.txt'])
+    })
+
+    it('should filter variadic and optional Claude values without using first matching index', () => {
+      process.argv = [
+        'node',
+        'start-claude',
+        '--add-dir',
+        'same',
+        'same',
+        '--debug',
+        'api',
+        '--resume',
+        'session-id',
+        'prompt.txt',
+      ]
+
+      expect(filterProcessArgs()).toEqual(['prompt.txt'])
+    })
+
+    it('should preserve tmux prompts and inline tmux modes', () => {
+      process.argv = ['node', 'start-claude', '--tmux', 'fix prompt']
+      expect(filterProcessArgs({ source: 'none' })).toEqual(['fix prompt'])
+
+      process.argv = ['node', 'start-claude', '--tmux=classic', 'fix prompt']
+      expect(filterProcessArgs({ source: 'none' })).toEqual(['--tmux=classic', 'fix prompt'])
+    })
+
+    it('should keep bare positional prompts when they are not existing configs', () => {
+      process.argv = ['node', 'start-claude', 'write tests']
+      const selector = resolveStartConfigSelector(process.argv.slice(2), {
+        positionalConfig: 'write tests',
+        configExists: name => name === 'work',
+      })
+
+      expect(selector).toEqual({ source: 'none' })
+      expect(filterProcessArgs(selector)).toEqual(['write tests'])
     })
   })
 
@@ -114,6 +175,36 @@ describe('cLI argument filtering', () => {
       }
 
       expect(buildClaudeArgs({ permissionMode: 'dontAsk' }, config)).toEqual(['--permission-mode', 'dontAsk'])
+    })
+
+    it('should build latest Claude optional and variadic args', () => {
+      expect(buildClaudeArgs({
+        addDir: ['src', 'tests'],
+        allowedTools: ['Bash(git *)', 'Edit'],
+        debug: 'api,hooks',
+        resume: 'session-id',
+        fromPr: '123',
+        sessionPersistence: false,
+        pluginDir: ['plugins/a', 'plugins/b'],
+      })).toEqual([
+        '--add-dir',
+        'src',
+        'tests',
+        '--allowedTools',
+        'Bash(git *)',
+        'Edit',
+        '-d',
+        'api,hooks',
+        '--from-pr',
+        '123',
+        '--no-session-persistence',
+        '--plugin-dir',
+        'plugins/a',
+        '--plugin-dir',
+        'plugins/b',
+        '--resume',
+        'session-id',
+      ])
     })
   })
 })

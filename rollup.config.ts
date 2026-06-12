@@ -31,18 +31,18 @@ const external = [
 const extensions = ['.js', '.ts']
 const migratorDistPath = pathResolve(__dirname, 'packages/migrator/dist/index.esm.js')
 
-/** @type {import('rollup').RollupOptions} */
-const config = {
-  input: pathResolve(__dirname, 'packages/cli/src/cli/main.ts'),
+function createCliConfig(inputName, outputName) {
+  return {
+  input: pathResolve(__dirname, `packages/cli/src/cli/${inputName}.ts`),
   output: [
     {
-      file: pathResolve(__dirname, 'bin/cli.cjs'),
+      file: pathResolve(__dirname, `bin/${outputName}.cjs`),
       format: 'cjs',
       banner: '#!/usr/bin/env node',
       inlineDynamicImports: true,
     },
     {
-      file: pathResolve(__dirname, 'bin/cli.mjs'),
+      file: pathResolve(__dirname, `bin/${outputName}.mjs`),
       format: 'esm',
       banner: '#!/usr/bin/env node',
       inlineDynamicImports: true,
@@ -68,6 +68,13 @@ const config = {
     }),
     json(),
   ],
+  }
 }
+
+const config = [
+  createCliConfig('main', 'cli'),
+  createCliConfig('codex', 'start-codex'),
+  createCliConfig('gemini', 'start-gemini'),
+]
 
 export default config
