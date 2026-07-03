@@ -46,7 +46,6 @@ export const claudeConfigSchema = z.object({
   authorization: z.string().optional(),
   claudeCodeDisableNonessentialTraffic: z.boolean().optional(),
   claudeCodeDisableExperimentalBetas: z.boolean().optional(),
-  claudeCodeAttributionHeader: z.boolean().optional(),
   claudeCodeMaxRetries: z.number().int().min(0).optional(),
   claudeCodeRetryWatchdog: z.boolean().optional(),
   customHeaders: z.string().optional(),

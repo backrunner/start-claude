@@ -21,7 +21,6 @@ export function detectConfigConflicts(localConfig, remoteConfig) {
                 'authorization',
                 'claudeCodeDisableNonessentialTraffic',
                 'claudeCodeDisableExperimentalBetas',
-                'claudeCodeAttributionHeader',
                 'claudeCodeMaxRetries',
                 'claudeCodeRetryWatchdog',
                 'customHeaders',
@@ -294,7 +293,6 @@ function resolveFieldConflict(field, localValue, remoteValue, resolutionDetails,
         case 'disableTelemetry':
         case 'claudeCodeDisableNonessentialTraffic':
         case 'claudeCodeDisableExperimentalBetas':
-        case 'claudeCodeAttributionHeader':
         case 'claudeCodeRetryWatchdog':
         case 'vertexRegionHaiku':
         case 'vertexRegionSonnet':

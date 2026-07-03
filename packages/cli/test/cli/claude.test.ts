@@ -284,7 +284,6 @@ describe('claude', () => {
         name: 'bool-test',
         maintainProjectWorkingDir: true,
         ideSkipAutoInstall: false,
-        claudeCodeAttributionHeader: true,
         claudeCodeRetryWatchdog: true,
         useBedrock: true,
         useVertex: false,
@@ -316,7 +315,7 @@ describe('claude', () => {
       expect(env).toBeDefined()
       expect(env!.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR).toBe('1')
       expect(env!.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL).toBe('0')
-      expect(env!.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('1')
+      expect(env!.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('0')
       expect(env!.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
       expect(env!.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe('1')
       expect(env!.CLAUDE_CODE_USE_BEDROCK).toBe('1')
@@ -327,10 +326,9 @@ describe('claude', () => {
       expect(env!.DISABLE_TELEMETRY).toBe('0')
     })
 
-    it('should disable nonessential traffic by default and allow explicit attribution header state', async () => {
+    it('should disable nonessential traffic by default and hard-code attribution header off', async () => {
       const configWithDefaults: ClaudeConfig = {
         name: 'default-privacy-test',
-        claudeCodeAttributionHeader: false,
       }
 
       const promise = startClaude(configWithDefaults)
@@ -401,7 +399,7 @@ describe('claude', () => {
       const env = spawnCall[2].env
 
       expect(env).toBeDefined()
-      expect(env!.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('1')
+      expect(env!.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('0')
       expect(env!.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('0')
       expect(env!.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe('0')
       expect(env!.CLAUDE_CODE_USE_VERTEX).toBe('0')

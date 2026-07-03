@@ -59,7 +59,6 @@ export function detectConfigConflicts(
         'authorization',
         'claudeCodeDisableNonessentialTraffic',
         'claudeCodeDisableExperimentalBetas',
-        'claudeCodeAttributionHeader',
         'claudeCodeMaxRetries',
         'claudeCodeRetryWatchdog',
         'customHeaders',
@@ -429,7 +428,6 @@ function resolveFieldConflict(
     case 'disableTelemetry':
     case 'claudeCodeDisableNonessentialTraffic':
     case 'claudeCodeDisableExperimentalBetas':
-    case 'claudeCodeAttributionHeader':
     case 'claudeCodeRetryWatchdog':
     case 'vertexRegionHaiku':
     case 'vertexRegionSonnet':

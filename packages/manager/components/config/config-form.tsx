@@ -99,6 +99,7 @@ const permissionModeValues: Array<NonNullable<ClaudeConfig['permissionMode']>> =
   'plan',
   'bypassPermissions',
 ]
+const defaultPermissionMode: NonNullable<ClaudeConfig['permissionMode']> = 'default'
 
 function isPermissionMode(value: string): value is NonNullable<ClaudeConfig['permissionMode']> {
   return permissionModeValues.includes(value as NonNullable<ClaudeConfig['permissionMode']>)
@@ -146,28 +147,39 @@ function isValidConfigFormData(data: ClaudeConfig): boolean {
 
 export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps): ReactNode {
   const t = useTranslations('configForm')
-  const [formData, setFormData] = useState<ClaudeConfig>(config || {
-    name: '',
-    profileType: 'default',
-    baseUrl: '',
-    authToken: '', // Primary API Key (ANTHROPIC_AUTH_TOKEN)
-    apiKey: '', // Legacy API Key (ANTHROPIC_API_KEY)
-    model: '',
-    permissionMode: 'default',
-    transformerEnabled: false,
-    transformer: 'auto',
-    isDefault: false,
-    enabled: true,
-    authorization: '',
-    claudeCodeDisableNonessentialTraffic: true,
-    claudeCodeDisableExperimentalBetas: true,
-    claudeCodeAttributionHeader: false,
-    customHeaders: '',
-  })
+  const [formData, setFormData] = useState<ClaudeConfig>(
+    config
+      ? {
+          ...config,
+          permissionMode: config.permissionMode ?? defaultPermissionMode,
+        }
+      : {
+          name: '',
+          profileType: 'default',
+          baseUrl: '',
+          authToken: '', // Primary API Key (ANTHROPIC_AUTH_TOKEN)
+          apiKey: '', // Legacy API Key (ANTHROPIC_API_KEY)
+          model: '',
+          permissionMode: defaultPermissionMode,
+          transformerEnabled: false,
+          transformer: 'auto',
+          isDefault: false,
+          enabled: true,
+          authorization: '',
+          claudeCodeDisableNonessentialTraffic: true,
+          claudeCodeDisableExperimentalBetas: true,
+          customHeaders: '',
+        },
+  )
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [transformers, setTransformers] = useState<TransformerOption[]>(fallbackTransformers)
   const [loadingTransformers, setLoadingTransformers] = useState(false)
+  const [lastNonBypassPermissionMode, setLastNonBypassPermissionMode] = useState<NonNullable<ClaudeConfig['permissionMode']>>(
+    config?.permissionMode && config.permissionMode !== 'bypassPermissions'
+      ? config.permissionMode
+      : defaultPermissionMode,
+  )
 
   // Fetch available transformers
   useEffect(() => {
@@ -194,11 +206,20 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
   useEffect(() => {
     if (config) {
-      setFormData({ ...config })
+      const configWithDefaults = {
+        ...config,
+        permissionMode: config.permissionMode ?? defaultPermissionMode,
+      }
+      setLastNonBypassPermissionMode(
+        configWithDefaults.permissionMode !== 'bypassPermissions'
+          ? configWithDefaults.permissionMode
+          : defaultPermissionMode,
+      )
+      setFormData(configWithDefaults)
       // Call onFormDataChange with initial data
       if (onFormDataChange) {
-        const isValid = isValidConfigFormData(config)
-        onFormDataChange(config, isValid)
+        const isValid = isValidConfigFormData(configWithDefaults)
+        onFormDataChange(configWithDefaults, isValid)
       }
     }
     else if (onFormDataChange) {
@@ -210,14 +231,13 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         authToken: '', // Primary API Key (ANTHROPIC_AUTH_TOKEN)
         apiKey: '', // Legacy API Key (ANTHROPIC_API_KEY)
         model: '',
-        permissionMode: 'default' as const,
+        permissionMode: defaultPermissionMode,
         transformerEnabled: false,
         transformer: 'auto',
         isDefault: false,
         enabled: true,
         claudeCodeDisableNonessentialTraffic: true,
         claudeCodeDisableExperimentalBetas: true,
-        claudeCodeAttributionHeader: false,
       }
       const isValid = isValidConfigFormData(defaultData)
       onFormDataChange(defaultData, isValid)
@@ -241,6 +261,29 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
   const handleNumberChange = (field: keyof ClaudeConfig, value: string): void => {
     const numericValue = Number(value)
     handleChange(field, value === '' || !Number.isFinite(numericValue) ? undefined : numericValue)
+  }
+
+  const handlePermissionModeChange = (value: string): void => {
+    if (!isPermissionMode(value)) {
+      return
+    }
+
+    if (value !== 'bypassPermissions') {
+      setLastNonBypassPermissionMode(value)
+    }
+    handleChange('permissionMode', value)
+  }
+
+  const handleDangerouslySkipPermissionsChange = (checked: boolean): void => {
+    if (checked) {
+      if (formData.permissionMode && formData.permissionMode !== 'bypassPermissions') {
+        setLastNonBypassPermissionMode(formData.permissionMode)
+      }
+      handleChange('permissionMode', 'bypassPermissions')
+      return
+    }
+
+    handleChange('permissionMode', lastNonBypassPermissionMode)
   }
 
   const convertLegacyApiKeyToAuthToken = (): void => {
@@ -568,12 +611,8 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             <div className="space-y-2">
               <Label htmlFor="permissionMode" className="font-medium">{t('modelPermissions.permissionMode')}</Label>
               <Select
-                value={formData.permissionMode ?? 'default'}
-                onValueChange={(value) => {
-                  if (isPermissionMode(value)) {
-                    handleChange('permissionMode', value)
-                  }
-                }}
+                value={formData.permissionMode ?? defaultPermissionMode}
+                onValueChange={handlePermissionModeChange}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={t('modelPermissions.permissionModePlaceholder')} />
@@ -587,6 +626,23 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   <SelectItem value="bypassPermissions">{t('modelPermissions.permissionBypass')}</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 p-4 rounded-xl border-2 bg-gradient-to-r from-red-50/70 to-orange-50/40 hover:border-red-400/40 transition-all duration-200 dark:from-red-950/20 dark:to-orange-950/10 dark:border-red-900/40">
+              <div className="flex-1">
+                <Label htmlFor="dangerouslySkipPermissions" className="font-semibold text-base cursor-pointer">
+                  {t('modelPermissions.dangerouslySkipPermissions')}
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                  {t('modelPermissions.dangerouslySkipPermissionsDescription')}
+                </p>
+              </div>
+              <Switch
+                id="dangerouslySkipPermissions"
+                checked={formData.permissionMode === 'bypassPermissions'}
+                onCheckedChange={handleDangerouslySkipPermissionsChange}
+                className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-red-500 data-[state=checked]:to-orange-500 data-[state=unchecked]:bg-red-200 dark:data-[state=unchecked]:bg-red-900/30 border-transparent"
+              />
             </div>
 
             <div className="space-y-4 pt-2">
@@ -684,23 +740,6 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-4 p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-orange-500/30 transition-all duration-200">
-              <div className="flex-1">
-                <Label htmlFor="claudeCodeAttributionHeader" className="font-semibold text-base cursor-pointer">
-                  {t('advanced.attributionHeader')}
-                </Label>
-                <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                  {t('advanced.attributionHeaderDescription')}
-                </p>
-              </div>
-              <Switch
-                id="claudeCodeAttributionHeader"
-                checked={formData.claudeCodeAttributionHeader ?? false}
-                onCheckedChange={checked => handleChange('claudeCodeAttributionHeader', checked)}
-                className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-orange-500 data-[state=checked]:to-orange-600 data-[state=unchecked]:bg-orange-200 dark:data-[state=unchecked]:bg-orange-900/30 border-transparent"
-              />
-            </div>
-
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="claudeCodeMaxRetries" className="font-medium flex items-center gap-2">

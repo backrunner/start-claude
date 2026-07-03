@@ -58,7 +58,6 @@ export async function handleSetCommand(name, property, value) {
         'authorization',
         'claudeCodeDisableNonessentialTraffic',
         'claudeCodeDisableExperimentalBetas',
-        'claudeCodeAttributionHeader',
         'claudeCodeMaxRetries',
         'claudeCodeRetryWatchdog',
         'customHeaders',
@@ -114,7 +113,7 @@ export async function handleSetCommand(name, property, value) {
         }
         convertedValue = numValue;
     }
-    else if (['maintainProjectWorkingDir', 'ideSkipAutoInstall', 'claudeCodeDisableNonessentialTraffic', 'claudeCodeDisableExperimentalBetas', 'claudeCodeAttributionHeader', 'claudeCodeRetryWatchdog', 'useBedrock', 'useVertex', 'skipBedrockAuth', 'skipVertexAuth', 'disableNonessentialTraffic', 'disableTerminalTitle', 'disableAutoupdater', 'disableBugCommand', 'disableCostWarnings', 'disableErrorReporting', 'disableNonEssentialModelCalls', 'disableTelemetry'].includes(property)) {
+    else if (['maintainProjectWorkingDir', 'ideSkipAutoInstall', 'claudeCodeDisableNonessentialTraffic', 'claudeCodeDisableExperimentalBetas', 'claudeCodeRetryWatchdog', 'useBedrock', 'useVertex', 'skipBedrockAuth', 'skipVertexAuth', 'disableNonessentialTraffic', 'disableTerminalTitle', 'disableAutoupdater', 'disableBugCommand', 'disableCostWarnings', 'disableErrorReporting', 'disableNonEssentialModelCalls', 'disableTelemetry'].includes(property)) {
         if (value.toLowerCase() === 'true') {
             convertedValue = true;
         }

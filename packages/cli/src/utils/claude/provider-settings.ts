@@ -62,7 +62,6 @@ const numericEnvMap: Array<[keyof ClaudeConfig, string]> = [
 const booleanEnvMap: Array<[keyof ClaudeConfig, string]> = [
   ['maintainProjectWorkingDir', 'CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR'],
   ['ideSkipAutoInstall', 'CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL'],
-  ['claudeCodeAttributionHeader', 'CLAUDE_CODE_ATTRIBUTION_HEADER'],
   ['claudeCodeDisableExperimentalBetas', 'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS'],
   ['claudeCodeRetryWatchdog', 'CLAUDE_CODE_RETRY_WATCHDOG'],
   ['useBedrock', 'CLAUDE_CODE_USE_BEDROCK'],
@@ -160,9 +159,6 @@ export function buildClaudeProviderEnv(config: ClaudeConfig): Record<string, str
   const disableExperimentalBetas = config.claudeCodeDisableExperimentalBetas
     ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
     ?? true
-  const attributionHeader = config.claudeCodeAttributionHeader
-    ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_ATTRIBUTION_HEADER)
-    ?? false
 
   if (config.env) {
     Object.entries(config.env).forEach(([key, value]) => {
@@ -224,7 +220,7 @@ export function buildClaudeProviderEnv(config: ClaudeConfig): Record<string, str
     }
   })
 
-  env.CLAUDE_CODE_ATTRIBUTION_HEADER = formatBooleanEnvValue(attributionHeader)
+  env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = formatBooleanEnvValue(disableNonessentialTraffic)
   env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = formatBooleanEnvValue(disableExperimentalBetas)
 

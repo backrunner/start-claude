@@ -76,7 +76,6 @@ export interface ProxyConfig {
   authorization?: string
   claudeCodeDisableNonessentialTraffic?: boolean
   claudeCodeDisableExperimentalBetas?: boolean
-  claudeCodeAttributionHeader?: boolean
   claudeCodeMaxRetries?: number
   claudeCodeRetryWatchdog?: boolean
   customHeaders?: string

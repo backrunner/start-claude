@@ -23,7 +23,6 @@ export interface ClaudeConfig {
   authorization?: string // Convenience field for Authorization header (merged into customHeaders)
   claudeCodeDisableNonessentialTraffic?: boolean
   claudeCodeDisableExperimentalBetas?: boolean
-  claudeCodeAttributionHeader?: boolean
   claudeCodeMaxRetries?: number
   claudeCodeRetryWatchdog?: boolean
   customHeaders?: string // Custom HTTP headers in format "Header1: Value1\nHeader2: Value2"

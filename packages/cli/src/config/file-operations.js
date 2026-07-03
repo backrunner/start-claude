@@ -269,14 +269,14 @@ export class ConfigFileManager {
         config.configs = config.configs.map((cfg) => {
             const envDisableNonessentialTraffic = parseBooleanEnvValue(cfg.env?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC);
             const envDisableExperimentalBetas = parseBooleanEnvValue(cfg.env?.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS);
-            const envAttributionHeader = parseBooleanEnvValue(cfg.env?.CLAUDE_CODE_ATTRIBUTION_HEADER);
+            const normalizedConfig = { ...cfg };
+            delete normalizedConfig.claudeCodeAttributionHeader;
             return {
-                ...cfg,
+                ...normalizedConfig,
                 id: cfg.id || randomUUID(),
                 enabled: cfg.enabled ?? true,
                 claudeCodeDisableNonessentialTraffic: cfg.claudeCodeDisableNonessentialTraffic ?? cfg.disableNonessentialTraffic ?? envDisableNonessentialTraffic ?? true,
                 claudeCodeDisableExperimentalBetas: cfg.claudeCodeDisableExperimentalBetas ?? envDisableExperimentalBetas ?? true,
-                claudeCodeAttributionHeader: cfg.claudeCodeAttributionHeader ?? envAttributionHeader ?? false,
             };
         });
         return config;

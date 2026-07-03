@@ -110,7 +110,7 @@ describe('claude provider settings sync', () => {
     }
 
     expect(buildClaudeProviderEnv(config)).toEqual({
-      CLAUDE_CODE_ATTRIBUTION_HEADER: '1',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '0',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_USE_VERTEX: '0',
@@ -284,16 +284,15 @@ describe('claude provider settings sync', () => {
     })
   })
 
-  it('materializes attribution header and explicit nonessential traffic override', () => {
+  it('hard-codes attribution header off and materializes explicit traffic overrides', () => {
     const config: ClaudeConfig = {
       name: 'privacy',
-      claudeCodeAttributionHeader: true,
       claudeCodeDisableNonessentialTraffic: false,
       claudeCodeDisableExperimentalBetas: false,
     }
 
     expect(buildClaudeProviderEnv(config)).toEqual({
-      CLAUDE_CODE_ATTRIBUTION_HEADER: '1',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '0',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '0',
     })
