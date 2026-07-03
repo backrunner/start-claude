@@ -56,11 +56,14 @@ jobs:
             exit 1
           fi
 
+      - name: Build migrator
+        run: pnpm --filter @start-claude/migrator build
+
       - name: Typecheck
         run: |
+          pnpm --filter @start-claude/migrator typecheck
           pnpm --filter @start-claude/cli typecheck
           pnpm --filter @start-claude/manager typecheck
-          pnpm --filter @start-claude/migrator typecheck
 
       - name: Test
         run: |
