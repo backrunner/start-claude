@@ -81,13 +81,14 @@ describe('configManager', () => {
 
       const config = await configManager.load()
 
-      expect(config).toEqual({
+      expect(config).toMatchObject({
         version: TEST_CONFIG_VERSION,
         configs: [],
-        settings: {
+        settings: expect.objectContaining({
           overrideClaudeCommand: false,
           syncClaudeProviderSettings: true,
-        },
+          enableToolSearch: false,
+        }),
       })
     })
 
@@ -108,10 +109,11 @@ describe('configManager', () => {
       expect(config.version).toBe(TEST_CONFIG_VERSION)
       expect(config.configs).toHaveLength(1)
       expect(config.configs[0]).toMatchObject({ name: 'test', baseUrl: 'https://api.test.com', isDefault: true, enabled: true })
-      expect(config.settings).toEqual({
+      expect(config.settings).toEqual(expect.objectContaining({
         ...mockConfig.settings,
         syncClaudeProviderSettings: true,
-      })
+        enableToolSearch: false,
+      }))
     })
 
     it('should handle corrupted config file', async () => {
@@ -121,13 +123,14 @@ describe('configManager', () => {
 
       const config = await configManager.load()
 
-      expect(config).toEqual({
+      expect(config).toMatchObject({
         version: TEST_CONFIG_VERSION,
         configs: [],
-        settings: {
+        settings: expect.objectContaining({
           overrideClaudeCommand: false,
           syncClaudeProviderSettings: true,
-        },
+          enableToolSearch: false,
+        }),
       })
       expect(mockFs.copyFileSync).toHaveBeenCalled() // Backup created
     })
@@ -173,10 +176,11 @@ describe('configManager', () => {
 
       expect(config.version).toBe(TEST_CONFIG_VERSION)
       expect(config.configs).toEqual([])
-      expect(config.settings).toEqual({
+      expect(config.settings).toEqual(expect.objectContaining({
         overrideClaudeCommand: false,
         syncClaudeProviderSettings: true,
-      })
+        enableToolSearch: false,
+      }))
     })
   })
 
@@ -472,10 +476,11 @@ describe('configManager', () => {
 
       const result = await configManager.getSettings()
 
-      expect(result).toEqual({
+      expect(result).toEqual(expect.objectContaining({
         ...settings,
         syncClaudeProviderSettings: true,
-      })
+        enableToolSearch: false,
+      }))
     })
   })
 
@@ -531,10 +536,11 @@ describe('configManager', () => {
       expect(result.version).toBe(TEST_CONFIG_VERSION)
       expect(result.configs).toHaveLength(1)
       expect(result.configs[0]).toMatchObject({ name: 'test', isDefault: true, enabled: true })
-      expect(result.settings).toEqual({
+      expect(result.settings).toEqual(expect.objectContaining({
         ...mockConfigData.settings,
         syncClaudeProviderSettings: true,
-      })
+        enableToolSearch: false,
+      }))
     })
   })
 
@@ -618,7 +624,14 @@ describe('configManager', () => {
 
       await configManager.addConfig(newDefaultConfig)
 
-      expect(mockFs.writeFileSync).toHaveBeenCalled()
+      const writeCall = mockFs.writeFileSync.mock.calls.at(-1)
+      const savedData = JSON.parse(writeCall?.[1] as string)
+
+      expect(savedData.configs).toEqual([
+        expect.objectContaining({ name: 'config1', isDefault: false }),
+        expect.objectContaining({ name: 'config2', isDefault: false }),
+        expect.objectContaining({ name: 'config3', isDefault: true }),
+      ])
     })
 
     it('should handle file system errors gracefully', async () => {

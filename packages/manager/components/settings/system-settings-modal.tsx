@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react'
 import type { SystemSettings } from '@/config/types'
 import { useTranslations } from 'next-intl'
-import { Activity, AlertCircle, Cloud, CloudOff, Database, FileJson, FolderSync, Globe, HardDrive, Key, Lock, RefreshCw, Settings2, Timer, Zap } from 'lucide-react'
+import { Activity, AlertCircle, Cloud, CloudOff, Database, FileJson, FolderSync, Globe, HardDrive, Key, Lock, RefreshCw, Search, Settings2, Timer, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -60,6 +60,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
   const [settings, setSettings] = useState<SystemSettings>({
     overrideClaudeCommand: initialSettings?.overrideClaudeCommand || false,
     syncClaudeProviderSettings: initialSettings?.syncClaudeProviderSettings !== false,
+    enableToolSearch: initialSettings?.enableToolSearch ?? false,
     balanceMode: {
       enableByDefault: initialSettings?.balanceMode?.enableByDefault || false,
       strategy: initialSettings?.balanceMode?.strategy || LoadBalancerStrategy.Fallback,
@@ -658,7 +659,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
                   <div className="flex-1">
                     <Label htmlFor="syncClaudeProviderSettings" className="font-semibold text-base cursor-pointer">{t('claudeProviderSettings.syncFile')}</Label>
@@ -674,6 +675,27 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                       syncClaudeProviderSettings: checked,
                     }))}
                     className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-cyan-500 data-[state=checked]:to-cyan-600 data-[state=unchecked]:bg-cyan-200 dark:data-[state=unchecked]:bg-cyan-900/30 border-transparent"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-primary/30 transition-all duration-200">
+                  <div className="flex-1">
+                    <Label htmlFor="enableToolSearch" className="font-semibold text-base cursor-pointer flex items-center gap-2">
+                      <Search className="h-4 w-4" />
+                      {t('claudeProviderSettings.enableToolSearch')}
+                    </Label>
+                    <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                      {t('claudeProviderSettings.enableToolSearchDescription')}
+                    </p>
+                  </div>
+                  <Switch
+                    id="enableToolSearch"
+                    checked={settings.enableToolSearch ?? false}
+                    onCheckedChange={checked => setSettings(prev => ({
+                      ...prev,
+                      enableToolSearch: checked,
+                    }))}
+                    className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-teal-500 data-[state=checked]:to-teal-600 data-[state=unchecked]:bg-teal-200 dark:data-[state=unchecked]:bg-teal-900/30 border-transparent"
                   />
                 </div>
               </CardContent>

@@ -62,6 +62,8 @@ describe('claude provider settings sync', () => {
       authorization: 'Bearer custom',
       customHeaders: 'X-Test: 1',
       maxOutputTokens: 4096,
+      claudeCodeMaxRetries: 12,
+      claudeCodeRetryWatchdog: true,
       disableTelemetry: true,
       env: {
         ANTHROPIC_BASE_URL: 'https://stale.example.com',
@@ -84,7 +86,34 @@ describe('claude provider settings sync', () => {
       ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION: 'Sonnet via custom provider',
       ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES: 'thinking,interleaved_thinking',
       ANTHROPIC_CUSTOM_HEADERS: 'Authorization: Bearer custom\nX-Test: 1',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_MAX_OUTPUT_TOKENS: '4096',
+      CLAUDE_CODE_MAX_RETRIES: '12',
+      CLAUDE_CODE_RETRY_WATCHDOG: '1',
+      DISABLE_PROMPT_CACHING_SONNET: '1',
+      DISABLE_TELEMETRY: '1',
+    })
+  })
+
+  it('normalizes Claude boolean env values to numeric flags', () => {
+    const config: ClaudeConfig = {
+      name: 'env-booleans',
+      env: {
+        CLAUDE_CODE_ATTRIBUTION_HEADER: 'true',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 'false',
+        CLAUDE_CODE_USE_VERTEX: 'false',
+        DISABLE_PROMPT_CACHING_SONNET: 'true',
+        DISABLE_TELEMETRY: 'true',
+      },
+    }
+
+    expect(buildClaudeProviderEnv(config)).toEqual({
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '1',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '0',
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
+      CLAUDE_CODE_USE_VERTEX: '0',
       DISABLE_PROMPT_CACHING_SONNET: '1',
       DISABLE_TELEMETRY: '1',
     })
@@ -124,6 +153,9 @@ describe('claude provider settings sync', () => {
         ANTHROPIC_BASE_URL: 'https://api.prod.example.com',
         ANTHROPIC_AUTH_TOKEN: 'sk-prod',
         ANTHROPIC_DEFAULT_SONNET_MODEL: 'old-model',
+        CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
         DISABLE_COST_WARNINGS: '0',
         PATH: '/usr/bin',
       },
@@ -151,6 +183,9 @@ describe('claude provider settings sync', () => {
       env: {
         ANTHROPIC_BASE_URL: 'https://second.example.com',
         ANTHROPIC_AUTH_TOKEN: 'sk-second',
+        CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       },
     })
   })
@@ -170,6 +205,9 @@ describe('claude provider settings sync', () => {
       env: {
         ANTHROPIC_BASE_URL: 'https://created.example.com',
         ANTHROPIC_API_KEY: 'sk-created',
+        CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       },
     })
 
@@ -180,6 +218,9 @@ describe('claude provider settings sync', () => {
           envKeys: [
             'ANTHROPIC_API_KEY',
             'ANTHROPIC_BASE_URL',
+            'CLAUDE_CODE_ATTRIBUTION_HEADER',
+            'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
+            'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
           ],
         },
       },
@@ -205,6 +246,9 @@ describe('claude provider settings sync', () => {
       env: {
         ANTHROPIC_BASE_URL: 'https://custom-dir.example.com',
         ANTHROPIC_AUTH_TOKEN: 'sk-custom-dir',
+        CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       },
     })
   })
@@ -234,6 +278,24 @@ describe('claude provider settings sync', () => {
       ANTHROPIC_AUTH_TOKEN: 'sk-proxy',
       ANTHROPIC_MODEL: 'gpt-4.1',
       ANTHROPIC_DEFAULT_SONNET_MODEL: 'provider-sonnet',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
+    })
+  })
+
+  it('materializes attribution header and explicit nonessential traffic override', () => {
+    const config: ClaudeConfig = {
+      name: 'privacy',
+      claudeCodeAttributionHeader: true,
+      claudeCodeDisableNonessentialTraffic: false,
+      claudeCodeDisableExperimentalBetas: false,
+    }
+
+    expect(buildClaudeProviderEnv(config)).toEqual({
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '1',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '0',
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '0',
     })
   })
 
@@ -265,6 +327,9 @@ describe('claude provider settings sync', () => {
         ANTHROPIC_AUTH_TOKEN: 'sk-old-auth',
         ANTHROPIC_BASE_URL: 'https://old.example.com',
         ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929',
+        CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
         PATH: '/usr/bin',
       },
     })

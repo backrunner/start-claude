@@ -73,9 +73,10 @@ export default function ProductHomePage({
   } = useProductConfigs(product.id, initialConfigs, initialSettings, toastTranslations)
 
   const [editingConfig, setEditingConfig] = useState<ExternalProductConfig | null>(null)
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create')
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [deleteConfig, setDeleteConfig] = useState<string | null>(null)
+  const [deleteConfig, setDeleteConfig] = useState<ExternalProductConfig | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const dragOperationInProgress = useRef(false)
@@ -122,20 +123,20 @@ export default function ProductHomePage({
   const dragDisabled = isDragging || isSearchActive
 
   const handleSaveConfig = async (config: ExternalProductConfig): Promise<void> => {
-    await saveConfig(config, !!editingConfig, notifyConfigChange)
+    await saveConfig(config, formMode === 'edit', notifyConfigChange)
     setIsFormOpen(false)
     setEditingConfig(null)
+    setFormMode('create')
   }
 
-  const handleDuplicate = async (config: ExternalProductConfig): Promise<void> => {
-    const newName = generateDuplicateName(config.name, configs)
-    const { id, isDefault, order, ...configWithoutUniqueFields } = config
-    await saveConfig({
-      ...configWithoutUniqueFields,
-      name: newName,
-      isDefault: false,
-      enabled: true,
-    }, false, notifyConfigChange)
+  const handleDuplicate = (config: ExternalProductConfig): void => {
+    const { id, order, deletedAt, isDeleted, ...configDraft } = config
+    setEditingConfig({
+      ...configDraft,
+      name: generateDuplicateName(config.name, configs),
+    })
+    setFormMode('create')
+    setIsFormOpen(true)
   }
 
   const handleDeleteConfirm = async (): Promise<void> => {
@@ -187,19 +188,19 @@ export default function ProductHomePage({
     }
   }
 
-  const handleToggleEnabled = (configName: string, enabled: boolean): void => {
+  const handleToggleEnabled = (targetConfig: ExternalProductConfig, enabled: boolean): void => {
     const updatedConfigs = configs.map(config =>
-      config.name === configName ? { ...config, enabled } : config,
+      configsMatch(config, targetConfig) ? { ...config, enabled } : config,
     )
-    void updateConfigs(updatedConfigs, enabled ? t('configEnabled', { configName }) : t('configDisabled', { configName }), notifyConfigChange)
+    void updateConfigs(updatedConfigs, enabled ? t('configEnabled', { configName: targetConfig.name }) : t('configDisabled', { configName: targetConfig.name }), notifyConfigChange)
   }
 
-  const handleSetDefault = (configName: string): void => {
+  const handleSetDefault = (targetConfig: ExternalProductConfig): void => {
     const updatedConfigs = configs.map(config => ({
       ...config,
-      isDefault: config.name === configName,
+      isDefault: configsMatch(config, targetConfig),
     }))
-    void updateConfigs(updatedConfigs, t('configSetDefault', { configName }), notifyConfigChange)
+    void updateConfigs(updatedConfigs, t('configSetDefault', { configName: targetConfig.name }), notifyConfigChange)
   }
 
   return (
@@ -214,6 +215,7 @@ export default function ProductHomePage({
             shutdownCoordinator={shutdownCoordinator}
             onAddConfig={() => {
               setEditingConfig(null)
+              setFormMode('create')
               setIsFormOpen(true)
             }}
             onOpenSettings={() => setIsSettingsOpen(true)}
@@ -247,7 +249,11 @@ export default function ProductHomePage({
                       title={productT(`${product.id}.emptyTitle`)}
                       description={productT(`${product.id}.emptyDescription`)}
                       createButton={productT(`${product.id}.createButton`)}
-                      onAddConfig={() => setIsFormOpen(true)}
+                      onAddConfig={() => {
+                        setEditingConfig(null)
+                        setFormMode('create')
+                        setIsFormOpen(true)
+                      }}
                     />
                   )
                 : (
@@ -268,6 +274,7 @@ export default function ProductHomePage({
                           dragDisabled={dragDisabled}
                           onEdit={(config) => {
                             setEditingConfig(config)
+                            setFormMode('edit')
                             setIsFormOpen(true)
                           }}
                           onDelete={setDeleteConfig}
@@ -282,20 +289,28 @@ export default function ProductHomePage({
 
           <ProductFormModal
             open={isFormOpen}
-            onOpenChange={setIsFormOpen}
+            onOpenChange={(open) => {
+              setIsFormOpen(open)
+              if (!open) {
+                setEditingConfig(null)
+                setFormMode('create')
+              }
+            }}
             product={product}
             config={editingConfig}
+            mode={formMode}
             onSave={handleSaveConfig}
             onCancel={() => {
               setIsFormOpen(false)
               setEditingConfig(null)
+              setFormMode('create')
             }}
           />
 
           <ConfirmDeleteModal
             open={!!deleteConfig}
             onClose={() => setDeleteConfig(null)}
-            configName={deleteConfig}
+            configName={deleteConfig?.name || null}
             onConfirm={handleDeleteConfirm}
           />
 
@@ -325,4 +340,10 @@ function generateDuplicateName(baseName: string, configs: ExternalProductConfig[
   }
 
   return newName
+}
+
+function configsMatch(config: ExternalProductConfig, targetConfig: ExternalProductConfig): boolean {
+  return targetConfig.id
+    ? config.id === targetConfig.id
+    : config.name === targetConfig.name
 }

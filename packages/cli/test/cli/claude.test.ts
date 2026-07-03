@@ -145,7 +145,12 @@ describe('claude', () => {
         [],
         expect.objectContaining({
           stdio: 'inherit',
-          env: expect.any(Object),
+          env: expect.objectContaining({
+            CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+            CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
+            ENABLE_TOOL_SEARCH: '0',
+          }),
         }),
       )
       expect(result).toBe(0)
@@ -279,11 +284,14 @@ describe('claude', () => {
         name: 'bool-test',
         maintainProjectWorkingDir: true,
         ideSkipAutoInstall: false,
+        claudeCodeAttributionHeader: true,
+        claudeCodeRetryWatchdog: true,
         useBedrock: true,
         useVertex: false,
         skipBedrockAuth: true,
         skipVertexAuth: false,
         disableNonessentialTraffic: true,
+        claudeCodeDisableExperimentalBetas: true,
         disableTerminalTitle: false,
         disableAutoupdater: true,
         disableBugCommand: false,
@@ -308,11 +316,97 @@ describe('claude', () => {
       expect(env).toBeDefined()
       expect(env!.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR).toBe('1')
       expect(env!.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL).toBe('0')
+      expect(env!.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('1')
+      expect(env!.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
+      expect(env!.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe('1')
       expect(env!.CLAUDE_CODE_USE_BEDROCK).toBe('1')
       expect(env!.CLAUDE_CODE_USE_VERTEX).toBe('0')
       expect(env!.CLAUDE_CODE_SKIP_BEDROCK_AUTH).toBe('1')
       expect(env!.CLAUDE_CODE_SKIP_VERTEX_AUTH).toBe('0')
+      expect(env!.CLAUDE_CODE_RETRY_WATCHDOG).toBe('1')
       expect(env!.DISABLE_TELEMETRY).toBe('0')
+    })
+
+    it('should disable nonessential traffic by default and allow explicit attribution header state', async () => {
+      const configWithDefaults: ClaudeConfig = {
+        name: 'default-privacy-test',
+        claudeCodeAttributionHeader: false,
+      }
+
+      const promise = startClaude(configWithDefaults)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('1')
+      expect(env!.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe('1')
+      expect(env!.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('0')
+    })
+
+    it('should allow disabling the default nonessential traffic flag', async () => {
+      const configWithDisableOverride: ClaudeConfig = {
+        name: 'disable-privacy-test',
+        claudeCodeDisableNonessentialTraffic: false,
+        claudeCodeDisableExperimentalBetas: false,
+      }
+
+      const promise = startClaude(configWithDisableOverride)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('0')
+      expect(env!.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe('0')
+    })
+
+    it('should normalize boolean env map values to numeric flags', async () => {
+      const configWithBooleanEnv: ClaudeConfig = {
+        name: 'env-bool-test',
+        env: {
+          CLAUDE_CODE_ATTRIBUTION_HEADER: 'true',
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 'false',
+          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: 'false',
+          CLAUDE_CODE_USE_VERTEX: 'false',
+          DISABLE_PROMPT_CACHING_SONNET: 'true',
+          DISABLE_TELEMETRY: 'true',
+        },
+      }
+
+      const promise = startClaude(configWithBooleanEnv)
+
+      const closeCallback = mockClaudeProcess.on.mock.calls.find(call => call[0] === 'close')?.[1]
+      if (closeCallback) {
+        closeCallback(0)
+      }
+
+      await promise
+
+      const spawnCall = mockSpawn.mock.calls[0]
+      const env = spawnCall[2].env
+
+      expect(env).toBeDefined()
+      expect(env!.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('1')
+      expect(env!.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe('0')
+      expect(env!.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe('0')
+      expect(env!.CLAUDE_CODE_USE_VERTEX).toBe('0')
+      expect(env!.DISABLE_PROMPT_CACHING_SONNET).toBe('1')
+      expect(env!.DISABLE_TELEMETRY).toBe('1')
     })
 
     it('should set numeric environment variables correctly', async () => {
@@ -323,6 +417,7 @@ describe('claude', () => {
         bashMaxOutputLength: 50000,
         apiKeyHelperTtlMs: 900000,
         maxOutputTokens: 4096,
+        claudeCodeMaxRetries: 12,
         maxThinkingTokens: 2048,
         mcpTimeout: 10000,
         mcpToolTimeout: 5000,
@@ -347,6 +442,7 @@ describe('claude', () => {
       expect(env!.BASH_MAX_OUTPUT_LENGTH).toBe('50000')
       expect(env!.CLAUDE_CODE_API_KEY_HELPER_TTL_MS).toBe('900000')
       expect(env!.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('4096')
+      expect(env!.CLAUDE_CODE_MAX_RETRIES).toBe('12')
       expect(env!.MAX_THINKING_TOKENS).toBe('2048')
       expect(env!.MCP_TIMEOUT).toBe('10000')
       expect(env!.MCP_TOOL_TIMEOUT).toBe('5000')

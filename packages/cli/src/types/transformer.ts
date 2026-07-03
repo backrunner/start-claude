@@ -74,6 +74,11 @@ export interface ProxyConfig {
   // Environment variables for Claude Code
   authToken?: string
   authorization?: string
+  claudeCodeDisableNonessentialTraffic?: boolean
+  claudeCodeDisableExperimentalBetas?: boolean
+  claudeCodeAttributionHeader?: boolean
+  claudeCodeMaxRetries?: number
+  claudeCodeRetryWatchdog?: boolean
   customHeaders?: string
   smallFastModel?: string
   smallFastModelAwsRegion?: string

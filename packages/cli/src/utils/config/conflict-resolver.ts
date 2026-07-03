@@ -57,6 +57,11 @@ export function detectConfigConflicts(
         'enabled',
         'authToken',
         'authorization',
+        'claudeCodeDisableNonessentialTraffic',
+        'claudeCodeDisableExperimentalBetas',
+        'claudeCodeAttributionHeader',
+        'claudeCodeMaxRetries',
+        'claudeCodeRetryWatchdog',
         'customHeaders',
         'smallFastModel',
         'smallFastModelAwsRegion',
@@ -380,6 +385,7 @@ function resolveFieldConflict(
     case 'bashMaxTimeoutMs':
     case 'bashMaxOutputLength':
     case 'maxOutputTokens':
+    case 'claudeCodeMaxRetries':
     case 'maxThinkingTokens':
     case 'mcpTimeout':
     case 'mcpToolTimeout':
@@ -422,6 +428,9 @@ function resolveFieldConflict(
     case 'disableNonEssentialModelCalls':
     case 'disableTelemetry':
     case 'claudeCodeDisableNonessentialTraffic':
+    case 'claudeCodeDisableExperimentalBetas':
+    case 'claudeCodeAttributionHeader':
+    case 'claudeCodeRetryWatchdog':
     case 'vertexRegionHaiku':
     case 'vertexRegionSonnet':
     case 'vertexRegion37Sonnet':

@@ -22,6 +22,10 @@ export interface ClaudeConfig {
   authToken?: string
   authorization?: string // Convenience field for Authorization header (merged into customHeaders)
   claudeCodeDisableNonessentialTraffic?: boolean
+  claudeCodeDisableExperimentalBetas?: boolean
+  claudeCodeAttributionHeader?: boolean
+  claudeCodeMaxRetries?: number
+  claudeCodeRetryWatchdog?: boolean
   customHeaders?: string // Custom HTTP headers in format "Header1: Value1\nHeader2: Value2"
   smallFastModel?: string
   smallFastModelAwsRegion?: string
@@ -189,6 +193,7 @@ export interface ExtensionsLibrary {
 export interface SystemSettings {
   overrideClaudeCommand: boolean
   syncClaudeProviderSettings?: boolean
+  enableToolSearch?: boolean
   statusLine?: StatusLineConfig
   balanceMode?: {
     enableByDefault: boolean
@@ -248,6 +253,59 @@ export interface ConfigFile {
   version: number
   configs: ClaudeConfig[]
   settings: SystemSettings
+}
+
+export function createDefaultBalanceMode(): NonNullable<SystemSettings['balanceMode']> {
+  return {
+    enableByDefault: false,
+    strategy: LoadBalancerStrategy.Fallback,
+    healthCheck: {
+      enabled: true,
+      intervalMs: 30000,
+    },
+    failedEndpoint: {
+      banDurationSeconds: 300,
+    },
+    speedFirst: {
+      responseTimeWindowMs: 300000,
+      minSamples: 2,
+      speedTestIntervalSeconds: 300,
+      speedTestStrategy: SpeedTestStrategy.ResponseTime,
+    },
+  }
+}
+
+export function createDefaultSystemSettings(settings: Partial<SystemSettings> = {}): SystemSettings {
+  const defaultBalanceMode = createDefaultBalanceMode()
+  const balanceMode = settings.balanceMode
+  const healthCheck = {
+    ...defaultBalanceMode.healthCheck,
+    ...balanceMode?.healthCheck,
+  }
+  const failedEndpoint = {
+    ...defaultBalanceMode.failedEndpoint,
+    ...balanceMode?.failedEndpoint,
+  }
+  const speedFirst = balanceMode?.speedFirst
+    ? {
+        ...defaultBalanceMode.speedFirst,
+        ...balanceMode.speedFirst,
+      }
+    : defaultBalanceMode.speedFirst
+
+  return {
+    ...settings,
+    overrideClaudeCommand: settings.overrideClaudeCommand ?? false,
+    syncClaudeProviderSettings: settings.syncClaudeProviderSettings !== false,
+    enableToolSearch: settings.enableToolSearch ?? false,
+    balanceMode: {
+      ...defaultBalanceMode,
+      ...balanceMode,
+      healthCheck,
+      failedEndpoint,
+      speedFirst,
+    },
+  }
 }
 
 /**

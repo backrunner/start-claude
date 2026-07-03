@@ -5,6 +5,85 @@ import { TransformerService } from '../services/transformer';
 import { findClosestMatch, isSimilarEnough } from '../utils/cli/fuzzy-match';
 import { UILogger } from '../utils/cli/ui';
 import { hasConfigApiCredentials } from '../utils/config/credentials';
+const handledOptionSpecs = {
+    '--config': { value: 'required' },
+    '--list': { value: 'none' },
+    '--health-check': { value: 'none' },
+    '--add-dir': { value: 'variadic' },
+    '--agent': { value: 'required' },
+    '--agents': { value: 'required' },
+    '--allow-dangerously-skip-permissions': { value: 'none' },
+    '--allowedTools': { value: 'variadic' },
+    '--allowed-tools': { value: 'variadic' },
+    '--append-system-prompt': { value: 'required' },
+    '--bare': { value: 'none' },
+    '--betas': { value: 'variadic' },
+    '--brief': { value: 'none' },
+    '--chrome': { value: 'none' },
+    '--no-chrome': { value: 'none' },
+    '-c': { value: 'none' },
+    '--continue': { value: 'none' },
+    '--dangerously-skip-permissions': { value: 'none' },
+    '-d': { value: 'optional' },
+    '--debug': { value: 'optional' },
+    '--debug-file': { value: 'required' },
+    '--disable-slash-commands': { value: 'none' },
+    '--disallowedTools': { value: 'variadic' },
+    '--disallowed-tools': { value: 'variadic' },
+    '--effort': { value: 'required' },
+    '--exclude-dynamic-system-prompt-sections': { value: 'none' },
+    '--fallback-model': { value: 'required' },
+    '--file': { value: 'variadic' },
+    '--fork-session': { value: 'none' },
+    '--from-pr': { value: 'optional' },
+    '--ide': { value: 'none' },
+    '--include-hook-events': { value: 'none' },
+    '--include-partial-messages': { value: 'none' },
+    '--input-format': { value: 'required' },
+    '--json-schema': { value: 'required' },
+    '--max-budget-usd': { value: 'required' },
+    '--max-turns': { value: 'required' },
+    '--mcp-config': { value: 'variadic' },
+    '--mcp-debug': { value: 'none' },
+    '--model': { value: 'required' },
+    '-n': { value: 'required' },
+    '--name': { value: 'required' },
+    '--no-session-persistence': { value: 'none' },
+    '--output-format': { value: 'required' },
+    '--permission-mode': { value: 'required' },
+    '--permission-prompt-tool': { value: 'none' },
+    '--plugin-dir': { value: 'required' },
+    '--plugin-url': { value: 'required' },
+    '-p': { value: 'optional' },
+    '--print': { value: 'optional' },
+    '--prompt-suggestions': { value: 'optional' },
+    '--remote-control': { value: 'optional' },
+    '--remote-control-session-name-prefix': { value: 'required' },
+    '--replay-user-messages': { value: 'none' },
+    '-r': { value: 'optional' },
+    '--resume': { value: 'optional' },
+    '--safe-mode': { value: 'none' },
+    '--session-id': { value: 'required' },
+    '--setting-sources': { value: 'required' },
+    '--settings': { value: 'required' },
+    '--strict-mcp-config': { value: 'none' },
+    '--system-prompt': { value: 'required' },
+    '--tmux': { value: 'none', filterInline: false },
+    '--tools': { value: 'variadic' },
+    '--verbose': { value: 'none' },
+    '-w': { value: 'optional' },
+    '--worktree': { value: 'optional' },
+    '--check-updates': { value: 'none' },
+    '--force-config-check': { value: 'none' },
+    '-e': { value: 'required' },
+    '--env': { value: 'required' },
+    '--proxy': { value: 'required' },
+    '--api-key': { value: 'required' },
+    '--base-url': { value: 'required' },
+    '--strategy': { value: 'required' },
+    '--all': { value: 'none' },
+    '--skip-health-check': { value: 'none' },
+};
 export function parseBalanceStrategy(balanceOption) {
     if (balanceOption === false || balanceOption === undefined) {
         return { enabled: false };
@@ -32,134 +111,225 @@ export function parseBalanceStrategy(balanceOption) {
             return { enabled: true, strategy: LoadBalancerStrategy.Fallback };
     }
 }
+export function isDebugEnabled(options) {
+    return options.debug !== undefined && options.debug !== false;
+}
 export function buildClaudeArgs(options, config) {
     const claudeArgs = [];
-    if (options.addDir) {
-        options.addDir.forEach((dir) => {
-            claudeArgs.push('--add-dir', dir);
-        });
-    }
-    if (options.allowedTools) {
-        claudeArgs.push('--allowedTools', options.allowedTools.join(','));
-    }
-    if (options.disallowedTools) {
-        claudeArgs.push('--disallowedTools', options.disallowedTools.join(','));
-    }
-    if (options.agents) {
-        claudeArgs.push('--agents', options.agents);
-    }
-    if (options.print) {
-        if (typeof options.print === 'string') {
-            claudeArgs.push('--print', options.print);
-        }
-        else {
-            claudeArgs.push('--print');
-        }
-    }
-    if (options.outputFormat) {
-        claudeArgs.push('--output-format', options.outputFormat);
-    }
-    if (options.inputFormat) {
-        claudeArgs.push('--input-format', options.inputFormat);
-    }
-    if (options.verbose) {
-        claudeArgs.push('--verbose');
-    }
-    if (options.debug) {
-        claudeArgs.push('-d');
-    }
-    if (options.maxTurns) {
-        claudeArgs.push('--max-turns', options.maxTurns.toString());
-    }
-    if (options.model) {
-        claudeArgs.push('--model', options.model);
-    }
+    pushVariadicOption(claudeArgs, '--add-dir', options.addDir);
+    pushStringOption(claudeArgs, '--agent', options.agent);
+    pushStringOption(claudeArgs, '--agents', options.agents);
+    pushBooleanOption(claudeArgs, '--allow-dangerously-skip-permissions', options.allowDangerouslySkipPermissions);
+    pushVariadicOption(claudeArgs, '--allowedTools', options.allowedTools);
+    pushStringOption(claudeArgs, '--append-system-prompt', options.appendSystemPrompt);
+    pushBooleanOption(claudeArgs, '--bare', options.bare);
+    pushVariadicOption(claudeArgs, '--betas', options.betas);
+    pushBooleanOption(claudeArgs, '--brief', options.brief);
+    pushTriStateOption(claudeArgs, '--chrome', '--no-chrome', options.chrome);
+    pushBooleanOption(claudeArgs, '-c', options.continue);
+    pushBooleanOption(claudeArgs, '--dangerously-skip-permissions', options.dangerouslySkipPermissions);
+    pushOptionalValueOption(claudeArgs, '-d', options.debug);
+    pushStringOption(claudeArgs, '--debug-file', options.debugFile);
+    pushBooleanOption(claudeArgs, '--disable-slash-commands', options.disableSlashCommands);
+    pushVariadicOption(claudeArgs, '--disallowedTools', options.disallowedTools);
+    pushStringOption(claudeArgs, '--effort', options.effort);
+    pushBooleanOption(claudeArgs, '--exclude-dynamic-system-prompt-sections', options.excludeDynamicSystemPromptSections);
+    pushStringOption(claudeArgs, '--fallback-model', options.fallbackModel);
+    pushVariadicOption(claudeArgs, '--file', options.file);
+    pushBooleanOption(claudeArgs, '--fork-session', options.forkSession);
+    pushOptionalValueOption(claudeArgs, '--from-pr', options.fromPr);
+    pushBooleanOption(claudeArgs, '--ide', options.ide);
+    pushBooleanOption(claudeArgs, '--include-hook-events', options.includeHookEvents);
+    pushBooleanOption(claudeArgs, '--include-partial-messages', options.includePartialMessages);
+    pushStringOption(claudeArgs, '--input-format', options.inputFormat);
+    pushStringOption(claudeArgs, '--json-schema', options.jsonSchema);
+    pushStringOption(claudeArgs, '--max-budget-usd', options.maxBudgetUsd);
+    pushNumberOption(claudeArgs, '--max-turns', options.maxTurns);
+    pushVariadicOption(claudeArgs, '--mcp-config', options.mcpConfig);
+    pushBooleanOption(claudeArgs, '--mcp-debug', options.mcpDebug);
+    pushStringOption(claudeArgs, '--model', options.model);
+    pushStringOption(claudeArgs, '--name', options.name);
+    pushTriStateOption(claudeArgs, undefined, '--no-session-persistence', options.sessionPersistence);
+    pushStringOption(claudeArgs, '--output-format', options.outputFormat);
     if (config?.permissionMode && !options.permissionMode) {
         claudeArgs.push('--permission-mode', config.permissionMode);
     }
-    if (options.permissionMode) {
-        claudeArgs.push('--permission-mode', options.permissionMode);
-    }
-    if (options.permissionPromptTool) {
-        claudeArgs.push('--permission-prompt-tool');
-    }
-    if (options.resume) {
-        claudeArgs.push('--resume');
-    }
-    if (options.continue) {
-        claudeArgs.push('-c');
-    }
-    if (options.dangerouslySkipPermissions) {
-        claudeArgs.push('--dangerously-skip-permissions');
-    }
+    pushStringOption(claudeArgs, '--permission-mode', options.permissionMode);
+    pushBooleanOption(claudeArgs, '--permission-prompt-tool', options.permissionPromptTool);
+    pushRepeatableStringOption(claudeArgs, '--plugin-dir', options.pluginDir);
+    pushRepeatableStringOption(claudeArgs, '--plugin-url', options.pluginUrl);
+    pushOptionalValueOption(claudeArgs, '--print', options.print);
+    pushOptionalValueOption(claudeArgs, '--prompt-suggestions', options.promptSuggestions);
+    pushOptionalValueOption(claudeArgs, '--remote-control', options.remoteControl);
+    pushStringOption(claudeArgs, '--remote-control-session-name-prefix', options.remoteControlSessionNamePrefix);
+    pushBooleanOption(claudeArgs, '--replay-user-messages', options.replayUserMessages);
+    pushOptionalValueOption(claudeArgs, '--resume', options.resume);
+    pushBooleanOption(claudeArgs, '--safe-mode', options.safeMode);
+    pushStringOption(claudeArgs, '--session-id', options.sessionId);
+    pushStringOption(claudeArgs, '--setting-sources', options.settingSources);
+    pushStringOption(claudeArgs, '--settings', options.settings);
+    pushBooleanOption(claudeArgs, '--strict-mcp-config', options.strictMcpConfig);
+    pushStringOption(claudeArgs, '--system-prompt', options.systemPrompt);
+    pushTmuxOption(claudeArgs, options.tmux);
+    pushVariadicOption(claudeArgs, '--tools', options.tools);
+    pushBooleanOption(claudeArgs, '--verbose', options.verbose);
+    pushOptionalValueOption(claudeArgs, '--worktree', options.worktree);
     return claudeArgs;
 }
-export function filterProcessArgs(configArg) {
-    return process.argv.slice(2).filter((arg) => {
-        const skipCommands = [
-            'proxy',
-        ];
-        const skipFlags = [
-            '--config',
-            '--list',
-            '--health-check',
-            '--add-dir',
-            '--allowedTools',
-            '--disallowedTools',
-            '-p',
-            '--print',
-            '--output-format',
-            '--input-format',
-            '--verbose',
-            '--debug',
-            '--max-turns',
-            '--model',
-            '--permission-mode',
-            '--permission-prompt-tool',
-            '--resume',
-            '--continue',
-            '--check-updates',
-            '--force-config-check',
-            '--dangerously-skip-permissions',
-            '-e',
-            '--env',
-            '--proxy',
-            '--api-key',
-            '--base-url',
-            '--strategy',
-            '--all',
-        ];
-        if (skipCommands.includes(arg))
-            return false;
-        if (configArg && arg === configArg)
-            return false;
-        if (skipFlags.some(flag => arg.startsWith(flag)))
-            return false;
-        if (arg.startsWith('--print='))
-            return false;
-        const prevArg = process.argv[process.argv.indexOf(arg) - 1];
-        const flagsWithValues = [
-            '--config',
-            '--add-dir',
-            '--allowedTools',
-            '--disallowedTools',
-            '--print',
-            '--output-format',
-            '--input-format',
-            '--max-turns',
-            '--model',
-            '--permission-mode',
-            '--env',
-            '-e',
-            '--proxy',
-            '--api-key',
-            '--base-url',
-            '--strategy',
-        ];
-        if (prevArg && flagsWithValues.includes(prevArg))
-            return false;
-        return true;
-    });
+function pushBooleanOption(args, flag, value) {
+    if (value) {
+        args.push(flag);
+    }
+}
+function pushTriStateOption(args, positiveFlag, negativeFlag, value) {
+    if (value === true && positiveFlag) {
+        args.push(positiveFlag);
+    }
+    if (value === false) {
+        args.push(negativeFlag);
+    }
+}
+function pushStringOption(args, flag, value) {
+    if (value !== undefined) {
+        args.push(flag, value);
+    }
+}
+function pushNumberOption(args, flag, value) {
+    if (value !== undefined && !Number.isNaN(value)) {
+        args.push(flag, value.toString());
+    }
+}
+function pushOptionalValueOption(args, flag, value) {
+    if (value === true) {
+        args.push(flag);
+    }
+    else if (typeof value === 'string') {
+        args.push(flag, value);
+    }
+}
+function pushTmuxOption(args, value) {
+    if (value === true) {
+        args.push('--tmux');
+    }
+    else if (typeof value === 'string') {
+        args.push(`--tmux=${value}`);
+    }
+}
+function pushVariadicOption(args, flag, values) {
+    if (values?.length) {
+        args.push(flag, ...values);
+    }
+}
+function pushRepeatableStringOption(args, flag, values) {
+    values?.forEach(value => args.push(flag, value));
+}
+export function filterProcessArgs(configArgOrSelector) {
+    const args = process.argv.slice(2);
+    const configSelector = typeof configArgOrSelector === 'object'
+        ? { ...configArgOrSelector }
+        : resolveStartConfigSelector(args, { positionalConfig: configArgOrSelector });
+    const filtered = [];
+    for (let index = 0; index < args.length; index++) {
+        const arg = args[index];
+        if (arg === '--') {
+            filtered.push(...args.slice(index + 1));
+            break;
+        }
+        if (arg === 'proxy') {
+            continue;
+        }
+        const valueSkip = getHandledOptionValueSkip(args, index);
+        if (valueSkip !== undefined) {
+            index += valueSkip;
+            continue;
+        }
+        if (configSelector.source === 'positional' && arg === configSelector.value) {
+            configSelector.source = 'none';
+            continue;
+        }
+        filtered.push(arg);
+    }
+    return filtered;
+}
+export function resolveStartConfigSelector(args, options) {
+    const optionConfig = findOptionConfigSelector(args);
+    if (optionConfig !== undefined) {
+        return { value: optionConfig, source: 'option' };
+    }
+    const positionalConfig = options.optionConfig === undefined ? options.positionalConfig : undefined;
+    if (!positionalConfig) {
+        return { source: 'none' };
+    }
+    if (options.configExists && !options.configExists(positionalConfig)) {
+        return { source: 'none' };
+    }
+    return { value: positionalConfig, source: 'positional' };
+}
+export async function resolveStartConfigSelectorAsync(args, options) {
+    const optionConfig = findOptionConfigSelector(args);
+    if (optionConfig !== undefined) {
+        return { value: optionConfig, source: 'option' };
+    }
+    const positionalConfig = options.optionConfig === undefined ? options.positionalConfig : undefined;
+    if (!positionalConfig) {
+        return { source: 'none' };
+    }
+    if (options.configExists && !(await options.configExists(positionalConfig))) {
+        return { source: 'none' };
+    }
+    return { value: positionalConfig, source: 'positional' };
+}
+function findOptionConfigSelector(args) {
+    for (let index = 0; index < args.length; index++) {
+        const arg = args[index];
+        if (arg === '--') {
+            return undefined;
+        }
+        if (arg === '--config') {
+            return args[index + 1];
+        }
+        if (arg.startsWith('--config=')) {
+            return arg.slice('--config='.length);
+        }
+    }
+    return undefined;
+}
+function getHandledOptionValueSkip(args, index) {
+    const arg = args[index];
+    const [flag] = arg.split('=', 1);
+    const inlineOptionSpec = handledOptionSpecs[flag];
+    if (arg.includes('=') && inlineOptionSpec) {
+        return inlineOptionSpec.filterInline === false ? undefined : 0;
+    }
+    const optionSpec = handledOptionSpecs[arg];
+    if (!optionSpec) {
+        return undefined;
+    }
+    if (optionSpec.value === 'none') {
+        return 0;
+    }
+    if (optionSpec.value === 'required') {
+        return hasNextValue(args, index) ? 1 : 0;
+    }
+    if (optionSpec.value === 'optional') {
+        return hasNextValue(args, index) ? 1 : 0;
+    }
+    return countVariadicValues(args, index);
+}
+function hasNextValue(args, index) {
+    const value = args[index + 1];
+    return value !== undefined && value !== '--' && !value.startsWith('-');
+}
+function countVariadicValues(args, index) {
+    let count = 0;
+    for (let valueIndex = index + 1; valueIndex < args.length; valueIndex++) {
+        const value = args[valueIndex];
+        if (value === '--' || value.startsWith('-')) {
+            break;
+        }
+        count += 1;
+    }
+    return count;
 }
 export function buildCliOverrides(options) {
     return {
@@ -239,9 +409,13 @@ async function handleS3UpdateCheck(configManager, s3SyncManager) {
     }
     return undefined;
 }
-export async function resolveConfig(configManager, s3SyncManager, options, configArg, hasAlreadySynced = false) {
+export async function resolveConfig(configManager, s3SyncManager, options, configArg, hasAlreadySynced = false, selector) {
     let config;
-    const configName = options.config || configArg;
+    const resolvedSelector = selector ?? {
+        value: options.config || configArg,
+        source: (options.config || configArg) ? 'option' : 'none',
+    };
+    const configName = resolvedSelector.value;
     if (configName !== undefined) {
         config = await configManager.getConfig(configName);
         if (!config) {
@@ -427,9 +601,13 @@ async function createNewConfig(configManager) {
     ui.success(`Configuration "${newConfig.name}" created successfully!`);
     return newConfig;
 }
-export async function resolveBaseConfig(configManager, options, configArg, balanceableConfigs) {
+export async function resolveBaseConfig(configManager, options, configArg, balanceableConfigs, selector) {
     let baseConfig;
-    const configName = options.config || configArg;
+    const resolvedSelector = selector ?? {
+        value: options.config || configArg,
+        source: (options.config || configArg) ? 'option' : 'none',
+    };
+    const configName = resolvedSelector.value;
     if (configName !== undefined) {
         baseConfig = await configManager.getConfig(configName);
         if (!baseConfig) {

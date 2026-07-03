@@ -142,9 +142,12 @@ export class ConfigManager {
       existingIndex = configFile.configs.findIndex(c => configNamesMatch(c.name, config.name))
     }
 
+    let savedConfigId = config.id
+
     if (existingIndex >= 0) {
       // Update existing config while preserving UUID
       const existingConfig = configFile.configs[existingIndex]
+      savedConfigId = existingConfig.id || config.id
 
       // If updating and name changed, check for conflicts with other active configs
       if (!configNamesMatch(existingConfig.name, config.name)) {
@@ -157,7 +160,7 @@ export class ConfigManager {
 
       configFile.configs[existingIndex] = {
         ...config,
-        id: existingConfig.id || config.id, // Preserve existing UUID if present
+        id: savedConfigId, // Preserve existing UUID if present
       }
     }
     else {
@@ -168,6 +171,12 @@ export class ConfigManager {
         throw new Error(getNameConflictMessage(config.name, conflict.name))
       }
       configFile.configs.push(config)
+    }
+
+    if (config.isDefault) {
+      configFile.configs.forEach((item) => {
+        item.isDefault = item.id === savedConfigId
+      })
     }
 
     await this.save(configFile)

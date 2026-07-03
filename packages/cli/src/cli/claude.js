@@ -11,6 +11,9 @@ import { CacheManager } from '../utils/config/cache-manager';
 let configWatcher = null;
 export async function startClaude(config, args = [], cliOverrides) {
     const env = { ...process.env };
+    env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0';
+    env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
+    env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = '1';
     if (config) {
         setEnvFromConfig(env, config);
         try {
@@ -21,6 +24,8 @@ export async function startClaude(config, args = [], cliOverrides) {
             ui.warning(`Failed to write extensions configuration: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
+    const systemSettings = await loadSystemSettings();
+    applySystemSettingsEnv(env, systemSettings);
     if (cliOverrides) {
         applyCliOverrides(env, cliOverrides);
     }
@@ -146,6 +151,16 @@ async function startClaudeProcess(executablePath, args, env, config) {
     });
 }
 function setEnvFromConfig(env, config) {
+    const disableNonessentialTraffic = config.claudeCodeDisableNonessentialTraffic
+        ?? config.disableNonessentialTraffic
+        ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)
+        ?? true;
+    const disableExperimentalBetas = config.claudeCodeDisableExperimentalBetas
+        ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
+        ?? true;
+    const attributionHeader = config.claudeCodeAttributionHeader
+        ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_ATTRIBUTION_HEADER)
+        ?? false;
     if (config.env) {
         Object.entries(config.env).forEach(([key, value]) => {
             if (typeof value === 'string' && value.trim().length > 0) {
@@ -177,6 +192,7 @@ function setEnvFromConfig(env, config) {
         ['bashMaxOutputLength', 'BASH_MAX_OUTPUT_LENGTH'],
         ['apiKeyHelperTtlMs', 'CLAUDE_CODE_API_KEY_HELPER_TTL_MS'],
         ['maxOutputTokens', 'CLAUDE_CODE_MAX_OUTPUT_TOKENS'],
+        ['claudeCodeMaxRetries', 'CLAUDE_CODE_MAX_RETRIES'],
         ['maxThinkingTokens', 'MAX_THINKING_TOKENS'],
         ['mcpTimeout', 'MCP_TIMEOUT'],
         ['mcpToolTimeout', 'MCP_TOOL_TIMEOUT'],
@@ -185,12 +201,13 @@ function setEnvFromConfig(env, config) {
     const booleanEnvMap = [
         ['maintainProjectWorkingDir', 'CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR'],
         ['ideSkipAutoInstall', 'CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL'],
-        ['claudeCodeDisableNonessentialTraffic', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'],
+        ['claudeCodeAttributionHeader', 'CLAUDE_CODE_ATTRIBUTION_HEADER'],
+        ['claudeCodeDisableExperimentalBetas', 'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS'],
+        ['claudeCodeRetryWatchdog', 'CLAUDE_CODE_RETRY_WATCHDOG'],
         ['useBedrock', 'CLAUDE_CODE_USE_BEDROCK'],
         ['useVertex', 'CLAUDE_CODE_USE_VERTEX'],
         ['skipBedrockAuth', 'CLAUDE_CODE_SKIP_BEDROCK_AUTH'],
         ['skipVertexAuth', 'CLAUDE_CODE_SKIP_VERTEX_AUTH'],
-        ['disableNonessentialTraffic', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'],
         ['disableTerminalTitle', 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE'],
         ['disableAutoupdater', 'DISABLE_AUTOUPDATER'],
         ['disableBugCommand', 'DISABLE_BUG_COMMAND'],
@@ -199,6 +216,20 @@ function setEnvFromConfig(env, config) {
         ['disableNonEssentialModelCalls', 'DISABLE_NON_ESSENTIAL_MODEL_CALLS'],
         ['disableTelemetry', 'DISABLE_TELEMETRY'],
     ];
+    const additionalBooleanEnvKeys = [
+        'CLAUDE_CODE_ATTRIBUTION_HEADER',
+        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+        'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
+        'DISABLE_PROMPT_CACHING',
+        'DISABLE_PROMPT_CACHING_FABLE',
+        'DISABLE_PROMPT_CACHING_HAIKU',
+        'DISABLE_PROMPT_CACHING_OPUS',
+        'DISABLE_PROMPT_CACHING_SONNET',
+    ];
+    const booleanEnvKeys = new Set([
+        ...booleanEnvMap.map(([, envKey]) => envKey),
+        ...additionalBooleanEnvKeys,
+    ]);
     basicEnvMap.forEach(([configKey, envKey]) => {
         const value = config[configKey];
         if (config.profileType === 'official' && (configKey === 'baseUrl' || configKey === 'apiKey')) {
@@ -233,12 +264,48 @@ function setEnvFromConfig(env, config) {
             env[envKey] = value.toString();
         }
     });
+    booleanEnvKeys.forEach((envKey) => {
+        const booleanValue = parseBooleanEnvValue(env[envKey]);
+        if (booleanValue !== undefined) {
+            env[envKey] = formatBooleanEnvValue(booleanValue);
+        }
+    });
     booleanEnvMap.forEach(([configKey, envKey]) => {
         const value = config[configKey];
         if (typeof value === 'boolean') {
-            env[envKey] = value ? '1' : '0';
+            env[envKey] = formatBooleanEnvValue(value);
         }
     });
+    env.CLAUDE_CODE_ATTRIBUTION_HEADER = formatBooleanEnvValue(attributionHeader);
+    env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = formatBooleanEnvValue(disableNonessentialTraffic);
+    env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = formatBooleanEnvValue(disableExperimentalBetas);
+}
+async function loadSystemSettings() {
+    try {
+        return await ConfigManager.getInstance().getSettings();
+    }
+    catch {
+        return undefined;
+    }
+}
+function applySystemSettingsEnv(env, settings) {
+    env.ENABLE_TOOL_SEARCH = formatBooleanEnvValue(settings?.enableToolSearch ?? false);
+}
+function formatBooleanEnvValue(value) {
+    return value ? '1' : '0';
+}
+function parseBooleanEnvValue(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true'].includes(normalized)) {
+        return true;
+    }
+    if (['0', 'false'].includes(normalized)) {
+        return false;
+    }
+    return undefined;
 }
 function applyCliOverrides(env, overrides) {
     if (overrides.env) {

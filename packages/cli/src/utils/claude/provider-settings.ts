@@ -52,6 +52,7 @@ const numericEnvMap: Array<[keyof ClaudeConfig, string]> = [
   ['bashMaxOutputLength', 'BASH_MAX_OUTPUT_LENGTH'],
   ['apiKeyHelperTtlMs', 'CLAUDE_CODE_API_KEY_HELPER_TTL_MS'],
   ['maxOutputTokens', 'CLAUDE_CODE_MAX_OUTPUT_TOKENS'],
+  ['claudeCodeMaxRetries', 'CLAUDE_CODE_MAX_RETRIES'],
   ['maxThinkingTokens', 'MAX_THINKING_TOKENS'],
   ['mcpTimeout', 'MCP_TIMEOUT'],
   ['mcpToolTimeout', 'MCP_TOOL_TIMEOUT'],
@@ -61,12 +62,13 @@ const numericEnvMap: Array<[keyof ClaudeConfig, string]> = [
 const booleanEnvMap: Array<[keyof ClaudeConfig, string]> = [
   ['maintainProjectWorkingDir', 'CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR'],
   ['ideSkipAutoInstall', 'CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL'],
-  ['claudeCodeDisableNonessentialTraffic', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'],
+  ['claudeCodeAttributionHeader', 'CLAUDE_CODE_ATTRIBUTION_HEADER'],
+  ['claudeCodeDisableExperimentalBetas', 'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS'],
+  ['claudeCodeRetryWatchdog', 'CLAUDE_CODE_RETRY_WATCHDOG'],
   ['useBedrock', 'CLAUDE_CODE_USE_BEDROCK'],
   ['useVertex', 'CLAUDE_CODE_USE_VERTEX'],
   ['skipBedrockAuth', 'CLAUDE_CODE_SKIP_BEDROCK_AUTH'],
   ['skipVertexAuth', 'CLAUDE_CODE_SKIP_VERTEX_AUTH'],
-  ['disableNonessentialTraffic', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'],
   ['disableTerminalTitle', 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE'],
   ['disableAutoupdater', 'DISABLE_AUTOUPDATER'],
   ['disableBugCommand', 'DISABLE_BUG_COMMAND'],
@@ -75,6 +77,26 @@ const booleanEnvMap: Array<[keyof ClaudeConfig, string]> = [
   ['disableNonEssentialModelCalls', 'DISABLE_NON_ESSENTIAL_MODEL_CALLS'],
   ['disableTelemetry', 'DISABLE_TELEMETRY'],
 ]
+
+const defaultedBooleanEnvKeys = [
+  'CLAUDE_CODE_ATTRIBUTION_HEADER',
+  'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+  'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
+]
+
+const additionalBooleanEnvKeys = [
+  'DISABLE_PROMPT_CACHING',
+  'DISABLE_PROMPT_CACHING_FABLE',
+  'DISABLE_PROMPT_CACHING_HAIKU',
+  'DISABLE_PROMPT_CACHING_OPUS',
+  'DISABLE_PROMPT_CACHING_SONNET',
+]
+
+const booleanEnvKeys = new Set([
+  ...booleanEnvMap.map(([, envKey]) => envKey),
+  ...defaultedBooleanEnvKeys,
+  ...additionalBooleanEnvKeys,
+])
 
 const additionalManagedEnvKeys = [
   'ANTHROPIC_REASONING_MODEL',
@@ -114,6 +136,7 @@ export const MANAGED_CLAUDE_PROVIDER_ENV_KEYS = new Set([
   ...basicEnvMap.map(([, envKey]) => envKey),
   ...numericEnvMap.map(([, envKey]) => envKey),
   ...booleanEnvMap.map(([, envKey]) => envKey),
+  ...defaultedBooleanEnvKeys,
   ...additionalManagedEnvKeys,
 ])
 
@@ -130,11 +153,24 @@ export function getClaudeProviderSettingsStatePath(homeDir = homedir()): string 
 
 export function buildClaudeProviderEnv(config: ClaudeConfig): Record<string, string> {
   const env: Record<string, string> = {}
+  const disableNonessentialTraffic = config.claudeCodeDisableNonessentialTraffic
+    ?? config.disableNonessentialTraffic
+    ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)
+    ?? true
+  const disableExperimentalBetas = config.claudeCodeDisableExperimentalBetas
+    ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
+    ?? true
+  const attributionHeader = config.claudeCodeAttributionHeader
+    ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_ATTRIBUTION_HEADER)
+    ?? false
 
   if (config.env) {
     Object.entries(config.env).forEach(([key, value]) => {
       if (MANAGED_CLAUDE_PROVIDER_ENV_KEYS.has(key) && value.trim().length > 0) {
-        env[key] = value
+        const normalizedValue = normalizeManagedEnvValue(key, value)
+        if (normalizedValue !== undefined) {
+          env[key] = normalizedValue
+        }
       }
     })
   }
@@ -184,11 +220,44 @@ export function buildClaudeProviderEnv(config: ClaudeConfig): Record<string, str
   booleanEnvMap.forEach(([configKey, envKey]) => {
     const value = config[configKey]
     if (typeof value === 'boolean') {
-      env[envKey] = value ? '1' : '0'
+      env[envKey] = formatBooleanEnvValue(value)
     }
   })
 
+  env.CLAUDE_CODE_ATTRIBUTION_HEADER = formatBooleanEnvValue(attributionHeader)
+  env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = formatBooleanEnvValue(disableNonessentialTraffic)
+  env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = formatBooleanEnvValue(disableExperimentalBetas)
+
   return env
+}
+
+function normalizeManagedEnvValue(key: string, value: string): string | undefined {
+  if (!booleanEnvKeys.has(key)) {
+    return value
+  }
+
+  const booleanValue = parseBooleanEnvValue(value)
+  return booleanValue === undefined ? undefined : formatBooleanEnvValue(booleanValue)
+}
+
+function formatBooleanEnvValue(value: boolean): '1' | '0' {
+  return value ? '1' : '0'
+}
+
+function parseBooleanEnvValue(value: string | undefined): boolean | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  const normalized = value.trim().toLowerCase()
+  if (['1', 'true'].includes(normalized)) {
+    return true
+  }
+  if (['0', 'false'].includes(normalized)) {
+    return false
+  }
+
+  return undefined
 }
 
 export function buildProxyClaudeProviderConfig(

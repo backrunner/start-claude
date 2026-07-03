@@ -4,7 +4,7 @@ import { ConfigManager } from '@start-claude/cli/src/config/manager'
 import { findConfigByName } from '@start-claude/cli/src/config/name-utils'
 import { S3ConfigFileManager } from '@start-claude/cli/src/config/s3-config'
 import { NextResponse } from 'next/server'
-import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
+import { createDefaultSystemSettings } from '@/config/types'
 import { claudeConfigSchema, configCreateRequestSchema, configUpdateRequestSchema } from '@/lib/validation'
 
 // Force dynamic rendering
@@ -165,32 +165,7 @@ async function getConfigs(): Promise<ClaudeConfig[]> {
 async function getSettings(): Promise<SystemSettings> {
   try {
     const configFile = await configManager.load()
-    const settings = configFile.settings || {
-      overrideClaudeCommand: false,
-      syncClaudeProviderSettings: true,
-    }
-    settings.syncClaudeProviderSettings = settings.syncClaudeProviderSettings !== false
-
-    // Ensure balanceMode structure exists with defaults
-    if (!settings.balanceMode) {
-      settings.balanceMode = {
-        enableByDefault: false,
-        strategy: LoadBalancerStrategy.Fallback,
-        healthCheck: {
-          enabled: true,
-          intervalMs: 30000,
-        },
-        failedEndpoint: {
-          banDurationSeconds: 300,
-        },
-        speedFirst: {
-          responseTimeWindowMs: 300000,
-          minSamples: 2,
-          speedTestIntervalSeconds: 300,
-          speedTestStrategy: SpeedTestStrategy.ResponseTime,
-        },
-      }
-    }
+    const settings = createDefaultSystemSettings(configFile.settings)
 
     // Load S3 config from s3-config.json
     let s3Sync
@@ -212,25 +187,7 @@ async function getSettings(): Promise<SystemSettings> {
   catch (error) {
     console.error('Error reading settings:', error)
     return {
-      overrideClaudeCommand: false,
-      syncClaudeProviderSettings: true,
-      balanceMode: {
-        enableByDefault: false,
-        strategy: LoadBalancerStrategy.Fallback,
-        healthCheck: {
-          enabled: true,
-          intervalMs: 30000,
-        },
-        failedEndpoint: {
-          banDurationSeconds: 300,
-        },
-        speedFirst: {
-          responseTimeWindowMs: 300000,
-          minSamples: 2,
-          speedTestIntervalSeconds: 300,
-          speedTestStrategy: SpeedTestStrategy.ResponseTime,
-        },
-      },
+      ...createDefaultSystemSettings(),
       s3Sync: undefined,
     }
   }

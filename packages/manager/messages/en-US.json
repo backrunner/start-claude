@@ -134,11 +134,17 @@
     },
     "modelPresets": {
       "title": "Quick Fill",
-      "claudeFable": "Claude Fable",
-      "claudeOpus": "Claude Opus",
-      "claudeSonnet": "Claude Sonnet",
+      "claudeFable5": "Claude Fable 5",
+      "claudeOpus48": "Claude Opus 4.8",
+      "claudeSonnet5": "Claude Sonnet 5",
+      "claudeHaiku45": "Claude Haiku 4.5",
       "gpt55": "GPT-5.5",
-      "gemini3": "Gemini 3"
+      "gemini31Pro": "Gemini 3.1 Pro",
+      "deepseekV4Pro": "DeepSeek V4 Pro",
+      "deepseekV4Flash": "DeepSeek V4 Flash",
+      "glm52": "GLM-5.2",
+      "kimiK27Code": "Kimi K2.7 Code",
+      "kimiK27CodeHighspeed": "Kimi K2.7 HighSpeed"
     },
     "basicInfo": {
       "title": "Basic Information",
@@ -170,7 +176,7 @@
       "title": "Model & Permissions",
       "description": "Configure the model and permission settings",
       "model": "Model",
-      "modelPlaceholder": "claude-sonnet-4-6[1m]",
+      "modelPlaceholder": "claude-sonnet-5[1m]",
       "modelHelpText": "Leave empty to use the default model for this configuration",
       "smallModel": "Small Fast Model",
       "smallModelPlaceholder": "claude-fable-5[1m]",
@@ -227,6 +233,14 @@
       "authHeader": "Authorization Header",
       "authHeaderPlaceholder": "Bearer your-token-here",
       "authHeaderHelpText": "Convenience field for Authorization header (e.g., \"Bearer token\")",
+      "attributionHeader": "Claude Code Attribution Header",
+      "attributionHeaderDescription": "Send CLAUDE_CODE_ATTRIBUTION_HEADER=1 for providers that need Claude Code attribution.",
+      "maxRetries": "Max Retries",
+      "maxRetriesPlaceholder": "10",
+      "maxRetriesInvalid": "Max retries must be a non-negative integer",
+      "maxRetriesHelpText": "Sets CLAUDE_CODE_MAX_RETRIES. Leave empty to use Claude Code's default.",
+      "retryWatchdog": "Retry Watchdog",
+      "retryWatchdogDescription": "Set CLAUDE_CODE_RETRY_WATCHDOG=1 for unattended runs that should keep retrying longer.",
       "customHeaders": "Custom Headers",
       "customHeadersPlaceholder": "X-Custom-Header: value1\nAnother-Header: value2",
       "customHeadersInvalid": "Invalid format. Each line must be in format \"Header: Value\"",
@@ -315,7 +329,9 @@
       "title": "Claude Code Provider File",
       "description": "Sync the selected provider into Claude Code's native settings file",
       "syncFile": "Sync provider file",
-      "syncFileDescription": "Write provider env values to ~/.claude/settings.json before launch. Failures only show a warning and do not block startup."
+      "syncFileDescription": "Write provider env values to ~/.claude/settings.json before launch. Failures only show a warning and do not block startup.",
+      "enableToolSearch": "Tool Search",
+      "enableToolSearchDescription": "Set ENABLE_TOOL_SEARCH=1 when starting Claude Code. Turn it off to launch with ENABLE_TOOL_SEARCH=0."
     },
     "cloudSync": {
       "title": "Cloud Storage Sync",

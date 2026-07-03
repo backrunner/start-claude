@@ -2,6 +2,7 @@ import process from 'node:process';
 import { ManagerServer } from '../core/manager-server';
 import { S3SyncManager } from '../storage/s3-sync';
 import { UILogger } from '../utils/cli/ui';
+import { getProductDefinition, isExternalProductId } from '../products/registry';
 export async function handleManagerCommand(options = {}) {
     const ui = new UILogger(options.verbose || options.debug);
     ui.displayWelcome();
@@ -22,7 +23,10 @@ export async function handleManagerCommand(options = {}) {
         ui.displayVerbose('S3 not configured, skipping config check');
     }
     const port = options.port ? Number.parseInt(options.port) : 2334;
-    const managerServer = new ManagerServer(port, options.debug);
+    const startupPath = options.defaultMode && isExternalProductId(options.defaultMode)
+        ? getProductDefinition(options.defaultMode).managerPath
+        : '/';
+    const managerServer = new ManagerServer(port, options.debug, startupPath);
     try {
         await managerServer.start();
         process.stdin.resume();

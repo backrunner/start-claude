@@ -33,7 +33,7 @@ interface UseProductConfigsReturn {
   saveConfig: (config: ExternalProductConfig, isEditing: boolean, notifyOthers?: () => void) => Promise<void>
   updateConfigs: (updatedConfigs: ExternalProductConfig[], customMessage?: string, notifyOthers?: () => void) => Promise<void>
   updateConfigsOptimistically: (updatedConfigs: ExternalProductConfig[]) => void
-  deleteConfig: (configName: string, notifyOthers?: () => void) => Promise<void>
+  deleteConfig: (config: ExternalProductConfig, notifyOthers?: () => void) => Promise<void>
   saveSettings: (newSettings: ExternalProductSettings, notifyOthers?: () => void) => Promise<void>
   refetchConfigs: () => Promise<void>
 }
@@ -166,9 +166,12 @@ export function useProductConfigs(
     setConfigs(sortConfigsByOrder(updatedConfigs))
   }
 
-  const deleteConfig = async (configName: string, notifyOthers?: () => void): Promise<void> => {
+  const deleteConfig = async (config: ExternalProductConfig, notifyOthers?: () => void): Promise<void> => {
     try {
-      const response = await fetch(`${apiBase}?name=${encodeURIComponent(configName)}`, {
+      const query = config.id
+        ? `id=${encodeURIComponent(config.id)}`
+        : `name=${encodeURIComponent(config.name)}`
+      const response = await fetch(`${apiBase}?${query}`, {
         method: 'DELETE',
       })
 
@@ -186,7 +189,7 @@ export function useProductConfigs(
 
       toast({
         title: translations.configDeleted,
-        description: translations.configDeletedDescription(configName),
+        description: translations.configDeletedDescription(config.name),
         variant: 'success',
       })
 

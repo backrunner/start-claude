@@ -45,6 +45,10 @@ export const claudeConfigSchema = z.object({
   authToken: z.string().optional().or(z.literal('')), // Primary API Key (ANTHROPIC_AUTH_TOKEN)
   authorization: z.string().optional(),
   claudeCodeDisableNonessentialTraffic: z.boolean().optional(),
+  claudeCodeDisableExperimentalBetas: z.boolean().optional(),
+  claudeCodeAttributionHeader: z.boolean().optional(),
+  claudeCodeMaxRetries: z.number().int().min(0).optional(),
+  claudeCodeRetryWatchdog: z.boolean().optional(),
   customHeaders: z.string().optional(),
   smallFastModel: z.string().optional(),
   smallFastModelAwsRegion: z.string().optional(),
@@ -170,6 +174,7 @@ export const syncConfigSchema = z.object({
 export const systemSettingsSchema = z.object({
   overrideClaudeCommand: z.boolean().default(false),
   syncClaudeProviderSettings: z.boolean().default(true),
+  enableToolSearch: z.boolean().default(false),
   balanceMode: balanceModeSchema.optional(),
   sync: syncConfigSchema,
   s3Sync: s3SyncSchema.optional(),

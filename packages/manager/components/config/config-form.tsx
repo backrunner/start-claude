@@ -27,12 +27,40 @@ interface TransformerOption {
   description: string
 }
 
+interface ModelPreset {
+  key: string
+  model: string
+  color: 'blue' | 'green' | 'purple' | 'orange' | 'teal'
+}
+
 const transformerTranslationKeys: Record<string, string> = {
   auto: 'auto',
   openai: 'openai',
   'openai-responses': 'openaiResponses',
   openrouter: 'openrouter',
   gemini: 'gemini',
+}
+
+const modelPresets: ModelPreset[] = [
+  { key: 'claudeFable5', model: 'claude-fable-5[1m]', color: 'purple' },
+  { key: 'claudeOpus48', model: 'claude-opus-4-8[1m]', color: 'purple' },
+  { key: 'claudeSonnet5', model: 'claude-sonnet-5[1m]', color: 'purple' },
+  { key: 'claudeHaiku45', model: 'claude-haiku-4-5-20251001', color: 'purple' },
+  { key: 'gpt55', model: 'gpt-5.5', color: 'green' },
+  { key: 'gemini31Pro', model: 'gemini-3.1-pro-preview', color: 'blue' },
+  { key: 'deepseekV4Pro', model: 'deepseek-v4-pro', color: 'teal' },
+  { key: 'deepseekV4Flash', model: 'deepseek-v4-flash', color: 'teal' },
+  { key: 'glm52', model: 'glm-5.2', color: 'orange' },
+  { key: 'kimiK27Code', model: 'kimi-k2.7-code', color: 'blue' },
+  { key: 'kimiK27CodeHighspeed', model: 'kimi-k2.7-code-highspeed', color: 'blue' },
+]
+
+const modelPresetButtonClasses: Record<ModelPreset['color'], string> = {
+  blue: 'hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 dark:hover:bg-blue-950/30 dark:hover:text-blue-300',
+  green: 'hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:hover:bg-green-950/30 dark:hover:text-green-300',
+  purple: 'hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300',
+  orange: 'hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300',
+  teal: 'hover:bg-teal-50 hover:text-teal-700 hover:border-teal-300 dark:hover:bg-teal-950/30 dark:hover:text-teal-300',
 }
 
 const fallbackTransformers: TransformerOption[] = [
@@ -76,6 +104,46 @@ function isPermissionMode(value: string): value is NonNullable<ClaudeConfig['per
   return permissionModeValues.includes(value as NonNullable<ClaudeConfig['permissionMode']>)
 }
 
+function hasApiCredential(data: ClaudeConfig): boolean {
+  return Boolean(data.authToken?.trim() || data.apiKey?.trim())
+}
+
+function isValidConfigFormData(data: ClaudeConfig): boolean {
+  if (!data.name?.trim())
+    return false
+  if (data.profileType !== 'official' && !data.baseUrl?.trim())
+    return false
+  if (data.profileType !== 'official' && !hasApiCredential(data))
+    return false
+
+  if (
+    data.claudeCodeMaxRetries !== undefined
+    && (!Number.isInteger(data.claudeCodeMaxRetries) || data.claudeCodeMaxRetries < 0)
+  ) {
+    return false
+  }
+
+  if (data.baseUrl?.trim()) {
+    try {
+      void new URL(data.baseUrl)
+    }
+    catch {
+      return false
+    }
+  }
+
+  if (data.customHeaders?.trim()) {
+    const lines = data.customHeaders.split('\n').filter(line => line.trim())
+    for (const line of lines) {
+      if (!line.includes(':')) {
+        return false
+      }
+    }
+  }
+
+  return true
+}
+
 export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps): ReactNode {
   const t = useTranslations('configForm')
   const [formData, setFormData] = useState<ClaudeConfig>(config || {
@@ -91,16 +159,15 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     isDefault: false,
     enabled: true,
     authorization: '',
+    claudeCodeDisableNonessentialTraffic: true,
+    claudeCodeDisableExperimentalBetas: true,
+    claudeCodeAttributionHeader: false,
     customHeaders: '',
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [transformers, setTransformers] = useState<TransformerOption[]>(fallbackTransformers)
   const [loadingTransformers, setLoadingTransformers] = useState(false)
-
-  const hasApiCredential = (data: ClaudeConfig): boolean => {
-    return Boolean(data.authToken?.trim() || data.apiKey?.trim())
-  }
 
   // Fetch available transformers
   useEffect(() => {
@@ -125,43 +192,12 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     void fetchTransformers()
   }, [])
 
-  const validateFormData = (data: ClaudeConfig): boolean => {
-    if (!data.name?.trim())
-      return false
-    if (data.profileType !== 'official' && !data.baseUrl?.trim())
-      return false
-    if (data.profileType !== 'official' && !hasApiCredential(data))
-      return false
-
-    // Validate baseUrl format
-    if (data.baseUrl?.trim()) {
-      try {
-        void new URL(data.baseUrl)
-      }
-      catch {
-        return false
-      }
-    }
-
-    // Validate customHeaders format
-    if (data.customHeaders?.trim()) {
-      const lines = data.customHeaders.split('\n').filter(line => line.trim())
-      for (const line of lines) {
-        if (!line.includes(':')) {
-          return false
-        }
-      }
-    }
-
-    return true
-  }
-
   useEffect(() => {
     if (config) {
       setFormData({ ...config })
       // Call onFormDataChange with initial data
       if (onFormDataChange) {
-        const isValid = validateFormData(config)
+        const isValid = isValidConfigFormData(config)
         onFormDataChange(config, isValid)
       }
     }
@@ -179,13 +215,16 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         transformer: 'auto',
         isDefault: false,
         enabled: true,
+        claudeCodeDisableNonessentialTraffic: true,
+        claudeCodeDisableExperimentalBetas: true,
+        claudeCodeAttributionHeader: false,
       }
-      const isValid = validateFormData(defaultData)
+      const isValid = isValidConfigFormData(defaultData)
       onFormDataChange(defaultData, isValid)
     }
   }, [config, onFormDataChange])
 
-  const handleChange = (field: keyof ClaudeConfig, value: string | boolean): void => {
+  const handleChange = (field: keyof ClaudeConfig, value: string | boolean | number | undefined): void => {
     const newFormData = { ...formData, [field]: value }
     setFormData(newFormData)
     if (errors[field]) {
@@ -194,9 +233,14 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
     // Call onFormDataChange if provided
     if (onFormDataChange) {
-      const isValid = validateFormData(newFormData)
+      const isValid = isValidConfigFormData(newFormData)
       onFormDataChange(newFormData, isValid)
     }
+  }
+
+  const handleNumberChange = (field: keyof ClaudeConfig, value: string): void => {
+    const numericValue = Number(value)
+    handleChange(field, value === '' || !Number.isFinite(numericValue) ? undefined : numericValue)
   }
 
   const convertLegacyApiKeyToAuthToken = (): void => {
@@ -209,7 +253,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
     setErrors(prev => ({ ...prev, authToken: '', apiKey: '' }))
 
     if (onFormDataChange) {
-      const isValid = validateFormData(newFormData)
+      const isValid = isValidConfigFormData(newFormData)
       onFormDataChange(newFormData, isValid)
     }
   }
@@ -235,6 +279,13 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
     if (formData.profileType !== 'official' && !hasApiCredential(formData)) {
       newErrors.authToken = t('apiConfig.apiKeyRequired')
+    }
+
+    if (
+      formData.claudeCodeMaxRetries !== undefined
+      && (!Number.isInteger(formData.claudeCodeMaxRetries) || formData.claudeCodeMaxRetries < 0)
+    ) {
+      newErrors.claudeCodeMaxRetries = t('advanced.maxRetriesInvalid')
     }
 
     // Validate customHeaders format
@@ -449,51 +500,18 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             <div className="space-y-2">
               <Label className="font-medium text-sm text-muted-foreground">{t('modelPresets.title')}</Label>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs font-medium hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
-                  onClick={() => handleChange('model', 'claude-fable-5[1m]')}
-                >
-                  {t('modelPresets.claudeFable')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs font-medium hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
-                  onClick={() => handleChange('model', 'claude-opus-4-8[1m]')}
-                >
-                  {t('modelPresets.claudeOpus')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs font-medium hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
-                  onClick={() => handleChange('model', 'claude-sonnet-4-6[1m]')}
-                >
-                  {t('modelPresets.claudeSonnet')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs font-medium hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:hover:bg-green-950/30 dark:hover:text-green-300"
-                  onClick={() => handleChange('model', 'gpt-5.5')}
-                >
-                  {t('modelPresets.gpt55')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs font-medium hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 dark:hover:bg-blue-950/30 dark:hover:text-blue-300"
-                  onClick={() => handleChange('model', 'gemini-3-pro-preview')}
-                >
-                  {t('modelPresets.gemini3')}
-                </Button>
+                {modelPresets.map(preset => (
+                  <Button
+                    key={preset.key}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={`h-8 text-xs font-medium ${modelPresetButtonClasses[preset.color]}`}
+                    onClick={() => handleChange('model', preset.model)}
+                  >
+                    {t(`modelPresets.${preset.key}`)}
+                  </Button>
+                ))}
               </div>
             </div>
 
@@ -666,6 +684,69 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4 p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-orange-500/30 transition-all duration-200">
+              <div className="flex-1">
+                <Label htmlFor="claudeCodeAttributionHeader" className="font-semibold text-base cursor-pointer">
+                  {t('advanced.attributionHeader')}
+                </Label>
+                <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                  {t('advanced.attributionHeaderDescription')}
+                </p>
+              </div>
+              <Switch
+                id="claudeCodeAttributionHeader"
+                checked={formData.claudeCodeAttributionHeader ?? false}
+                onCheckedChange={checked => handleChange('claudeCodeAttributionHeader', checked)}
+                className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-orange-500 data-[state=checked]:to-orange-600 data-[state=unchecked]:bg-orange-200 dark:data-[state=unchecked]:bg-orange-900/30 border-transparent"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="claudeCodeMaxRetries" className="font-medium flex items-center gap-2">
+                  <Settings className="h-3 w-3" />
+                  {t('advanced.maxRetries')}
+                  <Badge variant="outline" className="text-xs">Optional</Badge>
+                </Label>
+                <Input
+                  id="claudeCodeMaxRetries"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={formData.claudeCodeMaxRetries ?? ''}
+                  onChange={e => handleNumberChange('claudeCodeMaxRetries', e.target.value)}
+                  placeholder={t('advanced.maxRetriesPlaceholder')}
+                  className={errors.claudeCodeMaxRetries ? 'border-destructive focus-visible:ring-destructive font-mono' : 'font-mono'}
+                />
+                {errors.claudeCodeMaxRetries && (
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.claudeCodeMaxRetries}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {t('advanced.maxRetriesHelpText')}
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 p-4 rounded-xl border-2 bg-gradient-to-r from-muted/50 to-muted/30 hover:border-orange-500/30 transition-all duration-200">
+                <div className="flex-1">
+                  <Label htmlFor="claudeCodeRetryWatchdog" className="font-semibold text-base cursor-pointer">
+                    {t('advanced.retryWatchdog')}
+                  </Label>
+                  <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                    {t('advanced.retryWatchdogDescription')}
+                  </p>
+                </div>
+                <Switch
+                  id="claudeCodeRetryWatchdog"
+                  checked={formData.claudeCodeRetryWatchdog ?? false}
+                  onCheckedChange={checked => handleChange('claudeCodeRetryWatchdog', checked)}
+                  className="data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-orange-500 data-[state=checked]:to-orange-600 data-[state=unchecked]:bg-orange-200 dark:data-[state=unchecked]:bg-orange-900/30 border-transparent"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="apiKey" className="font-medium flex items-center gap-2">
                 <Key className="h-3 w-3" />

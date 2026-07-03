@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
-import type { ClaudeConfig } from '../config/types'
+import type { ClaudeConfig, SystemSettings } from '../config/types'
 import type { CliOverrides } from './common'
 import { spawn } from 'node:child_process'
 import process from 'node:process'
@@ -17,6 +17,9 @@ let configWatcher: ClaudeConfigWatcher | null = null
 
 export async function startClaude(config: ClaudeConfig | undefined, args: string[] = [], cliOverrides?: CliOverrides): Promise<number> {
   const env: NodeJS.ProcessEnv = { ...process.env }
+  env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
+  env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+  env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = '1'
 
   // Set environment variables from config (if config exists)
   if (config) {
@@ -32,6 +35,9 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
       // Don't fail the entire startup, just log warning
     }
   }
+
+  const systemSettings = await loadSystemSettings()
+  applySystemSettingsEnv(env, systemSettings)
 
   // Apply CLI overrides
   if (cliOverrides) {
@@ -202,6 +208,17 @@ async function startClaudeProcess(
 }
 
 function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
+  const disableNonessentialTraffic = config.claudeCodeDisableNonessentialTraffic
+    ?? config.disableNonessentialTraffic
+    ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)
+    ?? true
+  const disableExperimentalBetas = config.claudeCodeDisableExperimentalBetas
+    ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
+    ?? true
+  const attributionHeader = config.claudeCodeAttributionHeader
+    ?? parseBooleanEnvValue(config.env?.CLAUDE_CODE_ATTRIBUTION_HEADER)
+    ?? false
+
   // First, apply environment variables from the env map (lower priority)
   if (config.env) {
     Object.entries(config.env).forEach(([key, value]) => {
@@ -239,6 +256,7 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
     ['bashMaxOutputLength', 'BASH_MAX_OUTPUT_LENGTH'],
     ['apiKeyHelperTtlMs', 'CLAUDE_CODE_API_KEY_HELPER_TTL_MS'],
     ['maxOutputTokens', 'CLAUDE_CODE_MAX_OUTPUT_TOKENS'],
+    ['claudeCodeMaxRetries', 'CLAUDE_CODE_MAX_RETRIES'],
     ['maxThinkingTokens', 'MAX_THINKING_TOKENS'],
     ['mcpTimeout', 'MCP_TIMEOUT'],
     ['mcpToolTimeout', 'MCP_TOOL_TIMEOUT'],
@@ -249,12 +267,13 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
   const booleanEnvMap: Array<[keyof ClaudeConfig, string]> = [
     ['maintainProjectWorkingDir', 'CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR'],
     ['ideSkipAutoInstall', 'CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL'],
-    ['claudeCodeDisableNonessentialTraffic', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'],
+    ['claudeCodeAttributionHeader', 'CLAUDE_CODE_ATTRIBUTION_HEADER'],
+    ['claudeCodeDisableExperimentalBetas', 'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS'],
+    ['claudeCodeRetryWatchdog', 'CLAUDE_CODE_RETRY_WATCHDOG'],
     ['useBedrock', 'CLAUDE_CODE_USE_BEDROCK'],
     ['useVertex', 'CLAUDE_CODE_USE_VERTEX'],
     ['skipBedrockAuth', 'CLAUDE_CODE_SKIP_BEDROCK_AUTH'],
     ['skipVertexAuth', 'CLAUDE_CODE_SKIP_VERTEX_AUTH'],
-    ['disableNonessentialTraffic', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'],
     ['disableTerminalTitle', 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE'],
     ['disableAutoupdater', 'DISABLE_AUTOUPDATER'],
     ['disableBugCommand', 'DISABLE_BUG_COMMAND'],
@@ -263,6 +282,20 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
     ['disableNonEssentialModelCalls', 'DISABLE_NON_ESSENTIAL_MODEL_CALLS'],
     ['disableTelemetry', 'DISABLE_TELEMETRY'],
   ]
+  const additionalBooleanEnvKeys = [
+    'CLAUDE_CODE_ATTRIBUTION_HEADER',
+    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+    'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
+    'DISABLE_PROMPT_CACHING',
+    'DISABLE_PROMPT_CACHING_FABLE',
+    'DISABLE_PROMPT_CACHING_HAIKU',
+    'DISABLE_PROMPT_CACHING_OPUS',
+    'DISABLE_PROMPT_CACHING_SONNET',
+  ]
+  const booleanEnvKeys = new Set([
+    ...booleanEnvMap.map(([, envKey]) => envKey),
+    ...additionalBooleanEnvKeys,
+  ])
 
   // Set basic string environment variables (higher priority - will override env map)
   basicEnvMap.forEach(([configKey, envKey]) => {
@@ -319,13 +352,58 @@ function setEnvFromConfig(env: NodeJS.ProcessEnv, config: ClaudeConfig): void {
     }
   })
 
+  booleanEnvKeys.forEach((envKey) => {
+    const booleanValue = parseBooleanEnvValue(env[envKey])
+
+    if (booleanValue !== undefined) {
+      env[envKey] = formatBooleanEnvValue(booleanValue)
+    }
+  })
+
   // Set boolean environment variables (higher priority - will override env map)
   booleanEnvMap.forEach(([configKey, envKey]) => {
     const value = config[configKey] as boolean | undefined
     if (typeof value === 'boolean') {
-      env[envKey] = value ? '1' : '0'
+      env[envKey] = formatBooleanEnvValue(value)
     }
   })
+
+  env.CLAUDE_CODE_ATTRIBUTION_HEADER = formatBooleanEnvValue(attributionHeader)
+  env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = formatBooleanEnvValue(disableNonessentialTraffic)
+  env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = formatBooleanEnvValue(disableExperimentalBetas)
+}
+
+async function loadSystemSettings(): Promise<SystemSettings | undefined> {
+  try {
+    return await ConfigManager.getInstance().getSettings()
+  }
+  catch {
+    return undefined
+  }
+}
+
+function applySystemSettingsEnv(env: NodeJS.ProcessEnv, settings: SystemSettings | undefined): void {
+  env.ENABLE_TOOL_SEARCH = formatBooleanEnvValue(settings?.enableToolSearch ?? false)
+}
+
+function formatBooleanEnvValue(value: boolean): '1' | '0' {
+  return value ? '1' : '0'
+}
+
+function parseBooleanEnvValue(value: string | undefined): boolean | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  const normalized = value.trim().toLowerCase()
+  if (['1', 'true'].includes(normalized)) {
+    return true
+  }
+  if (['0', 'false'].includes(normalized)) {
+    return false
+  }
+
+  return undefined
 }
 
 function applyCliOverrides(env: NodeJS.ProcessEnv, overrides: CliOverrides): void {

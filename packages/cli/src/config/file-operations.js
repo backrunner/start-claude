@@ -4,11 +4,24 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import dayjs from 'dayjs';
 import { UILogger } from '../utils/cli/ui';
-import { CURRENT_CONFIG_VERSION } from './types';
+import { createDefaultSystemSettings, CURRENT_CONFIG_VERSION } from './types';
 const CONFIG_DIR = path.join(os.homedir(), '.start-claude');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const SYNC_CONFIG_FILE = path.join(CONFIG_DIR, 'sync.json');
 const MIGRATION_LOG_FILE = path.join(CONFIG_DIR, 'migrations.log');
+function parseBooleanEnvValue(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true'].includes(normalized)) {
+        return true;
+    }
+    if (['0', 'false'].includes(normalized)) {
+        return false;
+    }
+    return undefined;
+}
 export class ConfigFileManager {
     static instance = null;
     _needsImmediateUpdate = false;
@@ -30,10 +43,7 @@ export class ConfigFileManager {
         return {
             version: CURRENT_CONFIG_VERSION,
             configs: [],
-            settings: {
-                overrideClaudeCommand: false,
-                syncClaudeProviderSettings: true,
-            },
+            settings: createDefaultSystemSettings(),
         };
     }
     getActualConfigDir() {
@@ -212,11 +222,10 @@ export class ConfigFileManager {
     migrateLegacyConfig(legacyConfig) {
         const logger = new UILogger();
         logger.displayInfo('Migrating legacy configuration to version 1...');
-        const newSettings = {
+        const newSettings = createDefaultSystemSettings({
             overrideClaudeCommand: legacyConfig.settings.overrideClaudeCommand,
-            syncClaudeProviderSettings: true,
             s3Sync: legacyConfig.settings.s3Sync,
-        };
+        });
         const migratedConfigs = legacyConfig.configs.map(config => ({
             ...config,
             enabled: config.enabled ?? true,
@@ -256,15 +265,20 @@ export class ConfigFileManager {
         if (!config.configs) {
             config.configs = [];
         }
-        if (!config.settings) {
-            config.settings = { overrideClaudeCommand: false, syncClaudeProviderSettings: true };
-        }
-        config.settings.syncClaudeProviderSettings = config.settings.syncClaudeProviderSettings !== false;
-        config.configs = config.configs.map(cfg => ({
-            ...cfg,
-            id: cfg.id || randomUUID(),
-            enabled: cfg.enabled ?? true,
-        }));
+        config.settings = createDefaultSystemSettings(config.settings);
+        config.configs = config.configs.map((cfg) => {
+            const envDisableNonessentialTraffic = parseBooleanEnvValue(cfg.env?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC);
+            const envDisableExperimentalBetas = parseBooleanEnvValue(cfg.env?.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS);
+            const envAttributionHeader = parseBooleanEnvValue(cfg.env?.CLAUDE_CODE_ATTRIBUTION_HEADER);
+            return {
+                ...cfg,
+                id: cfg.id || randomUUID(),
+                enabled: cfg.enabled ?? true,
+                claudeCodeDisableNonessentialTraffic: cfg.claudeCodeDisableNonessentialTraffic ?? cfg.disableNonessentialTraffic ?? envDisableNonessentialTraffic ?? true,
+                claudeCodeDisableExperimentalBetas: cfg.claudeCodeDisableExperimentalBetas ?? envDisableExperimentalBetas ?? true,
+                claudeCodeAttributionHeader: cfg.claudeCodeAttributionHeader ?? envAttributionHeader ?? false,
+            };
+        });
         return config;
     }
     validateConfig(config) {

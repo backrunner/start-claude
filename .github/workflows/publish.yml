@@ -1,0 +1,79 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.34.1 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify release version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME}" != "v${VERSION}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package version ${VERSION}" >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${INPUT_VERSION}" != "${VERSION}" ]]; then
+            echo "Input version ${INPUT_VERSION} does not match package version ${VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: |
+          pnpm --filter @start-claude/cli typecheck
+          pnpm --filter @start-claude/manager typecheck
+          pnpm --filter @start-claude/migrator typecheck
+
+      - name: Test
+        run: |
+          pnpm --filter @start-claude/cli test
+          pnpm --filter @start-claude/migrator test
+
+      - name: Build package
+        run: |
+          pnpm run clean
+          pnpm --filter @start-claude/migrator build
+          pnpm --filter @start-claude/manager build
+          pnpm --filter @start-claude/cli build
+          pnpm run postbuild
+
+      - name: Publish to npm
+        run: npm publish

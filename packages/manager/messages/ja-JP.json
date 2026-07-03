@@ -134,11 +134,17 @@
     },
     "modelPresets": {
       "title": "クイック入力",
-      "claudeFable": "Claude Fable",
-      "claudeOpus": "Claude Opus",
-      "claudeSonnet": "Claude Sonnet",
+      "claudeFable5": "Claude Fable 5",
+      "claudeOpus48": "Claude Opus 4.8",
+      "claudeSonnet5": "Claude Sonnet 5",
+      "claudeHaiku45": "Claude Haiku 4.5",
       "gpt55": "GPT-5.5",
-      "gemini3": "Gemini 3"
+      "gemini31Pro": "Gemini 3.1 Pro",
+      "deepseekV4Pro": "DeepSeek V4 Pro",
+      "deepseekV4Flash": "DeepSeek V4 Flash",
+      "glm52": "GLM-5.2",
+      "kimiK27Code": "Kimi K2.7 Code",
+      "kimiK27CodeHighspeed": "Kimi K2.7 HighSpeed"
     },
     "basicInfo": {
       "title": "基本情報",
@@ -170,7 +176,7 @@
       "title": "モデルと権限",
       "description": "モデルと権限の設定を構成",
       "model": "モデル",
-      "modelPlaceholder": "claude-sonnet-4-6[1m]",
+      "modelPlaceholder": "claude-sonnet-5[1m]",
       "modelHelpText": "この設定のデフォルトモデルを使用する場合は空白のままにします",
       "smallModel": "小型高速モデル",
       "smallModelPlaceholder": "claude-fable-5[1m]",
@@ -227,6 +233,14 @@
       "authHeader": "認証ヘッダー",
       "authHeaderPlaceholder": "Bearer your-token-here",
       "authHeaderHelpText": "認証ヘッダーの便利なフィールド（例：\"Bearer token\"）",
+      "attributionHeader": "Claude Code アトリビューションヘッダー",
+      "attributionHeaderDescription": "Claude Code のアトリビューションが必要なプロバイダー向けに CLAUDE_CODE_ATTRIBUTION_HEADER=1 を送信します。",
+      "maxRetries": "最大リトライ回数",
+      "maxRetriesPlaceholder": "10",
+      "maxRetriesInvalid": "最大リトライ回数は 0 以上の整数である必要があります",
+      "maxRetriesHelpText": "CLAUDE_CODE_MAX_RETRIES を設定します。空欄の場合は Claude Code のデフォルトを使用します。",
+      "retryWatchdog": "リトライ Watchdog",
+      "retryWatchdogDescription": "無人実行でより長くリトライする場合に CLAUDE_CODE_RETRY_WATCHDOG=1 を設定します。",
       "customHeaders": "カスタムヘッダー",
       "customHeadersPlaceholder": "X-Custom-Header: value1\nAnother-Header: value2",
       "customHeadersInvalid": "無効な形式。各行は \"ヘッダー: 値\" 形式である必要があります",
@@ -315,7 +329,9 @@
       "title": "Claude Code 設定ファイル",
       "description": "選択した provider を Claude Code のネイティブ設定ファイルへ同期します",
       "syncFile": "provider ファイルを同期",
-      "syncFileDescription": "起動前に provider の環境変数を ~/.claude/settings.json に書き込みます。失敗しても警告のみ表示し、今回の起動はブロックしません。"
+      "syncFileDescription": "起動前に provider の環境変数を ~/.claude/settings.json に書き込みます。失敗しても警告のみ表示し、今回の起動はブロックしません。",
+      "enableToolSearch": "Tool Search",
+      "enableToolSearchDescription": "Claude Code 起動時に ENABLE_TOOL_SEARCH=1 を設定します。オフにすると ENABLE_TOOL_SEARCH=0 で起動します。"
     },
     "cloudSync": {
       "title": "クラウドストレージ同期",

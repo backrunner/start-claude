@@ -8,9 +8,9 @@ interface ProductListProps {
   product: ExternalProductDefinition
   configs: ExternalProductConfig[]
   onEdit: (config: ExternalProductConfig) => void
-  onDelete: (name: string) => void
-  onToggleEnabled: (name: string, enabled: boolean) => void
-  onSetDefault: (name: string) => void
+  onDelete: (config: ExternalProductConfig) => void
+  onToggleEnabled: (config: ExternalProductConfig, enabled: boolean) => void
+  onSetDefault: (config: ExternalProductConfig) => void
   onDuplicate: (config: ExternalProductConfig) => void
   dragDisabled?: boolean
 }

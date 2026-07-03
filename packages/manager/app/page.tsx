@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import process from 'node:process'
 import { ConfigManager } from '@start-claude/cli/src/config/manager'
 import { S3ConfigFileManager } from '@start-claude/cli/src/config/s3-config'
-import { LoadBalancerStrategy, SpeedTestStrategy } from '@start-claude/cli/src/config/types'
+import { createDefaultSystemSettings } from '@start-claude/cli/src/config/types'
 import HomePage from '@/components/pages/home-page'
 
 // Force dynamic rendering to access environment variables
@@ -28,32 +28,7 @@ async function getSettings(): Promise<SystemSettings> {
     const s3ConfigManager = S3ConfigFileManager.getInstance()
 
     const configFile = await configManager.load()
-    const settings = configFile.settings || {
-      overrideClaudeCommand: false,
-      syncClaudeProviderSettings: true,
-    }
-    settings.syncClaudeProviderSettings = settings.syncClaudeProviderSettings !== false
-
-    // Ensure balanceMode structure exists with defaults
-    if (!settings.balanceMode) {
-      settings.balanceMode = {
-        enableByDefault: false,
-        strategy: LoadBalancerStrategy.Fallback,
-        healthCheck: {
-          enabled: true,
-          intervalMs: 30000,
-        },
-        failedEndpoint: {
-          banDurationSeconds: 300,
-        },
-        speedFirst: {
-          responseTimeWindowMs: 300000,
-          minSamples: 2,
-          speedTestIntervalSeconds: 300,
-          speedTestStrategy: SpeedTestStrategy.ResponseTime,
-        },
-      }
-    }
+    const settings = createDefaultSystemSettings(configFile.settings)
 
     // Load S3 config from s3-config.json only (no backward compatibility)
     console.log('[Page SSR] Loading S3 config...')
@@ -77,25 +52,7 @@ async function getSettings(): Promise<SystemSettings> {
   catch (error) {
     console.error('Error reading settings:', error)
     return {
-      overrideClaudeCommand: false,
-      syncClaudeProviderSettings: true,
-      balanceMode: {
-        enableByDefault: false,
-        strategy: LoadBalancerStrategy.Fallback,
-        healthCheck: {
-          enabled: true,
-          intervalMs: 30000,
-        },
-        failedEndpoint: {
-          banDurationSeconds: 300,
-        },
-        speedFirst: {
-          responseTimeWindowMs: 300000,
-          minSamples: 2,
-          speedTestIntervalSeconds: 300,
-          speedTestStrategy: SpeedTestStrategy.ResponseTime,
-        },
-      },
+      ...createDefaultSystemSettings(),
       s3Sync: undefined,
     }
   }

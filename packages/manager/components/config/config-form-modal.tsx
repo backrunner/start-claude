@@ -13,15 +13,17 @@ interface ConfigFormModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   config?: ClaudeConfig | null
+  mode?: 'create' | 'edit'
   onSave: (config: ClaudeConfig) => Promise<void>
   onCancel: () => void
 }
 
-export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }: ConfigFormModalProps): ReactNode {
+export function ConfigFormModal({ open, onOpenChange, config, mode, onSave, onCancel }: ConfigFormModalProps): ReactNode {
   const t = useTranslations('configForm.modal')
   const [formData, setFormData] = useState<ClaudeConfig | null>(null)
   const [isValid, setIsValid] = useState<boolean>(false)
   const [saving, setSaving] = useState(false)
+  const isEditing = mode ? mode === 'edit' : Boolean(config)
 
   const handleSave = async (): Promise<void> => {
     if (!formData || !isValid)
@@ -78,14 +80,14 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
         <DialogHeader className="pb-6 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent -mt-6 -mx-6 px-6 pt-6">
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-lg shadow-primary/20">
-              {config ? <Edit className="h-6 w-6 text-primary-foreground" /> : <Plus className="h-6 w-6 text-primary-foreground" />}
+              {isEditing ? <Edit className="h-6 w-6 text-primary-foreground" /> : <Plus className="h-6 w-6 text-primary-foreground" />}
             </div>
             <div className="flex-1">
               <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                {config ? t('editTitle') : t('createTitle')}
+                {isEditing ? t('editTitle') : t('createTitle')}
               </DialogTitle>
               <DialogDescription className="text-base mt-1.5 text-muted-foreground">
-                {config ? t('editDescription') : t('createDescription')}
+                {isEditing ? t('editDescription') : t('createDescription')}
               </DialogDescription>
             </div>
           </div>
@@ -125,7 +127,7 @@ export function ConfigFormModal({ open, onOpenChange, config, onSave, onCancel }
                     </div>
                   )
                 : (
-                    config ? t('updateButton') : t('createButton')
+                    isEditing ? t('updateButton') : t('createButton')
                   )}
             </Button>
           </div>

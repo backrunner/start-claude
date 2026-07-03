@@ -92,8 +92,10 @@ export class ConfigManager {
         if (existingIndex === -1) {
             existingIndex = configFile.configs.findIndex(c => configNamesMatch(c.name, config.name));
         }
+        let savedConfigId = config.id;
         if (existingIndex >= 0) {
             const existingConfig = configFile.configs[existingIndex];
+            savedConfigId = existingConfig.id || config.id;
             if (!configNamesMatch(existingConfig.name, config.name)) {
                 const activeConfigs = configFile.configs.filter(c => !c.isDeleted);
                 const conflict = findNameConflict(activeConfigs, config.name, existingConfig);
@@ -103,7 +105,7 @@ export class ConfigManager {
             }
             configFile.configs[existingIndex] = {
                 ...config,
-                id: existingConfig.id || config.id,
+                id: savedConfigId,
             };
         }
         else {
@@ -113,6 +115,11 @@ export class ConfigManager {
                 throw new Error(getNameConflictMessage(config.name, conflict.name));
             }
             configFile.configs.push(config);
+        }
+        if (config.isDefault) {
+            configFile.configs.forEach((item) => {
+                item.isDefault = item.id === savedConfigId;
+            });
         }
         await this.save(configFile);
     }

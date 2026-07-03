@@ -56,6 +56,11 @@ export async function handleSetCommand(name, property, value) {
     const validProperties = [
         'authToken',
         'authorization',
+        'claudeCodeDisableNonessentialTraffic',
+        'claudeCodeDisableExperimentalBetas',
+        'claudeCodeAttributionHeader',
+        'claudeCodeMaxRetries',
+        'claudeCodeRetryWatchdog',
         'customHeaders',
         'smallFastModel',
         'smallFastModelAwsRegion',
@@ -101,7 +106,7 @@ export async function handleSetCommand(name, property, value) {
         process.exit(1);
     }
     let convertedValue = value;
-    if (['bashDefaultTimeoutMs', 'bashMaxTimeoutMs', 'bashMaxOutputLength', 'apiKeyHelperTtlMs', 'maxOutputTokens', 'maxThinkingTokens', 'mcpTimeout', 'mcpToolTimeout', 'maxMcpOutputTokens'].includes(property)) {
+    if (['bashDefaultTimeoutMs', 'bashMaxTimeoutMs', 'bashMaxOutputLength', 'apiKeyHelperTtlMs', 'maxOutputTokens', 'claudeCodeMaxRetries', 'maxThinkingTokens', 'mcpTimeout', 'mcpToolTimeout', 'maxMcpOutputTokens'].includes(property)) {
         const numValue = Number.parseInt(value, 10);
         if (Number.isNaN(numValue)) {
             ui.displayError(`Property "${property}" requires a numeric value`);
@@ -109,7 +114,7 @@ export async function handleSetCommand(name, property, value) {
         }
         convertedValue = numValue;
     }
-    else if (['maintainProjectWorkingDir', 'ideSkipAutoInstall', 'useBedrock', 'useVertex', 'skipBedrockAuth', 'skipVertexAuth', 'disableNonessentialTraffic', 'disableTerminalTitle', 'disableAutoupdater', 'disableBugCommand', 'disableCostWarnings', 'disableErrorReporting', 'disableNonEssentialModelCalls', 'disableTelemetry'].includes(property)) {
+    else if (['maintainProjectWorkingDir', 'ideSkipAutoInstall', 'claudeCodeDisableNonessentialTraffic', 'claudeCodeDisableExperimentalBetas', 'claudeCodeAttributionHeader', 'claudeCodeRetryWatchdog', 'useBedrock', 'useVertex', 'skipBedrockAuth', 'skipVertexAuth', 'disableNonessentialTraffic', 'disableTerminalTitle', 'disableAutoupdater', 'disableBugCommand', 'disableCostWarnings', 'disableErrorReporting', 'disableNonEssentialModelCalls', 'disableTelemetry'].includes(property)) {
         if (value.toLowerCase() === 'true') {
             convertedValue = true;
         }

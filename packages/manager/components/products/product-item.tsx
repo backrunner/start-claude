@@ -16,9 +16,9 @@ interface ProductItemProps {
   product: ExternalProductDefinition
   config: ExternalProductConfig
   onEdit: (config: ExternalProductConfig) => void
-  onDelete: (name: string) => void
-  onToggleEnabled: (name: string, enabled: boolean) => void
-  onSetDefault: (name: string) => void
+  onDelete: (config: ExternalProductConfig) => void
+  onToggleEnabled: (config: ExternalProductConfig, enabled: boolean) => void
+  onSetDefault: (config: ExternalProductConfig) => void
   onDuplicate: (config: ExternalProductConfig) => void
   dragDisabled?: boolean
 }
@@ -101,11 +101,11 @@ export function ProductItem({
             <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3 sm:border-t-0 sm:pt-0">
               <Switch
                 checked={isEnabled}
-                onCheckedChange={checked => onToggleEnabled(config.name, checked)}
+                onCheckedChange={checked => onToggleEnabled(config, checked)}
               />
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={() => onSetDefault(config.name)}>
+                  <Button variant="ghost" size="icon" onClick={() => onSetDefault(config)}>
                     <Star className={`h-4 w-4 ${isDefault ? 'fill-amber-500 text-amber-500' : ''}`} />
                   </Button>
                 </TooltipTrigger>
@@ -129,7 +129,7 @@ export function ProductItem({
               </Tooltip>
               <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={() => onDelete(config.name)} className="text-muted-foreground hover:text-destructive">
+                  <Button variant="ghost" size="icon" onClick={() => onDelete(config)} className="text-muted-foreground hover:text-destructive">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>

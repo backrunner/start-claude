@@ -2,6 +2,7 @@ import type { ExternalProductConfig, ExternalProductDefinition } from './types'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 
 interface NativeConfigResult {
   args: string[]
@@ -36,25 +37,16 @@ function applyConfigEnv(
     })
   }
 
-  if (config.authMode === 'vertex-ai') {
-    delete env.GEMINI_API_KEY
-    delete env.GOOGLE_API_KEY
-    setEnvValue(env, 'GOOGLE_CLOUD_PROJECT', config.googleCloudProject)
-    setEnvValue(env, 'GOOGLE_CLOUD_LOCATION', config.googleCloudLocation)
-    setEnvValue(env, 'GOOGLE_APPLICATION_CREDENTIALS', config.googleApplicationCredentials)
-    setEnvValue(env, 'GOOGLE_VERTEX_BASE_URL', config.baseUrl)
+  if (definition.id === 'gemini') {
+    applyGeminiAuthEnv(config, env)
+    if (config.model?.trim()) {
+      env.GEMINI_MODEL = config.model
+    }
     return
   }
 
-  if (config.apiKey?.trim()) {
+  if ((config.authMode || 'api-key') === 'api-key' && config.apiKey?.trim()) {
     env[config.apiKeyEnvVar || definition.defaultApiKeyEnvVar] = config.apiKey
-  }
-
-  if (definition.id === 'gemini' && config.model?.trim()) {
-    env.GEMINI_MODEL = config.model
-  }
-  if (definition.id === 'gemini' && config.baseUrl?.trim()) {
-    env.GOOGLE_GEMINI_BASE_URL = config.baseUrl
   }
 }
 
@@ -63,18 +55,66 @@ function writeCodexProfile(
   config: ExternalProductConfig,
   env: NodeJS.ProcessEnv,
 ): NativeConfigResult {
-  const codexDir = ensureNativeDir(definition)
+  const codexDir = ensureNativeDir(definition, env)
   const profileName = getNativeProfileName(config)
   const profilePath = join(codexDir, `${profileName}.config.toml`)
   writeFileSync(profilePath, codexProfileToToml(config, definition), 'utf-8')
 
-  if (config.apiKey?.trim()) {
+  if ((config.authMode || 'api-key') === 'api-key' && config.apiKey?.trim()) {
     env[config.apiKeyEnvVar || definition.defaultApiKeyEnvVar] = config.apiKey
   }
 
   return {
     args: ['--profile', profileName],
     env,
+  }
+}
+
+function applyGeminiAuthEnv(config: ExternalProductConfig, env: NodeJS.ProcessEnv): void {
+  const authMode = config.authMode || 'api-key'
+  const apiKeyEnvVar = config.apiKeyEnvVar || 'GEMINI_API_KEY'
+  const apiKey = config.apiKey?.trim() || env[apiKeyEnvVar]?.trim()
+
+  if (authMode === 'vertex-ai') {
+    delete env.GEMINI_API_KEY
+    delete env.GOOGLE_API_KEY
+    delete env.GOOGLE_GENAI_USE_GCA
+    delete env.GOOGLE_GEMINI_BASE_URL
+    env.GOOGLE_GENAI_USE_VERTEXAI = 'true'
+    setEnvValue(env, 'GOOGLE_CLOUD_PROJECT', config.googleCloudProject)
+    setEnvValue(env, 'GOOGLE_CLOUD_LOCATION', config.googleCloudLocation)
+    setEnvValue(env, 'GOOGLE_APPLICATION_CREDENTIALS', config.googleApplicationCredentials)
+    setEnvValue(env, 'GOOGLE_VERTEX_BASE_URL', config.baseUrl)
+    return
+  }
+
+  delete env.GOOGLE_GENAI_USE_VERTEXAI
+  delete env.GOOGLE_GENAI_USE_GCA
+  delete env.GOOGLE_VERTEX_BASE_URL
+
+  if (authMode === 'oauth') {
+    delete env.GEMINI_API_KEY
+    delete env.GOOGLE_API_KEY
+    applyGeminiGatewayEnv(config, env)
+    return
+  }
+
+  if (apiKey) {
+    env.GEMINI_API_KEY = apiKey
+  }
+  else if (apiKeyEnvVar !== 'GEMINI_API_KEY') {
+    delete env.GEMINI_API_KEY
+  }
+  delete env.GOOGLE_API_KEY
+  applyGeminiGatewayEnv(config, env)
+}
+
+function applyGeminiGatewayEnv(config: ExternalProductConfig, env: NodeJS.ProcessEnv): void {
+  if (config.baseUrl?.trim()) {
+    env.GOOGLE_GEMINI_BASE_URL = config.baseUrl
+  }
+  else {
+    delete env.GOOGLE_GEMINI_BASE_URL
   }
 }
 
@@ -136,8 +176,10 @@ function writeGeminiSettings(
   writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf-8')
 }
 
-function ensureNativeDir(definition: ExternalProductDefinition): string {
-  const dir = join(homedir(), definition.nativeConfigDirName)
+function ensureNativeDir(definition: ExternalProductDefinition, env: NodeJS.ProcessEnv = process.env): string {
+  const dir = definition.id === 'codex' && env.CODEX_HOME?.trim()
+    ? env.CODEX_HOME.trim()
+    : join(homedir(), definition.nativeConfigDirName)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }

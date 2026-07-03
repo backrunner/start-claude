@@ -3,7 +3,7 @@ import { ClaudeConfigSyncer } from '@start-claude/cli/src/extensions/claude-conf
 import { ConfigManager } from '@start-claude/cli/src/config/manager'
 import { S3ConfigFileManager } from '@start-claude/cli/src/config/s3-config'
 import { NextResponse } from 'next/server'
-import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
+import { createDefaultSystemSettings } from '@/config/types'
 import { settingsUpdateRequestSchema, systemSettingsSchema } from '@/lib/validation'
 
 // Force dynamic rendering
@@ -20,11 +20,7 @@ let hasSyncedThisSession = false
 async function getSettings(): Promise<any> {
   try {
     const configFile = await configManager.load()
-    const settings = configFile.settings || {
-      overrideClaudeCommand: false,
-      syncClaudeProviderSettings: true,
-    }
-    settings.syncClaudeProviderSettings = settings.syncClaudeProviderSettings !== false
+    const settings = createDefaultSystemSettings(configFile.settings)
 
     // Sync Claude Code config files on first load
     if (!hasSyncedThisSession) {
@@ -85,27 +81,6 @@ async function getSettings(): Promise<any> {
       }
     }
 
-    // Ensure balanceMode structure exists with defaults
-    if (!settings.balanceMode) {
-      settings.balanceMode = {
-        enableByDefault: false,
-        strategy: LoadBalancerStrategy.Fallback,
-        healthCheck: {
-          enabled: true,
-          intervalMs: 30000,
-        },
-        failedEndpoint: {
-          banDurationSeconds: 300,
-        },
-        speedFirst: {
-          responseTimeWindowMs: 300000,
-          minSamples: 2,
-          speedTestIntervalSeconds: 300,
-          speedTestStrategy: SpeedTestStrategy.ResponseTime,
-        },
-      }
-    }
-
     // Load S3 config from s3-config.json only (no backward compatibility)
     console.log('[Settings API] Loading S3 config...')
     console.log('[Settings API] S3 config file path:', s3ConfigManager.getConfigFilePath())
@@ -139,25 +114,7 @@ async function getSettings(): Promise<any> {
   catch (error) {
     console.error('Error reading settings:', error)
     return {
-      overrideClaudeCommand: false,
-      syncClaudeProviderSettings: true,
-      balanceMode: {
-        enableByDefault: false,
-        strategy: LoadBalancerStrategy.Fallback,
-        healthCheck: {
-          enabled: true,
-          intervalMs: 30000,
-        },
-        failedEndpoint: {
-          banDurationSeconds: 300,
-        },
-        speedFirst: {
-          responseTimeWindowMs: 300000,
-          minSamples: 2,
-          speedTestIntervalSeconds: 300,
-          speedTestStrategy: SpeedTestStrategy.ResponseTime,
-        },
-      },
+      ...createDefaultSystemSettings(),
       s3Sync: undefined,
     }
   }

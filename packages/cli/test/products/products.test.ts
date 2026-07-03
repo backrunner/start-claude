@@ -9,15 +9,23 @@ import { getProductDefinition } from '../../src/products/registry'
 
 describe('external products', () => {
   const originalHome = process.env.HOME
+  const originalCodexHome = process.env.CODEX_HOME
   let homeDir: string
 
   beforeEach(() => {
     homeDir = mkdtempSync(join(tmpdir(), 'start-products-'))
     process.env.HOME = homeDir
+    delete process.env.CODEX_HOME
   })
 
   afterEach(() => {
     process.env.HOME = originalHome
+    if (originalCodexHome === undefined) {
+      delete process.env.CODEX_HOME
+    }
+    else {
+      process.env.CODEX_HOME = originalCodexHome
+    }
     rmSync(homeDir, { recursive: true, force: true })
   })
 
@@ -45,6 +53,25 @@ describe('external products', () => {
     expect(profile).toContain('model = "gpt-5.5"')
     expect(profile).toContain('model_provider = "start_work_codex_provider"')
     expect(profile).toContain('base_url = "https://api.openai.com/v1"')
+  })
+
+  it('writes Codex profile TOML under CODEX_HOME when configured', () => {
+    const definition = getProductDefinition('codex')
+    const codexHome = join(homeDir, 'isolated-codex-home')
+    const env: NodeJS.ProcessEnv = {
+      CODEX_HOME: codexHome,
+    }
+
+    const native = prepareNativeConfig(definition, {
+      name: 'Isolated Codex',
+      authMode: 'api-key',
+      apiKey: 'sk-test',
+      model: 'gpt-5.5',
+    }, env)
+
+    expect(native.args).toEqual(['--profile', 'start_isolated_codex'])
+    const profile = readFileSync(join(codexHome, 'start_isolated_codex.config.toml'), 'utf-8')
+    expect(profile).toContain('model = "gpt-5.5"')
   })
 
   it('keeps the default flag when updating a product config by name', () => {
@@ -89,11 +116,63 @@ describe('external products', () => {
     expect(settings.model.name).toBe('gemini-3-flash-preview')
   })
 
+  it('maps Gemini custom API key env vars to GEMINI_API_KEY for the native CLI', () => {
+    const definition = getProductDefinition('gemini')
+    const env: NodeJS.ProcessEnv = {
+      WORK_GEMINI_KEY: 'AIza-from-env',
+      GOOGLE_API_KEY: 'AIza-old-google',
+      GOOGLE_GENAI_USE_VERTEXAI: 'true',
+      GOOGLE_GEMINI_BASE_URL: 'https://old-gateway.example.com',
+    }
+
+    prepareNativeConfig(definition, {
+      name: 'Gemini Custom Env',
+      authMode: 'api-key',
+      apiKeyEnvVar: 'WORK_GEMINI_KEY',
+      baseUrl: '',
+      model: 'gemini-3-flash-preview',
+    }, env)
+
+    expect(env.GEMINI_API_KEY).toBe('AIza-from-env')
+    expect(env.WORK_GEMINI_KEY).toBe('AIza-from-env')
+    expect(env.GOOGLE_API_KEY).toBeUndefined()
+    expect(env.GOOGLE_GENAI_USE_VERTEXAI).toBeUndefined()
+    expect(env.GOOGLE_GEMINI_BASE_URL).toBeUndefined()
+  })
+
+  it('cleans Gemini API env vars for account-login configs', () => {
+    const definition = getProductDefinition('gemini')
+    const env: NodeJS.ProcessEnv = {
+      GEMINI_API_KEY: 'AIza-old',
+      GOOGLE_API_KEY: 'AIza-old-google',
+      GOOGLE_GEMINI_BASE_URL: 'https://old-gateway.example.com',
+      GOOGLE_VERTEX_BASE_URL: 'https://old-vertex.example.com',
+      GOOGLE_GENAI_USE_VERTEXAI: 'true',
+      GOOGLE_GENAI_USE_GCA: 'true',
+    }
+
+    prepareNativeConfig(definition, {
+      name: 'Gemini Login',
+      authMode: 'oauth',
+      model: 'gemini-3-flash-preview',
+    }, env)
+
+    expect(env.GEMINI_API_KEY).toBeUndefined()
+    expect(env.GOOGLE_API_KEY).toBeUndefined()
+    expect(env.GOOGLE_GEMINI_BASE_URL).toBeUndefined()
+    expect(env.GOOGLE_VERTEX_BASE_URL).toBeUndefined()
+    expect(env.GOOGLE_GENAI_USE_VERTEXAI).toBeUndefined()
+    expect(env.GOOGLE_GENAI_USE_GCA).toBeUndefined()
+    expect(env.GEMINI_MODEL).toBe('gemini-3-flash-preview')
+  })
+
   it('sets Vertex AI env vars for Gemini configs', () => {
     const definition = getProductDefinition('gemini')
     const env: NodeJS.ProcessEnv = {
       GEMINI_API_KEY: 'AIza-old',
       GOOGLE_API_KEY: 'AIza-old',
+      GOOGLE_GENAI_USE_GCA: 'true',
+      GOOGLE_GEMINI_BASE_URL: 'https://old-gateway.example.com',
     }
 
     prepareNativeConfig(definition, {
@@ -108,6 +187,9 @@ describe('external products', () => {
 
     expect(env.GEMINI_API_KEY).toBeUndefined()
     expect(env.GOOGLE_API_KEY).toBeUndefined()
+    expect(env.GOOGLE_GENAI_USE_GCA).toBeUndefined()
+    expect(env.GOOGLE_GEMINI_BASE_URL).toBeUndefined()
+    expect(env.GOOGLE_GENAI_USE_VERTEXAI).toBe('true')
     expect(env.GOOGLE_CLOUD_PROJECT).toBe('my-project')
     expect(env.GOOGLE_CLOUD_LOCATION).toBe('us-central1')
     expect(env.GOOGLE_APPLICATION_CREDENTIALS).toBe('/tmp/service-account.json')

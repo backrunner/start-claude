@@ -11,21 +11,23 @@ import { findAvailablePort } from '../utils/network/port-finder';
 export class ManagerServer {
     childProcess = null;
     port = 2334;
+    startupPath = '/';
     stopHeartbeat = null;
     debug = false;
-    constructor(port, debug) {
+    constructor(port, debug, startupPath = '/') {
         if (port) {
             this.port = port;
         }
         this.debug = debug || false;
+        this.startupPath = startupPath.startsWith('/') ? startupPath : `/${startupPath}`;
     }
     async start() {
         const ui = new UILogger();
         const existingInstance = await checkExistingInstance();
         if (existingInstance) {
             ui.displayWarning(`Manager is already running on port ${existingInstance.port} (PID: ${existingInstance.pid})`);
-            ui.displayInfo(`Opening existing manager at http://localhost:${existingInstance.port}`);
-            await open(`http://localhost:${existingInstance.port}`);
+            ui.displayInfo(`Opening existing manager at http://localhost:${existingInstance.port}${this.startupPath}`);
+            await open(`http://localhost:${existingInstance.port}${this.startupPath}`);
             return;
         }
         const availablePort = await findAvailablePort(this.port, 10);
@@ -118,7 +120,7 @@ export class ManagerServer {
                         resolved = true;
                         clearTimeout(timeout);
                         ui.displaySuccess(`✨ Claude Configuration Manager is running on port ${this.port}!`);
-                        ui.displayInfo(`Opening manager at http://localhost:${this.port}`);
+                        ui.displayInfo(`Opening manager at http://localhost:${this.port}${this.startupPath}`);
                         ui.displayInfo('Press Ctrl+C to stop the manager');
                         resolve();
                     });
@@ -137,7 +139,7 @@ export class ManagerServer {
                 };
                 setTimeout(checkServer, 2000);
             });
-            await open(`http://localhost:${this.port}`);
+            await open(`http://localhost:${this.port}${this.startupPath}`);
         }
         catch (error) {
             if (this.stopHeartbeat) {

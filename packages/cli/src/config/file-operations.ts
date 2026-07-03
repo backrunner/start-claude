@@ -5,12 +5,28 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import dayjs from 'dayjs'
 import { UILogger } from '../utils/cli/ui'
-import { CURRENT_CONFIG_VERSION } from './types'
+import { createDefaultSystemSettings, CURRENT_CONFIG_VERSION } from './types'
 
 const CONFIG_DIR = path.join(os.homedir(), '.start-claude')
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
 const SYNC_CONFIG_FILE = path.join(CONFIG_DIR, 'sync.json')
 const MIGRATION_LOG_FILE = path.join(CONFIG_DIR, 'migrations.log')
+
+function parseBooleanEnvValue(value: string | undefined): boolean | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  const normalized = value.trim().toLowerCase()
+  if (['1', 'true'].includes(normalized)) {
+    return true
+  }
+  if (['0', 'false'].includes(normalized)) {
+    return false
+  }
+
+  return undefined
+}
 
 /**
  * Central manager for configuration file operations with versioning and migration support
@@ -46,10 +62,7 @@ export class ConfigFileManager {
     return {
       version: CURRENT_CONFIG_VERSION,
       configs: [],
-      settings: {
-        overrideClaudeCommand: false,
-        syncClaudeProviderSettings: true,
-      },
+      settings: createDefaultSystemSettings(),
     }
   }
 
@@ -340,11 +353,10 @@ export class ConfigFileManager {
     logger.displayInfo('Migrating legacy configuration to version 1...')
 
     // Convert legacy settings to new SystemSettings format
-    const newSettings: SystemSettings = {
+    const newSettings: SystemSettings = createDefaultSystemSettings({
       overrideClaudeCommand: legacyConfig.settings.overrideClaudeCommand,
-      syncClaudeProviderSettings: true,
       s3Sync: legacyConfig.settings.s3Sync,
-    }
+    })
 
     // Ensure all configs have the enabled field (default to true for existing configs)
     const migratedConfigs = legacyConfig.configs.map(config => ({
@@ -412,17 +424,23 @@ export class ConfigFileManager {
     }
 
     // Ensure settings exist with defaults
-    if (!config.settings) {
-      config.settings = { overrideClaudeCommand: false, syncClaudeProviderSettings: true }
-    }
-    config.settings.syncClaudeProviderSettings = config.settings.syncClaudeProviderSettings !== false
+    config.settings = createDefaultSystemSettings(config.settings)
 
     // Normalize each config and ensure it has a UUID
-    config.configs = config.configs.map(cfg => ({
-      ...cfg,
-      id: cfg.id || randomUUID(), // Ensure every config has a UUID
-      enabled: cfg.enabled ?? true, // Default to enabled
-    }))
+    config.configs = config.configs.map((cfg) => {
+      const envDisableNonessentialTraffic = parseBooleanEnvValue(cfg.env?.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)
+      const envDisableExperimentalBetas = parseBooleanEnvValue(cfg.env?.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
+      const envAttributionHeader = parseBooleanEnvValue(cfg.env?.CLAUDE_CODE_ATTRIBUTION_HEADER)
+
+      return {
+        ...cfg,
+        id: cfg.id || randomUUID(), // Ensure every config has a UUID
+        enabled: cfg.enabled ?? true, // Default to enabled
+        claudeCodeDisableNonessentialTraffic: cfg.claudeCodeDisableNonessentialTraffic ?? cfg.disableNonessentialTraffic ?? envDisableNonessentialTraffic ?? true,
+        claudeCodeDisableExperimentalBetas: cfg.claudeCodeDisableExperimentalBetas ?? envDisableExperimentalBetas ?? true,
+        claudeCodeAttributionHeader: cfg.claudeCodeAttributionHeader ?? envAttributionHeader ?? false,
+      }
+    })
 
     return config
   }

@@ -134,11 +134,17 @@
     },
     "modelPresets": {
       "title": "快速填入",
-      "claudeFable": "Claude Fable",
-      "claudeOpus": "Claude Opus",
-      "claudeSonnet": "Claude Sonnet",
+      "claudeFable5": "Claude Fable 5",
+      "claudeOpus48": "Claude Opus 4.8",
+      "claudeSonnet5": "Claude Sonnet 5",
+      "claudeHaiku45": "Claude Haiku 4.5",
       "gpt55": "GPT-5.5",
-      "gemini3": "Gemini 3"
+      "gemini31Pro": "Gemini 3.1 Pro",
+      "deepseekV4Pro": "DeepSeek V4 Pro",
+      "deepseekV4Flash": "DeepSeek V4 Flash",
+      "glm52": "GLM-5.2",
+      "kimiK27Code": "Kimi K2.7 Code",
+      "kimiK27CodeHighspeed": "Kimi K2.7 HighSpeed"
     },
     "basicInfo": {
       "title": "基本資訊",
@@ -170,7 +176,7 @@
       "title": "模型和權限",
       "description": "配置模型和權限設定",
       "model": "模型",
-      "modelPlaceholder": "claude-sonnet-4-6[1m]",
+      "modelPlaceholder": "claude-sonnet-5[1m]",
       "modelHelpText": "留空則使用預設模型",
       "smallModel": "輕量快速模型",
       "smallModelPlaceholder": "claude-fable-5[1m]",
@@ -227,6 +233,14 @@
       "authHeader": "授權請求標頭",
       "authHeaderPlaceholder": "Bearer your-token-here",
       "authHeaderHelpText": "快捷設定授權請求標頭（如 \"Bearer token\"）",
+      "attributionHeader": "Claude Code 歸因請求標頭",
+      "attributionHeaderDescription": "為需要 Claude Code 歸因的服務商發送 CLAUDE_CODE_ATTRIBUTION_HEADER=1。",
+      "maxRetries": "最大重試次數",
+      "maxRetriesPlaceholder": "10",
+      "maxRetriesInvalid": "最大重試次數必須是非負整數",
+      "maxRetriesHelpText": "設定 CLAUDE_CODE_MAX_RETRIES。留空則使用 Claude Code 預設值。",
+      "retryWatchdog": "重試 Watchdog",
+      "retryWatchdogDescription": "設定 CLAUDE_CODE_RETRY_WATCHDOG=1，適合無人值守任務在故障時持續更久地重試。",
       "customHeaders": "自訂請求標頭",
       "customHeadersPlaceholder": "X-Custom-Header: value1\nAnother-Header: value2",
       "customHeadersInvalid": "格式錯誤，每行格式為：\"請求標頭名稱: 值\"",
@@ -315,7 +329,9 @@
       "title": "Claude Code 配置檔",
       "description": "將選中的 provider 同步到 Claude Code 原生設定檔",
       "syncFile": "同步 provider 檔案",
-      "syncFileDescription": "啟動前將 provider 環境變數寫入 ~/.claude/settings.json。寫入失敗只提示警告，不影響本次啟動。"
+      "syncFileDescription": "啟動前將 provider 環境變數寫入 ~/.claude/settings.json。寫入失敗只提示警告，不影響本次啟動。",
+      "enableToolSearch": "Tool Search",
+      "enableToolSearchDescription": "啟動 Claude Code 時設定 ENABLE_TOOL_SEARCH=1。關閉後會以 ENABLE_TOOL_SEARCH=0 啟動。"
     },
     "cloudSync": {
       "title": "雲端儲存同步",

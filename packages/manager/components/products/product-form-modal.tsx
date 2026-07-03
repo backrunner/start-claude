@@ -19,6 +19,7 @@ interface ProductFormModalProps {
   onOpenChange: (open: boolean) => void
   product: ExternalProductDefinition
   config?: ExternalProductConfig | null
+  mode?: 'create' | 'edit'
   onSave: (config: ExternalProductConfig) => Promise<void>
   onCancel: () => void
 }
@@ -41,6 +42,7 @@ export function ProductFormModal({
   onOpenChange,
   product,
   config,
+  mode,
   onSave,
   onCancel,
 }: ProductFormModalProps): ReactNode {
@@ -48,6 +50,7 @@ export function ProductFormModal({
   const [formData, setFormData] = useState<ExternalProductConfig>(getDefaultFormData(product))
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const isEditing = mode ? mode === 'edit' : Boolean(config)
 
   useEffect(() => {
     setFormData(config ? { ...getDefaultFormData(product), ...config } : getDefaultFormData(product))
@@ -97,11 +100,11 @@ export function ProductFormModal({
         <DialogHeader className="pb-6 border-b bg-gradient-to-r from-primary/5 via-transparent to-transparent -mt-6 -mx-6 px-6 pt-6">
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              {config ? <Edit className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
+              {isEditing ? <Edit className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
             </div>
             <div className="flex-1">
               <DialogTitle className="text-2xl font-bold">
-                {config ? t('editTitle', { product: product.shortTitle }) : t('createTitle', { product: product.shortTitle })}
+                {isEditing ? t('editTitle', { product: product.shortTitle }) : t('createTitle', { product: product.shortTitle })}
               </DialogTitle>
               <DialogDescription className="text-base mt-1.5 text-muted-foreground">
                 {t('description', { product: product.shortTitle })}
@@ -353,7 +356,7 @@ export function ProductFormModal({
             {t('cancel')}
           </Button>
           <Button onClick={() => void handleSubmit()} disabled={saving}>
-            {saving ? t('saving') : config ? t('update') : t('create')}
+            {saving ? t('saving') : isEditing ? t('update') : t('create')}
           </Button>
         </DialogFooter>
       </DialogContent>
