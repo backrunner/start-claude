@@ -4,9 +4,10 @@ import inquirer from 'inquirer';
 import { version } from '../../package.json';
 import { handleManagerCommand } from '../commands/manager';
 import { UILogger } from '../utils/cli/ui';
+import { normalizeModelArgs } from '../utils/model-aliases';
 import { ExternalProductConfigManager } from './config-manager';
-import { getProductDefinition } from './registry';
 import { resolveExternalProductConfig, startExternalProduct } from './launcher';
+import { getProductDefinition } from './registry';
 const managementCommands = new Set([
     'add',
     'edit',
@@ -481,7 +482,7 @@ function getPassThroughArgs(args, options = {}) {
         }
         filtered.push(arg);
     }
-    return filtered;
+    return normalizeModelArgs(filtered);
 }
 function coerceConfigValue(property, value) {
     if (property === 'enabled' || property === 'isDefault' || property === 'isDeleted') {

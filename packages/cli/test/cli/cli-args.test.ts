@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ClaudeConfig } from '../../src/config/types'
-import { buildClaudeArgs, filterProcessArgs, parseBalanceStrategy, resolveStartConfigSelector } from '../../src/cli/common.ts'
+import { buildClaudeArgs, buildCliOverrides, filterProcessArgs, parseBalanceStrategy, resolveStartConfigSelector } from '../../src/cli/common.ts'
 
 describe('cLI argument filtering', () => {
   const originalArgv = process.argv
@@ -175,6 +175,20 @@ describe('cLI argument filtering', () => {
       }
 
       expect(buildClaudeArgs({ permissionMode: 'dontAsk' }, config)).toEqual(['--permission-mode', 'dontAsk'])
+    })
+
+    it('should expand short model aliases', () => {
+      expect(buildClaudeArgs({ model: 'gpt' })).toEqual(['--model', 'gpt-5.5'])
+      expect(buildClaudeArgs({ model: 'Opus' })).toEqual(['--model', 'claude-opus-4-8'])
+      expect(buildClaudeArgs({ model: 'fable' })).toEqual(['--model', 'claude-fable-5'])
+      expect(buildClaudeArgs({ model: 'deepseek' })).toEqual(['--model', 'deepseek-v4-pro'])
+      expect(buildClaudeArgs({ model: 'kimi-highspeed' })).toEqual(['--model', 'kimi-k2.7-code-highspeed'])
+      expect(buildClaudeArgs({ model: 'glm' })).toEqual(['--model', 'glm-5.2'])
+    })
+
+    it('should expand CLI override model aliases', () => {
+      expect(buildCliOverrides({ model: 'sonnet' }).model).toBe('claude-sonnet-5')
+      expect(buildCliOverrides({ model: 'gpt-4.1' }).model).toBe('gpt-4.1')
     })
 
     it('should build latest Claude optional and variadic args', () => {

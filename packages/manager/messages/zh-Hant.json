@@ -87,7 +87,7 @@
     },
     "validation": {
       "nameRequired": "配置名稱為必填項",
-      "apiKeyRequired": "API Key 為必填項",
+      "apiKeyRequired": "API Key 或 API Key 環境變數為必填項",
       "baseUrlInvalid": "URL 格式無效"
     },
     "cancel": "取消",

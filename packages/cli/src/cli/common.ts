@@ -8,6 +8,7 @@ import { TransformerService } from '../services/transformer'
 import { findClosestMatch, isSimilarEnough } from '../utils/cli/fuzzy-match'
 import { UILogger } from '../utils/cli/ui'
 import { hasConfigApiCredentials } from '../utils/config/credentials'
+import { normalizeModelName } from '../utils/model-aliases'
 
 export interface ProgramOptions {
   config?: string
@@ -254,7 +255,7 @@ export function buildClaudeArgs(
   pushNumberOption(claudeArgs, '--max-turns', options.maxTurns)
   pushVariadicOption(claudeArgs, '--mcp-config', options.mcpConfig)
   pushBooleanOption(claudeArgs, '--mcp-debug', options.mcpDebug)
-  pushStringOption(claudeArgs, '--model', options.model)
+  pushStringOption(claudeArgs, '--model', normalizeModelName(options.model))
   pushStringOption(claudeArgs, '--name', options.name)
   pushTriStateOption(claudeArgs, undefined, '--no-session-persistence', options.sessionPersistence)
   pushStringOption(claudeArgs, '--output-format', options.outputFormat)
@@ -504,7 +505,7 @@ export function buildCliOverrides(options: ProgramOptions): CliOverrides {
     proxy: options.proxy,
     apiKey: options.apiKey,
     baseUrl: options.baseUrl,
-    model: options.model,
+    model: normalizeModelName(options.model),
   }
 }
 

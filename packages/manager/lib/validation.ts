@@ -20,6 +20,50 @@ const enabledExtensionsSchema = z.object({
   subagents: z.array(z.string()).optional(),
 }).optional()
 
+const stringRecordSchema = z.record(z.string(), z.string())
+
+const mcpServerDefinitionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  type: z.enum(['stdio', 'http', 'sse']),
+  scope: z.enum(['local', 'user', 'project']).optional(),
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  env: stringRecordSchema.optional(),
+  url: z.string().optional(),
+  headers: stringRecordSchema.optional(),
+})
+
+const skillDefinitionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  description: z.string().min(1),
+  content: z.string().min(1),
+  allowedTools: z.array(z.string()).optional(),
+})
+
+const subagentDefinitionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  description: z.string().min(1),
+  systemPrompt: z.string().min(1),
+  tools: z.array(z.string()).optional(),
+  model: z.enum(['sonnet', 'opus', 'haiku', 'inherit']).optional(),
+})
+
+const extensionsLibrarySchema = z.object({
+  mcpServers: z.record(z.string(), mcpServerDefinitionSchema),
+  skills: z.record(z.string(), skillDefinitionSchema),
+  subagents: z.record(z.string(), subagentDefinitionSchema),
+}).optional()
+
+const defaultEnabledExtensionsSchema = z.object({
+  mcpServers: z.array(z.string()).default([]),
+  skills: z.array(z.string()).default([]),
+  subagents: z.array(z.string()).default([]),
+}).optional()
+
 // Claude configuration validation schema
 export const claudeConfigSchema = z.object({
   id: z.string().optional(),
@@ -121,11 +165,11 @@ export const externalProductConfigSchema = z.object({
   env: z.record(z.string(), z.string()).optional(),
 }).refine((data) => {
   if ((data.authMode || 'api-key') === 'api-key') {
-    return Boolean(data.apiKey?.trim())
+    return Boolean(data.apiKey?.trim() || data.apiKeyEnvVar?.trim())
   }
   return true
 }, {
-  message: 'API key is required',
+  message: 'API key or API key environment variable is required',
   path: ['apiKey'],
 })
 
@@ -177,6 +221,8 @@ export const systemSettingsSchema = z.object({
   balanceMode: balanceModeSchema.optional(),
   sync: syncConfigSchema,
   s3Sync: s3SyncSchema.optional(),
+  extensionsLibrary: extensionsLibrarySchema,
+  defaultEnabledExtensions: defaultEnabledExtensionsSchema,
 })
 
 // API request schemas

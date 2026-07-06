@@ -469,16 +469,25 @@ async function writeExtensionsConfig(config: ClaudeConfig, isProxyMode: boolean 
     const syncer = new ClaudeConfigSyncer(process.cwd(), logger)
     const syncResult = await syncer.syncClaudeConfig(library)
 
-    if (syncResult.result.totalAdded > 0) {
-      logger.verbose(`Synced ${syncResult.result.totalAdded} extensions from Claude Code config:`)
+    if (syncResult.result.totalChanged > 0) {
+      logger.verbose(`Synced ${syncResult.result.totalChanged} extension changes from Claude Code config:`)
       if (syncResult.result.mcpServersAdded > 0) {
-        logger.verbose(`  - ${syncResult.result.mcpServersAdded} MCP servers`)
+        logger.verbose(`  - ${syncResult.result.mcpServersAdded} MCP servers added`)
       }
       if (syncResult.result.skillsAdded > 0) {
-        logger.verbose(`  - ${syncResult.result.skillsAdded} skills`)
+        logger.verbose(`  - ${syncResult.result.skillsAdded} skills added`)
       }
       if (syncResult.result.subagentsAdded > 0) {
-        logger.verbose(`  - ${syncResult.result.subagentsAdded} subagents`)
+        logger.verbose(`  - ${syncResult.result.subagentsAdded} subagents added`)
+      }
+      if (syncResult.result.mcpServersUpdated > 0) {
+        logger.verbose(`  - ${syncResult.result.mcpServersUpdated} MCP servers updated`)
+      }
+      if (syncResult.result.skillsUpdated > 0) {
+        logger.verbose(`  - ${syncResult.result.skillsUpdated} skills updated`)
+      }
+      if (syncResult.result.subagentsUpdated > 0) {
+        logger.verbose(`  - ${syncResult.result.subagentsUpdated} subagents updated`)
       }
 
       // Update library and defaults

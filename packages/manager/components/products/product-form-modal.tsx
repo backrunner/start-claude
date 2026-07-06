@@ -200,7 +200,7 @@ export function ProductFormModal({
                   <>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="apiKey">{t('auth.apiKey')} *</Label>
+                        <Label htmlFor="apiKey">{t('auth.apiKey')}</Label>
                         <Input
                           id="apiKey"
                           type="password"
@@ -390,7 +390,7 @@ function validateForm(config: ExternalProductConfig, messages: {
   if (!config.name.trim()) {
     errors.name = messages.nameRequired
   }
-  if ((config.authMode || 'api-key') === 'api-key' && !config.apiKey?.trim()) {
+  if ((config.authMode || 'api-key') === 'api-key' && !config.apiKey?.trim() && !config.apiKeyEnvVar?.trim()) {
     errors.apiKey = messages.apiKeyRequired
   }
   if (config.baseUrl?.trim()) {

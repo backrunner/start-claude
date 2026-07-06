@@ -43,16 +43,25 @@ async function getSettings(): Promise<any> {
         const syncer = new ClaudeConfigSyncer()
         const syncResult = await syncer.syncClaudeConfig(library)
 
-        if (syncResult.result.totalAdded > 0) {
-          console.log(`[Settings API] Synced ${syncResult.result.totalAdded} extensions from Claude Code config:`)
+        if (syncResult.result.totalChanged > 0) {
+          console.log(`[Settings API] Synced ${syncResult.result.totalChanged} extension changes from Claude Code config:`)
           if (syncResult.result.mcpServersAdded > 0) {
-            console.log(`  - ${syncResult.result.mcpServersAdded} MCP servers`)
+            console.log(`  - ${syncResult.result.mcpServersAdded} MCP servers added`)
           }
           if (syncResult.result.skillsAdded > 0) {
-            console.log(`  - ${syncResult.result.skillsAdded} skills`)
+            console.log(`  - ${syncResult.result.skillsAdded} skills added`)
           }
           if (syncResult.result.subagentsAdded > 0) {
-            console.log(`  - ${syncResult.result.subagentsAdded} subagents`)
+            console.log(`  - ${syncResult.result.subagentsAdded} subagents added`)
+          }
+          if (syncResult.result.mcpServersUpdated > 0) {
+            console.log(`  - ${syncResult.result.mcpServersUpdated} MCP servers updated`)
+          }
+          if (syncResult.result.skillsUpdated > 0) {
+            console.log(`  - ${syncResult.result.skillsUpdated} skills updated`)
+          }
+          if (syncResult.result.subagentsUpdated > 0) {
+            console.log(`  - ${syncResult.result.subagentsUpdated} subagents updated`)
           }
 
           // Update library and defaults

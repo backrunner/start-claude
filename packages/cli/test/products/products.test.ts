@@ -262,6 +262,21 @@ describe('external products', () => {
     expect(invocation.passThroughArgs).toEqual(['exec', '--model', 'gpt-5.5'])
   })
 
+  it('expands short --model aliases in passthrough args', () => {
+    const invocation = resolveProductInvocationArgs(
+      ['--start-config', 'work', 'exec', '--model', 'gpt', '--model=opus'],
+      name => name === 'work',
+    )
+
+    expect(invocation.configName).toBe('work')
+    expect(invocation.passThroughArgs).toEqual([
+      'exec',
+      '--model',
+      'gpt-5.5',
+      '--model=claude-opus-4-8',
+    ])
+  })
+
   it('keeps backward-compatible --config selection for saved Start configs', () => {
     const invocation = resolveProductInvocationArgs(
       ['--config', 'work', 'exec'],

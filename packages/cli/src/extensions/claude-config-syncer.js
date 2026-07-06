@@ -14,7 +14,12 @@ export class ClaudeConfigSyncer {
             mcpServersAdded: 0,
             skillsAdded: 0,
             subagentsAdded: 0,
+            mcpServersUpdated: 0,
+            skillsUpdated: 0,
+            subagentsUpdated: 0,
             totalAdded: 0,
+            totalUpdated: 0,
+            totalChanged: 0,
         };
         const library = {
             mcpServers: { ...existingLibrary.mcpServers },
@@ -26,75 +31,84 @@ export class ClaudeConfigSyncer {
             skills: [],
             subagents: [],
         };
-        const mcpIds = await this.syncMcpServers(library);
-        result.mcpServersAdded = mcpIds.length;
-        defaultEnabled.mcpServers = mcpIds;
-        const skillIds = await this.syncSkills(library);
-        result.skillsAdded = skillIds.length;
-        defaultEnabled.skills = skillIds;
-        const subagentIds = await this.syncSubagents(library);
-        result.subagentsAdded = subagentIds.length;
-        defaultEnabled.subagents = subagentIds;
+        const mcpChanges = await this.syncMcpServers(library);
+        result.mcpServersAdded = mcpChanges.added.length;
+        result.mcpServersUpdated = mcpChanges.updated.length;
+        defaultEnabled.mcpServers = mcpChanges.added;
+        const skillChanges = await this.syncSkills(library);
+        result.skillsAdded = skillChanges.added.length;
+        result.skillsUpdated = skillChanges.updated.length;
+        defaultEnabled.skills = skillChanges.added;
+        const subagentChanges = await this.syncSubagents(library);
+        result.subagentsAdded = subagentChanges.added.length;
+        result.subagentsUpdated = subagentChanges.updated.length;
+        defaultEnabled.subagents = subagentChanges.added;
         result.totalAdded = result.mcpServersAdded + result.skillsAdded + result.subagentsAdded;
+        result.totalUpdated = result.mcpServersUpdated + result.skillsUpdated + result.subagentsUpdated;
+        result.totalChanged = result.totalAdded + result.totalUpdated;
         return { library, result, defaultEnabled };
     }
     async syncMcpServers(library) {
         const mcpConfigPath = path.join(this.projectRoot, '.mcp.json');
         if (!fs.existsSync(mcpConfigPath)) {
-            return [];
+            return createEmptyChanges();
         }
         try {
             const content = fs.readFileSync(mcpConfigPath, 'utf-8');
             const mcpConfig = JSON.parse(content);
             if (!mcpConfig.mcpServers || typeof mcpConfig.mcpServers !== 'object') {
-                return [];
+                return createEmptyChanges();
             }
-            const addedIds = [];
+            const changes = createEmptyChanges();
             for (const [serverName, serverConfig] of Object.entries(mcpConfig.mcpServers)) {
                 const baseId = this.generateId(serverName);
-                const id = this.getUniqueId(baseId, library.mcpServers);
-                if (library.mcpServers[id]) {
-                    continue;
-                }
                 const type = serverConfig.type === 'sse'
                     ? 'sse'
                     : serverConfig.type === 'http'
                         ? 'http'
                         : 'stdio';
-                const server = {
-                    id,
-                    name: serverName,
-                    description: `Imported from .mcp.json`,
-                    type,
-                };
-                if (type === 'stdio') {
-                    server.command = serverConfig.command || '';
-                    server.args = serverConfig.args || [];
-                    server.env = serverConfig.env || {};
+                const { id, status } = this.upsertExtension(library.mcpServers, baseId, serverName, (id, existing) => {
+                    const server = {
+                        id,
+                        name: serverName,
+                        description: existing?.description || `Imported from .mcp.json`,
+                        type,
+                        scope: existing?.scope,
+                    };
+                    if (type === 'stdio') {
+                        server.command = serverConfig.command || '';
+                        server.args = Array.isArray(serverConfig.args) ? serverConfig.args : [];
+                        server.env = isRecord(serverConfig.env) ? serverConfig.env : {};
+                    }
+                    else {
+                        server.url = serverConfig.url || '';
+                        server.headers = isRecord(serverConfig.headers) ? serverConfig.headers : {};
+                    }
+                    return server;
+                });
+                if (status === 'added') {
+                    changes.added.push(id);
                 }
-                else {
-                    server.url = serverConfig.url || '';
-                    server.headers = serverConfig.headers || {};
+                else if (status === 'updated') {
+                    changes.updated.push(id);
                 }
-                library.mcpServers[id] = server;
-                addedIds.push(id);
             }
-            return addedIds;
+            return changes;
         }
         catch (error) {
             this.ui.error(`Error syncing MCP servers: ${error instanceof Error ? error.message : String(error)}`);
-            return [];
+            return createEmptyChanges();
         }
     }
     async syncSkills(library) {
         const skillsDir = path.join(this.projectRoot, '.claude', 'skills');
         if (!fs.existsSync(skillsDir)) {
-            return [];
+            return createEmptyChanges();
         }
         try {
             const skillDirs = fs.readdirSync(skillsDir, { withFileTypes: true })
                 .filter(dirent => dirent.isDirectory());
-            const addedIds = [];
+            const changes = createEmptyChanges();
             for (const dirent of skillDirs) {
                 const skillDir = path.join(skillsDir, dirent.name);
                 const skillFile = path.join(skillDir, 'SKILL.md');
@@ -105,38 +119,38 @@ export class ClaudeConfigSyncer {
                 const { frontmatter } = this.parseFrontmatter(content);
                 const skillName = frontmatter.name || dirent.name;
                 const baseId = this.generateId(skillName);
-                const id = this.getUniqueId(baseId, library.skills);
-                if (library.skills[id]) {
-                    continue;
-                }
-                const skill = {
+                const { id, status } = this.upsertExtension(library.skills, baseId, skillName, id => ({
                     id,
                     name: skillName,
                     description: frontmatter.description || `Imported from .claude/skills/${dirent.name}`,
                     content,
                     allowedTools: frontmatter['allowed-tools']
-                        ? frontmatter['allowed-tools'].split(',').map((t) => t.trim())
+                        ? frontmatter['allowed-tools'].split(',').map((t) => t.trim()).filter(Boolean)
                         : undefined,
-                };
-                library.skills[id] = skill;
-                addedIds.push(id);
+                }));
+                if (status === 'added') {
+                    changes.added.push(id);
+                }
+                else if (status === 'updated') {
+                    changes.updated.push(id);
+                }
             }
-            return addedIds;
+            return changes;
         }
         catch (error) {
             this.ui.error(`Error syncing skills: ${error instanceof Error ? error.message : String(error)}`);
-            return [];
+            return createEmptyChanges();
         }
     }
     async syncSubagents(library) {
         const agentsDir = path.join(this.projectRoot, '.claude', 'agents');
         if (!fs.existsSync(agentsDir)) {
-            return [];
+            return createEmptyChanges();
         }
         try {
             const agentFiles = fs.readdirSync(agentsDir, { withFileTypes: true })
                 .filter(dirent => dirent.isFile() && dirent.name.endsWith('.md'));
-            const addedIds = [];
+            const changes = createEmptyChanges();
             for (const dirent of agentFiles) {
                 const agentFile = path.join(agentsDir, dirent.name);
                 const content = fs.readFileSync(agentFile, 'utf-8');
@@ -144,28 +158,28 @@ export class ClaudeConfigSyncer {
                 const agentNameFromFile = dirent.name.replace(/\.md$/, '');
                 const agentName = frontmatter.name || agentNameFromFile;
                 const baseId = this.generateId(agentName);
-                const id = this.getUniqueId(baseId, library.subagents);
-                if (library.subagents[id]) {
-                    continue;
-                }
-                const subagent = {
+                const { id, status } = this.upsertExtension(library.subagents, baseId, agentName, id => ({
                     id,
                     name: agentName,
                     description: frontmatter.description || `Imported from .claude/agents/${dirent.name}`,
                     systemPrompt: body,
                     tools: frontmatter.tools
-                        ? frontmatter.tools.split(',').map((t) => t.trim())
+                        ? frontmatter.tools.split(',').map((t) => t.trim()).filter(Boolean)
                         : undefined,
                     model: frontmatter.model,
-                };
-                library.subagents[id] = subagent;
-                addedIds.push(id);
+                }));
+                if (status === 'added') {
+                    changes.added.push(id);
+                }
+                else if (status === 'updated') {
+                    changes.updated.push(id);
+                }
             }
-            return addedIds;
+            return changes;
         }
         catch (error) {
             this.ui.error(`Error syncing subagents: ${error instanceof Error ? error.message : String(error)}`);
-            return [];
+            return createEmptyChanges();
         }
     }
     parseFrontmatter(content) {
@@ -208,4 +222,34 @@ export class ClaudeConfigSyncer {
         }
         return id;
     }
+    upsertExtension(collection, baseId, name, build) {
+        const normalizedName = name.toLowerCase();
+        const existingByName = Object.entries(collection)
+            .find(([, item]) => item.name.toLowerCase() === normalizedName)?.[0];
+        const existingById = collection[baseId]?.name.toLowerCase() === normalizedName
+            ? baseId
+            : undefined;
+        const existingId = existingByName || existingById;
+        const id = existingId || this.getUniqueId(baseId, collection);
+        const existing = collection[id];
+        const next = build(id, existing);
+        if (!existing) {
+            collection[id] = next;
+            return { id, status: 'added' };
+        }
+        if (JSON.stringify(existing) !== JSON.stringify(next)) {
+            collection[id] = next;
+            return { id, status: 'updated' };
+        }
+        return { id, status: 'unchanged' };
+    }
+}
+function createEmptyChanges() {
+    return {
+        added: [],
+        updated: [],
+    };
+}
+function isRecord(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

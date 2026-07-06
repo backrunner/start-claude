@@ -87,7 +87,7 @@
     },
     "validation": {
       "nameRequired": "Configuration name is required",
-      "apiKeyRequired": "API key is required",
+      "apiKeyRequired": "API key or API key environment variable is required",
       "baseUrlInvalid": "Invalid URL format"
     },
     "cancel": "Cancel",

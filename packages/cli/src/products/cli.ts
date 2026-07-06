@@ -5,9 +5,10 @@ import inquirer from 'inquirer'
 import { version } from '../../package.json'
 import { handleManagerCommand } from '../commands/manager'
 import { UILogger } from '../utils/cli/ui'
+import { normalizeModelArgs } from '../utils/model-aliases'
 import { ExternalProductConfigManager } from './config-manager'
-import { getProductDefinition } from './registry'
 import { resolveExternalProductConfig, startExternalProduct } from './launcher'
+import { getProductDefinition } from './registry'
 
 interface ProductProgramOptions {
   config?: string
@@ -584,7 +585,7 @@ function getPassThroughArgs(args: string[], options: { selector?: ConfigSelector
     filtered.push(arg)
   }
 
-  return filtered
+  return normalizeModelArgs(filtered)
 }
 
 function coerceConfigValue(property: keyof ExternalProductConfig, value: string): string | boolean | number {

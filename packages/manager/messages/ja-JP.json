@@ -87,7 +87,7 @@
     },
     "validation": {
       "nameRequired": "設定名は必須です",
-      "apiKeyRequired": "API キーは必須です",
+      "apiKeyRequired": "API キーまたは API キー環境変数は必須です",
       "baseUrlInvalid": "URL 形式が無効です"
     },
     "cancel": "キャンセル",

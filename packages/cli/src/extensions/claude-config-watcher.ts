@@ -158,16 +158,25 @@ export class ClaudeConfigWatcher {
 
       const syncResult = await this.syncer.syncClaudeConfig(currentLibrary)
 
-      if (syncResult.result.totalAdded > 0) {
-        this.ui.verbose(`Synced ${syncResult.result.totalAdded} new extensions:`)
+      if (syncResult.result.totalChanged > 0) {
+        this.ui.verbose(`Synced ${syncResult.result.totalChanged} extension changes:`)
         if (syncResult.result.mcpServersAdded > 0) {
-          this.ui.verbose(`  - ${syncResult.result.mcpServersAdded} MCP servers`)
+          this.ui.verbose(`  - ${syncResult.result.mcpServersAdded} MCP servers added`)
         }
         if (syncResult.result.skillsAdded > 0) {
-          this.ui.verbose(`  - ${syncResult.result.skillsAdded} skills`)
+          this.ui.verbose(`  - ${syncResult.result.skillsAdded} skills added`)
         }
         if (syncResult.result.subagentsAdded > 0) {
-          this.ui.verbose(`  - ${syncResult.result.subagentsAdded} subagents`)
+          this.ui.verbose(`  - ${syncResult.result.subagentsAdded} subagents added`)
+        }
+        if (syncResult.result.mcpServersUpdated > 0) {
+          this.ui.verbose(`  - ${syncResult.result.mcpServersUpdated} MCP servers updated`)
+        }
+        if (syncResult.result.skillsUpdated > 0) {
+          this.ui.verbose(`  - ${syncResult.result.skillsUpdated} skills updated`)
+        }
+        if (syncResult.result.subagentsUpdated > 0) {
+          this.ui.verbose(`  - ${syncResult.result.subagentsUpdated} subagents updated`)
         }
 
         // Call the sync callback if provided
