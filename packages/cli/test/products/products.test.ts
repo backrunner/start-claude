@@ -273,7 +273,7 @@ describe('external products', () => {
       'exec',
       '--model',
       'gpt-5.5',
-      '--model=claude-opus-4-8',
+      '--model=claude-opus-4-8[1m]',
     ])
   })
 

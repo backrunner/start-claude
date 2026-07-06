@@ -1,9 +1,9 @@
 const modelAliases = {
     'gpt': 'gpt-5.5',
     'openai': 'gpt-5.5',
-    'opus': 'claude-opus-4-8',
-    'sonnet': 'claude-sonnet-5',
-    'fable': 'claude-fable-5',
+    'opus': 'claude-opus-4-8[1m]',
+    'sonnet': 'claude-sonnet-5[1m]',
+    'fable': 'claude-fable-5[1m]',
     'haiku': 'claude-haiku-4-5-20251001',
     'gemini': 'gemini-3.1-pro-preview',
     'deepseek': 'deepseek-v4-pro',
