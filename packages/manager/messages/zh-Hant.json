@@ -329,9 +329,9 @@
     },
     "claudeProviderSettings": {
       "title": "Claude Code 配置檔",
-      "description": "將選中的 provider 同步到 Claude Code 原生設定檔",
-      "syncFile": "同步 provider 檔案",
-      "syncFileDescription": "啟動前將 provider 環境變數寫入 ~/.claude/settings.json。寫入失敗只提示警告，不影響本次啟動。",
+      "description": "控制是否同時將 provider 資訊儲存到 Claude Code 原生設定檔",
+      "syncFile": "將 provider 資訊寫入設定檔",
+      "syncFileDescription": "預設關閉。Provider 設定、憑據和 API 資訊僅透過啟動環境變數注入；啟用後才會同時寫入 ~/.claude/settings.json。",
       "enableToolSearch": "Tool Search",
       "enableToolSearchDescription": "啟動 Claude Code 時設定 ENABLE_TOOL_SEARCH=1。關閉後會以 ENABLE_TOOL_SEARCH=0 啟動。"
     },

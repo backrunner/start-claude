@@ -329,9 +329,9 @@
     },
     "claudeProviderSettings": {
       "title": "Claude Code 設定ファイル",
-      "description": "選択した provider を Claude Code のネイティブ設定ファイルへ同期します",
-      "syncFile": "provider ファイルを同期",
-      "syncFileDescription": "起動前に provider の環境変数を ~/.claude/settings.json に書き込みます。失敗しても警告のみ表示し、今回の起動はブロックしません。",
+      "description": "provider の値を Claude Code のネイティブ設定ファイルにも保存するかを制御します",
+      "syncFile": "provider の値を設定ファイルに書き込む",
+      "syncFileDescription": "デフォルトでは無効です。Provider 設定、認証情報、API 値は起動時の環境変数でのみ注入されます。有効にした場合のみ ~/.claude/settings.json にも書き込みます。",
       "enableToolSearch": "Tool Search",
       "enableToolSearchDescription": "Claude Code 起動時に ENABLE_TOOL_SEARCH=1 を設定します。オフにすると ENABLE_TOOL_SEARCH=0 で起動します。"
     },

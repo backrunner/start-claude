@@ -295,7 +295,7 @@ export function createDefaultSystemSettings(settings: Partial<SystemSettings> = 
   return {
     ...settings,
     overrideClaudeCommand: settings.overrideClaudeCommand ?? false,
-    syncClaudeProviderSettings: settings.syncClaudeProviderSettings !== false,
+    syncClaudeProviderSettings: settings.syncClaudeProviderSettings ?? false,
     enableToolSearch: settings.enableToolSearch ?? false,
     balanceMode: {
       ...defaultBalanceMode,

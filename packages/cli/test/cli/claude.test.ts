@@ -1,6 +1,6 @@
 import type { ClaudeConfig } from '../../src/config/types'
 import { spawn } from 'node:child_process'
-import { accessSync } from 'node:fs'
+import { accessSync, existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -54,6 +54,8 @@ vi.mock('../../src/utils/cli/ui', async (importOriginal) => {
 
 const mockSpawn = vi.mocked(spawn)
 const mockAccessSync = vi.mocked(accessSync)
+const mockExistsSync = vi.mocked(existsSync)
+const mockReadFileSync = vi.mocked(readFileSync)
 const mockInquirer = await import('inquirer')
 
 // Mock process objects
@@ -96,6 +98,7 @@ describe('claude', () => {
     })
     mockSpawn.mockReturnValue(mockClaudeProcess as any)
     mockAccessSync.mockImplementation(() => undefined) // File exists
+    mockExistsSync.mockReturnValue(false)
     providerSettingsMocks.cleanClaudeSettingsEnvConflicts.mockReset().mockReturnValue({
       settingsPath: '/home/user/.claude/settings.json',
       removedEnvKeys: [],
@@ -139,20 +142,20 @@ describe('claude', () => {
           }),
         }),
       )
-      expect(providerSettingsMocks.cleanClaudeSettingsEnvConflicts).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ANTHROPIC_BASE_URL: 'https://api.test.com',
-          ANTHROPIC_API_KEY: 'sk-test-key',
-          ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929',
-        }),
-        expect.objectContaining({ envKeys: expect.any(Set) }),
-      )
-      expect(providerSettingsMocks.cleanClaudeSettingsEnvConflicts.mock.invocationCallOrder[0])
-        .toBeLessThan(mockSpawn.mock.invocationCallOrder[0])
+      expect(providerSettingsMocks.cleanClaudeSettingsEnvConflicts).not.toHaveBeenCalled()
       expect(result).toBe(0)
     })
 
-    it('should not start Claude when conflicting settings env cannot be cleaned', async () => {
+    it('should clean conflicting settings env only when provider settings sync is enabled', async () => {
+      mockExistsSync.mockImplementation(path => String(path).endsWith('/.start-claude/config.json'))
+      mockReadFileSync.mockReturnValue(JSON.stringify({
+        version: 3,
+        configs: [],
+        settings: {
+          overrideClaudeCommand: false,
+          syncClaudeProviderSettings: true,
+        },
+      }))
       providerSettingsMocks.cleanClaudeSettingsEnvConflicts.mockImplementation(() => {
         throw new Error('backup failed')
       })

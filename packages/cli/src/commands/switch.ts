@@ -2,8 +2,8 @@ import type { ClaudeConfig } from '../config/types'
 import type { ProxyRuntimeStatus } from '../utils/network/proxy-control'
 import process from 'node:process'
 import { ConfigManager } from '../config/manager'
-import { UILogger } from '../utils/cli/ui'
 import { buildProxyClaudeProviderConfig, syncClaudeProviderSettings } from '../utils/claude/provider-settings'
+import { UILogger } from '../utils/cli/ui'
 import { getProxyStatus, sendProxySwitchRequest } from '../utils/network/proxy-control'
 
 interface SwitchCommandOptions {
@@ -37,6 +37,12 @@ export async function handleSwitchCommand(
 
   try {
     await switchRunningTransformerProxy(config, proxyStatus, proxyPort, ui)
+
+    const settings = await configManager.getSettings()
+    if (settings.syncClaudeProviderSettings !== true) {
+      ui.info('Claude Code provider settings file was not updated because sync is disabled in system settings')
+      return
+    }
 
     const providerConfig = shouldUseProxyProviderConfig(config, proxyStatus)
       ? buildProxyClaudeProviderConfig(config, { port: proxyPort })

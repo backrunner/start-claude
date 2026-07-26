@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(),
+  getSettings: vi.fn(),
   syncClaudeProviderSettings: vi.fn(),
   buildProxyClaudeProviderConfig: vi.fn((config: ClaudeConfig, options: { port?: number, authToken?: string } = {}) => ({
     ...config,
@@ -28,6 +29,7 @@ vi.mock('../../src/config/manager', () => ({
   ConfigManager: {
     getInstance: () => ({
       getConfig: mocks.getConfig,
+      getSettings: mocks.getSettings,
     }),
   },
 }))
@@ -63,6 +65,10 @@ describe('switch command', () => {
 
   beforeEach(() => {
     mocks.getConfig.mockReset()
+    mocks.getSettings.mockReset().mockResolvedValue({
+      overrideClaudeCommand: false,
+      syncClaudeProviderSettings: true,
+    })
     mocks.syncClaudeProviderSettings.mockReset()
     mocks.buildProxyClaudeProviderConfig.mockClear()
     mocks.getProxyStatus.mockReset()
@@ -84,7 +90,7 @@ describe('switch command', () => {
     exitSpy.mockRestore()
   })
 
-  it('writes Claude Code provider settings for the selected config', async () => {
+  it('writes Claude Code provider settings for the selected config when enabled', async () => {
     const config: ClaudeConfig = {
       name: 'prod',
       baseUrl: 'https://api.example.com',
@@ -105,6 +111,26 @@ describe('switch command', () => {
     expect(mocks.sendProxySwitchRequest).not.toHaveBeenCalled()
     expect(mocks.success).toHaveBeenCalledWith('Claude Code provider settings switched to "prod"')
     expect(mocks.info).toHaveBeenCalledWith('Updated: /home/user/.claude/settings.json')
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not write Claude Code provider settings when disabled', async () => {
+    const config: ClaudeConfig = {
+      name: 'prod',
+      baseUrl: 'https://api.example.com',
+      authToken: 'sk-prod',
+    }
+    mocks.getConfig.mockResolvedValue(config)
+    mocks.getSettings.mockResolvedValue({
+      overrideClaudeCommand: false,
+      syncClaudeProviderSettings: false,
+    })
+
+    const { handleSwitchCommand } = await import('../../src/commands/switch')
+    await handleSwitchCommand('prod')
+
+    expect(mocks.syncClaudeProviderSettings).not.toHaveBeenCalled()
+    expect(mocks.info).toHaveBeenCalledWith('Claude Code provider settings file was not updated because sync is disabled in system settings')
     expect(exitSpy).not.toHaveBeenCalled()
   })
 

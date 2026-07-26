@@ -9,11 +9,11 @@ import { ClaudeConfigSyncer } from '../extensions/claude-config-syncer'
 import { ClaudeConfigWatcher } from '../extensions/claude-config-watcher'
 import { ExtensionsWriter } from '../extensions/writer'
 import { detectAvailableInstallMethods, findClaudeExecutable } from '../utils/cli/install-methods'
-import { UILogger } from '../utils/cli/ui'
 import {
   cleanClaudeSettingsEnvConflicts,
   MANAGED_CLAUDE_PROVIDER_ENV_KEYS,
 } from '../utils/claude/provider-settings'
+import { UILogger } from '../utils/cli/ui'
 import { CacheManager } from '../utils/config/cache-manager'
 
 // Global watcher instance to clean up on exit
@@ -48,21 +48,23 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
     applyCliOverrides(env, cliOverrides)
   }
 
-  try {
-    const cleanupResult = cleanClaudeSettingsEnvConflicts(env, {
-      envKeys: getClaudeSettingsControlledEnvKeys(config, cliOverrides),
-    })
+  if (systemSettings?.syncClaudeProviderSettings === true) {
+    try {
+      const cleanupResult = cleanClaudeSettingsEnvConflicts(env, {
+        envKeys: getClaudeSettingsControlledEnvKeys(config, cliOverrides),
+      })
 
-    if (cleanupResult.backupPath) {
-      const ui = new UILogger()
-      ui.warning(`Conflicting Claude Code settings env backed up to: ${cleanupResult.backupPath}`)
-      ui.info(`Removed conflicting env keys from ${cleanupResult.settingsPath}: ${cleanupResult.removedEnvKeys.join(', ')}`)
+      if (cleanupResult.backupPath) {
+        const ui = new UILogger()
+        ui.warning(`Conflicting Claude Code settings env backed up to: ${cleanupResult.backupPath}`)
+        ui.info(`Removed conflicting env keys from ${cleanupResult.settingsPath}: ${cleanupResult.removedEnvKeys.join(', ')}`)
+      }
     }
-  }
-  catch (error) {
-    const ui = new UILogger()
-    ui.error(`Failed to clean conflicting Claude Code settings env; Claude Code was not started: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    return 1
+    catch (error) {
+      const ui = new UILogger()
+      ui.error(`Failed to clean conflicting Claude Code settings env; Claude Code was not started: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      return 1
+    }
   }
 
   // Check if claude command is available (with cache-first strategy)

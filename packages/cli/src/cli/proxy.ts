@@ -5,9 +5,9 @@ import process from 'node:process'
 import { SpeedTestStrategy } from '../config/types'
 import { ProxyServer } from '../core/proxy'
 import { TransformerService } from '../services/transformer'
-import { UILogger } from '../utils/cli/ui'
-import { filterProxyArgs } from '../utils/cli/proxy-args'
 import { buildProxyClaudeProviderConfig, syncClaudeProviderSettings } from '../utils/claude/provider-settings'
+import { filterProxyArgs } from '../utils/cli/proxy-args'
+import { UILogger } from '../utils/cli/ui'
 import { hasConfigApiCredentials } from '../utils/config/credentials'
 import { fileLogger } from '../utils/logging/file-logger'
 import { checkAndHandleExistingProxy, removeLockFile, setupProxyCleanup } from '../utils/network/proxy-lock'
@@ -279,7 +279,7 @@ async function handleClaudeProviderSettingsSync(
 
   const ui = new UILogger(options.verbose || isDebugEnabled(options))
 
-  if (systemSettings?.syncClaudeProviderSettings === false) {
+  if (systemSettings?.syncClaudeProviderSettings !== true) {
     ui.verbose('Claude Code provider settings sync disabled')
     return
   }

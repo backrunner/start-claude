@@ -86,7 +86,7 @@ describe('configManager', () => {
         configs: [],
         settings: expect.objectContaining({
           overrideClaudeCommand: false,
-          syncClaudeProviderSettings: true,
+          syncClaudeProviderSettings: false,
           enableToolSearch: false,
         }),
       })
@@ -98,7 +98,10 @@ describe('configManager', () => {
         configs: [
           { name: 'test', baseUrl: 'https://api.test.com', isDefault: true, enabled: true },
         ],
-        settings: { overrideClaudeCommand: true },
+        settings: {
+          overrideClaudeCommand: true,
+          syncClaudeProviderSettings: true,
+        },
       }
 
       mockFs.existsSync.mockReturnValue(true)
@@ -128,7 +131,7 @@ describe('configManager', () => {
         configs: [],
         settings: expect.objectContaining({
           overrideClaudeCommand: false,
-          syncClaudeProviderSettings: true,
+          syncClaudeProviderSettings: false,
           enableToolSearch: false,
         }),
       })
@@ -178,7 +181,7 @@ describe('configManager', () => {
       expect(config.configs).toEqual([])
       expect(config.settings).toEqual(expect.objectContaining({
         overrideClaudeCommand: false,
-        syncClaudeProviderSettings: true,
+        syncClaudeProviderSettings: false,
         enableToolSearch: false,
       }))
     })
@@ -478,7 +481,7 @@ describe('configManager', () => {
 
       expect(result).toEqual(expect.objectContaining({
         ...settings,
-        syncClaudeProviderSettings: true,
+        syncClaudeProviderSettings: false,
         enableToolSearch: false,
       }))
     })
@@ -538,7 +541,7 @@ describe('configManager', () => {
       expect(result.configs[0]).toMatchObject({ name: 'test', isDefault: true, enabled: true })
       expect(result.settings).toEqual(expect.objectContaining({
         ...mockConfigData.settings,
-        syncClaudeProviderSettings: true,
+        syncClaudeProviderSettings: false,
         enableToolSearch: false,
       }))
     })

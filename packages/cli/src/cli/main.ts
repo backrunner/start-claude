@@ -13,8 +13,8 @@ import {
   checkClaudeInstallation,
   promptClaudeInstallation,
 } from '../utils/cli/detection'
-import { UILogger } from '../utils/cli/ui'
 import { syncClaudeProviderSettings } from '../utils/claude/provider-settings'
+import { UILogger } from '../utils/cli/ui'
 import { hasConfigApiCredentials } from '../utils/config/credentials'
 import { checkForUpdates, handleBackgroundUpgradeResult, isBackgroundUpgradeProcess, performBackgroundUpgrade, runBackgroundUpgradeWorker } from '../utils/config/update-checker'
 import { McpSyncManager } from '../utils/mcp/sync-manager'
@@ -99,7 +99,7 @@ async function handleClaudeProviderSettingsSync(
 
   try {
     const settings = await configManager.getSettings()
-    if (settings.syncClaudeProviderSettings === false) {
+    if (settings.syncClaudeProviderSettings !== true) {
       ui.verbose('Claude Code provider settings sync disabled')
       return
     }

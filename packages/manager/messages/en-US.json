@@ -329,9 +329,9 @@
     },
     "claudeProviderSettings": {
       "title": "Claude Code Provider File",
-      "description": "Sync the selected provider into Claude Code's native settings file",
-      "syncFile": "Sync provider file",
-      "syncFileDescription": "Write provider env values to ~/.claude/settings.json before launch. Failures only show a warning and do not block startup.",
+      "description": "Control whether provider values are also saved in Claude Code's native settings file",
+      "syncFile": "Write provider values to settings file",
+      "syncFileDescription": "Disabled by default. Provider settings, credentials, and API values are injected through the launch environment only. Enable this to also write them to ~/.claude/settings.json.",
       "enableToolSearch": "Tool Search",
       "enableToolSearchDescription": "Set ENABLE_TOOL_SEARCH=1 when starting Claude Code. Turn it off to launch with ENABLE_TOOL_SEARCH=0."
     },

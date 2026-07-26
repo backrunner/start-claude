@@ -2,8 +2,8 @@
 
 import type { ReactNode } from 'react'
 import type { SystemSettings } from '@/config/types'
-import { useTranslations } from 'next-intl'
 import { Activity, AlertCircle, Cloud, CloudOff, Database, FileJson, FolderSync, Globe, HardDrive, Key, Lock, RefreshCw, Search, Settings2, Timer, Zap } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,7 +59,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
   const t = useTranslations('settings')
   const [settings, setSettings] = useState<SystemSettings>({
     overrideClaudeCommand: initialSettings?.overrideClaudeCommand || false,
-    syncClaudeProviderSettings: initialSettings?.syncClaudeProviderSettings !== false,
+    syncClaudeProviderSettings: initialSettings?.syncClaudeProviderSettings ?? false,
     enableToolSearch: initialSettings?.enableToolSearch ?? false,
     balanceMode: {
       enableByDefault: initialSettings?.balanceMode?.enableByDefault || false,
@@ -669,7 +669,7 @@ export function SystemSettingsModal({ open, onClose, initialSettings, onSave, on
                   </div>
                   <Switch
                     id="syncClaudeProviderSettings"
-                    checked={settings.syncClaudeProviderSettings !== false}
+                    checked={settings.syncClaudeProviderSettings === true}
                     onCheckedChange={checked => setSettings(prev => ({
                       ...prev,
                       syncClaudeProviderSettings: checked,

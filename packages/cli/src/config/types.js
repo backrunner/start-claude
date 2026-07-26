@@ -51,7 +51,7 @@ export function createDefaultSystemSettings(settings = {}) {
     return {
         ...settings,
         overrideClaudeCommand: settings.overrideClaudeCommand ?? false,
-        syncClaudeProviderSettings: settings.syncClaudeProviderSettings !== false,
+        syncClaudeProviderSettings: settings.syncClaudeProviderSettings ?? false,
         enableToolSearch: settings.enableToolSearch ?? false,
         balanceMode: {
             ...defaultBalanceMode,

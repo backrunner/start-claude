@@ -216,7 +216,7 @@ export const syncConfigSchema = z.object({
 // System settings schema
 export const systemSettingsSchema = z.object({
   overrideClaudeCommand: z.boolean().default(false),
-  syncClaudeProviderSettings: z.boolean().default(true),
+  syncClaudeProviderSettings: z.boolean().default(false),
   enableToolSearch: z.boolean().default(false),
   balanceMode: balanceModeSchema.optional(),
   sync: syncConfigSchema,
