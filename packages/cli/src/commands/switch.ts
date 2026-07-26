@@ -44,6 +44,9 @@ export async function handleSwitchCommand(
 
     const result = await syncClaudeProviderSettings(providerConfig)
     ui.success(`Claude Code provider settings switched to "${config.name}"`)
+    if (result.backupPath) {
+      ui.info(`Backup: ${result.backupPath}`)
+    }
     ui.info(`Updated: ${result.settingsPath}`)
   }
   catch (error) {

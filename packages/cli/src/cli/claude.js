@@ -7,6 +7,7 @@ import { ClaudeConfigWatcher } from '../extensions/claude-config-watcher';
 import { ExtensionsWriter } from '../extensions/writer';
 import { detectAvailableInstallMethods, findClaudeExecutable } from '../utils/cli/install-methods';
 import { UILogger } from '../utils/cli/ui';
+import { cleanClaudeSettingsEnvConflicts, MANAGED_CLAUDE_PROVIDER_ENV_KEYS } from '../utils/claude/provider-settings';
 import { CacheManager } from '../utils/config/cache-manager';
 let configWatcher = null;
 export async function startClaude(config, args = [], cliOverrides) {
@@ -28,6 +29,21 @@ export async function startClaude(config, args = [], cliOverrides) {
     applySystemSettingsEnv(env, systemSettings);
     if (cliOverrides) {
         applyCliOverrides(env, cliOverrides);
+    }
+    try {
+        const cleanupResult = cleanClaudeSettingsEnvConflicts(env, {
+            envKeys: getClaudeSettingsControlledEnvKeys(config, cliOverrides),
+        });
+        if (cleanupResult.backupPath) {
+            const ui = new UILogger();
+            ui.warning(`Conflicting Claude Code settings env backed up to: ${cleanupResult.backupPath}`);
+            ui.info(`Removed conflicting env keys from ${cleanupResult.settingsPath}: ${cleanupResult.removedEnvKeys.join(', ')}`);
+        }
+    }
+    catch (error) {
+        const ui = new UILogger();
+        ui.error(`Failed to clean conflicting Claude Code settings env; Claude Code was not started: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        return 1;
     }
     const claudeResult = findClaudeExecutable(env);
     if (!claudeResult) {
@@ -328,6 +344,40 @@ function applyCliOverrides(env, overrides) {
     if (overrides.model) {
         env.ANTHROPIC_MODEL = overrides.model;
     }
+}
+function getClaudeSettingsControlledEnvKeys(config, overrides) {
+    const envKeys = new Set([
+        'CLAUDE_CODE_ATTRIBUTION_HEADER',
+        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+        'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
+        'ENABLE_TOOL_SEARCH',
+    ]);
+    if (config) {
+        MANAGED_CLAUDE_PROVIDER_ENV_KEYS.forEach(key => envKeys.add(key));
+        Object.keys(config.env ?? {}).forEach(key => envKeys.add(key));
+    }
+    overrides?.env?.forEach((envVar) => {
+        const separatorIndex = envVar.indexOf('=');
+        if (separatorIndex > 0) {
+            envKeys.add(envVar.slice(0, separatorIndex));
+        }
+    });
+    if (overrides?.proxy) {
+        envKeys.add('HTTPS_PROXY');
+    }
+    if (overrides?.authToken) {
+        envKeys.add('ANTHROPIC_AUTH_TOKEN');
+    }
+    if (overrides?.apiKey) {
+        envKeys.add('ANTHROPIC_API_KEY');
+    }
+    if (overrides?.baseUrl) {
+        envKeys.add('ANTHROPIC_BASE_URL');
+    }
+    if (overrides?.model) {
+        envKeys.add('ANTHROPIC_MODEL');
+    }
+    return envKeys;
 }
 async function writeExtensionsConfig(config, isProxyMode = false, ui) {
     try {

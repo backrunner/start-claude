@@ -192,6 +192,9 @@ async function handleClaudeProviderSettingsSync(config, systemSettings, options 
     }
     try {
         const result = await syncClaudeProviderSettings(config);
+        if (result.backupPath) {
+            ui.warning(`Conflicting Claude Code settings env backed up to: ${result.backupPath}`);
+        }
         ui.verbose(`Claude Code provider settings synced: ${result.settingsPath}`);
     }
     catch (error) {

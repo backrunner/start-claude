@@ -42,11 +42,13 @@ const transformerTranslationKeys: Record<string, string> = {
 }
 
 const modelPresets: ModelPreset[] = [
-  { key: 'claudeFable5', model: 'claude-fable-5[1m]', color: 'purple' },
-  { key: 'claudeOpus48', model: 'claude-opus-4-8[1m]', color: 'purple' },
-  { key: 'claudeSonnet5', model: 'claude-sonnet-5[1m]', color: 'purple' },
+  { key: 'claudeFable5', model: 'claude-fable-5', color: 'purple' },
+  { key: 'claudeOpus5', model: 'claude-opus-5', color: 'purple' },
+  { key: 'claudeSonnet5', model: 'claude-sonnet-5', color: 'purple' },
   { key: 'claudeHaiku45', model: 'claude-haiku-4-5-20251001', color: 'purple' },
-  { key: 'gpt55', model: 'gpt-5.5', color: 'green' },
+  { key: 'gpt56Sol', model: 'gpt-5.6-sol', color: 'green' },
+  { key: 'gpt56Terra', model: 'gpt-5.6-terra', color: 'green' },
+  { key: 'gpt56Luna', model: 'gpt-5.6-luna', color: 'green' },
   { key: 'gemini31Pro', model: 'gemini-3.1-pro-preview', color: 'blue' },
   { key: 'deepseekV4Pro', model: 'deepseek-v4-pro', color: 'teal' },
   { key: 'deepseekV4Flash', model: 'deepseek-v4-flash', color: 'teal' },

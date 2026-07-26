@@ -1,6 +1,6 @@
 import type { ClaudeConfig } from '../../config/types'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import process from 'node:process'
@@ -8,11 +8,24 @@ import process from 'node:process'
 export interface ClaudeProviderSettingsSyncResult {
   settingsPath: string
   env: Record<string, string>
+  backupPath?: string
+  removedEnvKeys: string[]
 }
 
 interface ClaudeProviderSettingsSyncOptions {
   settingsPath?: string
   statePath?: string
+}
+
+interface ClaudeSettingsEnvCleanupOptions {
+  settingsPath?: string
+  envKeys: Iterable<string>
+}
+
+export interface ClaudeSettingsEnvCleanupResult {
+  settingsPath: string
+  backupPath?: string
+  removedEnvKeys: string[]
 }
 
 interface ClaudeCodeSettings {
@@ -287,7 +300,18 @@ export async function syncClaudeProviderSettings(
   const state = loadClaudeProviderSettingsState(statePath)
   const stateSettingsKey = resolve(settingsPath)
   const providerEnv = buildClaudeProviderEnv(config)
+  const hasInvalidEnv = settings.env !== undefined && !isRecord(settings.env)
   const currentEnv = isRecord(settings.env) ? { ...settings.env } : {}
+  const removedEnvKeys = findConflictingEnvKeys(
+    currentEnv,
+    providerEnv,
+    MANAGED_CLAUDE_PROVIDER_ENV_KEYS,
+  )
+  const backupPath = existsSync(settingsPath) && (hasInvalidEnv || removedEnvKeys.length > 0)
+    ? backupClaudeCodeSettings(settingsPath)
+    : undefined
+
+  removedEnvKeys.forEach(key => delete currentEnv[key])
 
   state.settings[stateSettingsKey]?.envKeys.forEach((key) => {
     if (!(key in providerEnv)) {
@@ -306,7 +330,73 @@ export async function syncClaudeProviderSettings(
   return {
     settingsPath,
     env: providerEnv,
+    backupPath,
+    removedEnvKeys,
   }
+}
+
+export function cleanClaudeSettingsEnvConflicts(
+  startupEnv: NodeJS.ProcessEnv,
+  options: ClaudeSettingsEnvCleanupOptions,
+): ClaudeSettingsEnvCleanupResult {
+  const settingsPath = options.settingsPath || getClaudeCodeSettingsPath(
+    homedir(),
+    startupEnv.CLAUDE_CONFIG_DIR,
+  )
+
+  if (!existsSync(settingsPath)) {
+    return { settingsPath, removedEnvKeys: [] }
+  }
+
+  const settings = loadClaudeCodeSettings(settingsPath)
+  if (settings.env === undefined) {
+    return { settingsPath, removedEnvKeys: [] }
+  }
+  if (!isRecord(settings.env)) {
+    throw new Error(`Claude Code settings env must be a JSON object: ${settingsPath}`)
+  }
+
+  const currentEnv = { ...settings.env }
+  const removedEnvKeys = findConflictingEnvKeys(currentEnv, startupEnv, options.envKeys)
+  if (removedEnvKeys.length === 0) {
+    return { settingsPath, removedEnvKeys }
+  }
+
+  const backupPath = backupClaudeCodeSettings(settingsPath)
+  removedEnvKeys.forEach(key => delete currentEnv[key])
+
+  if (Object.keys(currentEnv).length > 0) {
+    settings.env = currentEnv
+  }
+  else {
+    delete settings.env
+  }
+
+  writeClaudeCodeSettings(settingsPath, settings)
+
+  return {
+    settingsPath,
+    backupPath,
+    removedEnvKeys,
+  }
+}
+
+function findConflictingEnvKeys(
+  currentEnv: Record<string, unknown>,
+  expectedEnv: Readonly<Record<string, string | undefined>>,
+  controlledEnvKeys: Iterable<string>,
+): string[] {
+  const controlledKeys = new Set(controlledEnvKeys)
+
+  return Object.keys(currentEnv)
+    .filter(key => controlledKeys.has(key) && currentEnv[key] !== expectedEnv[key])
+    .sort()
+}
+
+function backupClaudeCodeSettings(settingsPath: string): string {
+  const backupPath = `${settingsPath}.backup.${Date.now()}.${randomUUID()}`
+  copyFileSync(settingsPath, backupPath)
+  return backupPath
 }
 
 function loadClaudeCodeSettings(settingsPath: string): ClaudeCodeSettings {

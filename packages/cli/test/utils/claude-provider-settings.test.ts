@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildClaudeProviderEnv,
   buildProxyClaudeProviderConfig,
+  cleanClaudeSettingsEnvConflicts,
   getClaudeCodeSettingsPath,
   syncClaudeProviderSettings,
 } from '../../src/utils/claude/provider-settings'
@@ -140,9 +141,27 @@ describe('claude provider settings sync', () => {
       },
     })
 
-    await syncClaudeProviderSettings(config, {
+    const result = await syncClaudeProviderSettings(config, {
       settingsPath,
       statePath: createTempStatePath(settingsPath),
+    })
+
+    expect(result.removedEnvKeys).toEqual([
+      'ANTHROPIC_AUTH_TOKEN',
+      'ANTHROPIC_BASE_URL',
+      'ANTHROPIC_DEFAULT_SONNET_MODEL',
+    ])
+    expect(result.backupPath).toBeDefined()
+    expect(readJson(result.backupPath!)).toEqual({
+      hooks: { Stop: [] },
+      statusLine: { type: 'command', command: 'statusline' },
+      permissions: { allow: ['Bash'] },
+      env: {
+        ANTHROPIC_BASE_URL: 'https://old.example.com',
+        ANTHROPIC_AUTH_TOKEN: 'sk-old',
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'old-model',
+        PATH: '/usr/bin',
+      },
     })
 
     expect(readJson(settingsPath)).toEqual({
@@ -152,7 +171,6 @@ describe('claude provider settings sync', () => {
       env: {
         ANTHROPIC_BASE_URL: 'https://api.prod.example.com',
         ANTHROPIC_AUTH_TOKEN: 'sk-prod',
-        ANTHROPIC_DEFAULT_SONNET_MODEL: 'old-model',
         CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
         CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
@@ -223,6 +241,45 @@ describe('claude provider settings sync', () => {
             'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
           ],
         },
+      },
+    })
+  })
+
+  it('backs up and removes launch env conflicts while preserving matching and unrelated values', () => {
+    const settingsPath = createTempSettingsPath()
+
+    writeSettings(settingsPath, {
+      permissions: { allow: ['Bash'] },
+      env: {
+        ANTHROPIC_BASE_URL: 'https://old.example.com',
+        ANTHROPIC_MODEL: 'claude-sonnet-5',
+        PATH: '/usr/bin',
+      },
+    })
+
+    const result = cleanClaudeSettingsEnvConflicts({
+      ANTHROPIC_BASE_URL: 'https://current.example.com',
+      ANTHROPIC_MODEL: 'claude-sonnet-5',
+    }, {
+      settingsPath,
+      envKeys: ['ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL'],
+    })
+
+    expect(result.removedEnvKeys).toEqual(['ANTHROPIC_BASE_URL'])
+    expect(result.backupPath).toBeDefined()
+    expect(readJson(result.backupPath!)).toEqual({
+      permissions: { allow: ['Bash'] },
+      env: {
+        ANTHROPIC_BASE_URL: 'https://old.example.com',
+        ANTHROPIC_MODEL: 'claude-sonnet-5',
+        PATH: '/usr/bin',
+      },
+    })
+    expect(readJson(settingsPath)).toEqual({
+      permissions: { allow: ['Bash'] },
+      env: {
+        ANTHROPIC_MODEL: 'claude-sonnet-5',
+        PATH: '/usr/bin',
       },
     })
   })
@@ -311,7 +368,7 @@ describe('claude provider settings sync', () => {
       },
     })
 
-    await syncClaudeProviderSettings({
+    const result = await syncClaudeProviderSettings({
       name: 'official',
       profileType: 'official',
       model: 'claude-sonnet-4-5-20250929',
@@ -322,9 +379,6 @@ describe('claude provider settings sync', () => {
 
     expect(readJson(settingsPath)).toEqual({
       env: {
-        ANTHROPIC_API_KEY: 'sk-old',
-        ANTHROPIC_AUTH_TOKEN: 'sk-old-auth',
-        ANTHROPIC_BASE_URL: 'https://old.example.com',
         ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929',
         CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
@@ -332,6 +386,13 @@ describe('claude provider settings sync', () => {
         PATH: '/usr/bin',
       },
     })
+    expect(result.removedEnvKeys).toEqual([
+      'ANTHROPIC_API_KEY',
+      'ANTHROPIC_AUTH_TOKEN',
+      'ANTHROPIC_BASE_URL',
+      'ANTHROPIC_MODEL',
+    ])
+    expect(result.backupPath).toBeDefined()
   })
 
   it('rejects invalid existing JSON without overwriting it', async () => {

@@ -5,6 +5,10 @@ import path from 'node:path'
 import process from 'node:process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const providerSettingsMocks = vi.hoisted(() => ({
+  cleanClaudeSettingsEnvConflicts: vi.fn(),
+}))
+
 // Mock the dependencies
 vi.mock('node:child_process')
 vi.mock('node:fs')
@@ -21,6 +25,13 @@ vi.mock('inquirer', () => ({
     prompt: vi.fn(),
   },
 }))
+vi.mock('../../src/utils/claude/provider-settings', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/claude/provider-settings')>()
+  return {
+    ...actual,
+    cleanClaudeSettingsEnvConflicts: providerSettingsMocks.cleanClaudeSettingsEnvConflicts,
+  }
+})
 vi.mock('../../src/utils/cli/ui', async (importOriginal) => {
   const actual = await importOriginal() as any
   return {
@@ -85,6 +96,10 @@ describe('claude', () => {
     })
     mockSpawn.mockReturnValue(mockClaudeProcess as any)
     mockAccessSync.mockImplementation(() => undefined) // File exists
+    providerSettingsMocks.cleanClaudeSettingsEnvConflicts.mockReset().mockReturnValue({
+      settingsPath: '/home/user/.claude/settings.json',
+      removedEnvKeys: [],
+    })
 
     const claudeModule = await import('../../src/cli/claude')
     startClaude = claudeModule.startClaude
@@ -124,7 +139,28 @@ describe('claude', () => {
           }),
         }),
       )
+      expect(providerSettingsMocks.cleanClaudeSettingsEnvConflicts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ANTHROPIC_BASE_URL: 'https://api.test.com',
+          ANTHROPIC_API_KEY: 'sk-test-key',
+          ANTHROPIC_MODEL: 'claude-sonnet-4-5-20250929',
+        }),
+        expect.objectContaining({ envKeys: expect.any(Set) }),
+      )
+      expect(providerSettingsMocks.cleanClaudeSettingsEnvConflicts.mock.invocationCallOrder[0])
+        .toBeLessThan(mockSpawn.mock.invocationCallOrder[0])
       expect(result).toBe(0)
+    })
+
+    it('should not start Claude when conflicting settings env cannot be cleaned', async () => {
+      providerSettingsMocks.cleanClaudeSettingsEnvConflicts.mockImplementation(() => {
+        throw new Error('backup failed')
+      })
+
+      const result = await startClaude(mockConfig)
+
+      expect(result).toBe(1)
+      expect(mockSpawn).not.toHaveBeenCalled()
     })
 
     it('should start Claude Code directly when no config is provided', async () => {

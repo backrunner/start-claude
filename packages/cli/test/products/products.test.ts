@@ -272,8 +272,8 @@ describe('external products', () => {
     expect(invocation.passThroughArgs).toEqual([
       'exec',
       '--model',
-      'gpt-5.5',
-      '--model=claude-opus-4-8[1m]',
+      'gpt-5.6-sol',
+      '--model=claude-opus-5',
     ])
   })
 

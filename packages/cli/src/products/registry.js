@@ -10,7 +10,7 @@ const productDefinitions = {
         packageName: '@openai/codex',
         docsUrl: 'https://developers.openai.com/codex',
         managerPath: '/codex',
-        defaultModel: 'gpt-5.5',
+        defaultModel: 'gpt-5.6-sol',
         defaultApiKeyEnvVar: 'OPENAI_API_KEY',
         supportsBaseUrl: true,
         supportsSandbox: true,
