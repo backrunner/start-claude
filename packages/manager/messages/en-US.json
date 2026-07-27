@@ -180,6 +180,7 @@
       "model": "Model",
       "modelPlaceholder": "claude-sonnet-5",
       "modelHelpText": "Leave empty to use the default model for this configuration",
+      "oneMillionContext": "Enable the [1m] context suffix",
       "smallModel": "Small Fast Model",
       "smallModelPlaceholder": "claude-fable-5",
       "smallModelHelpText": "Model used for quick non-essential tasks (ANTHROPIC_SMALL_FAST_MODEL)",

@@ -180,6 +180,7 @@
       "model": "模型",
       "modelPlaceholder": "claude-sonnet-5",
       "modelHelpText": "留空則使用預設模型",
+      "oneMillionContext": "啟用 [1m] 上下文後綴",
       "smallModel": "輕量快速模型",
       "smallModelPlaceholder": "claude-fable-5",
       "smallModelHelpText": "用於處理簡單任務的輕量模型（ANTHROPIC_SMALL_FAST_MODEL）",

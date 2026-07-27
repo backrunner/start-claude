@@ -180,6 +180,7 @@
       "model": "モデル",
       "modelPlaceholder": "claude-sonnet-5",
       "modelHelpText": "この設定のデフォルトモデルを使用する場合は空白のままにします",
+      "oneMillionContext": "[1m] コンテキスト接尾辞を有効にする",
       "smallModel": "小型高速モデル",
       "smallModelPlaceholder": "claude-fable-5",
       "smallModelHelpText": "必須でない迅速なタスクに使用するモデル（ANTHROPIC_SMALL_FAST_MODEL）",

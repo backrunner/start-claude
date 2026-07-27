@@ -102,6 +102,28 @@ const permissionModeValues: Array<NonNullable<ClaudeConfig['permissionMode']>> =
   'bypassPermissions',
 ]
 const defaultPermissionMode: NonNullable<ClaudeConfig['permissionMode']> = 'default'
+const oneMillionContextSuffix = '[1m]'
+const oneMillionContextSuffixPattern = /(?:\[1m\])+\s*$/i
+const claudeModelPattern = /(?:^|[/.:])claude(?:[-_.]|$)|^(?:fable|haiku|opus|sonnet)(?:[-_.]|$)/i
+
+function hasOneMillionContextSuffix(value: string | undefined): boolean {
+  return oneMillionContextSuffixPattern.test(value ?? '')
+}
+
+function removeOneMillionContextSuffix(value: string): string {
+  return value.replace(oneMillionContextSuffixPattern, '')
+}
+
+function isClaudeModel(value: string): boolean {
+  return claudeModelPattern.test(removeOneMillionContextSuffix(value).trim())
+}
+
+function getModelValue(value: string, oneMillionContextEnabled: boolean): string {
+  const model = removeOneMillionContextSuffix(value)
+  return oneMillionContextEnabled && model
+    ? `${model}${oneMillionContextSuffix}`
+    : model
+}
 
 function isPermissionMode(value: string): value is NonNullable<ClaudeConfig['permissionMode']> {
   return permissionModeValues.includes(value as NonNullable<ClaudeConfig['permissionMode']>)
@@ -177,6 +199,9 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [transformers, setTransformers] = useState<TransformerOption[]>(fallbackTransformers)
   const [loadingTransformers, setLoadingTransformers] = useState(false)
+  const [oneMillionContextEnabled, setOneMillionContextEnabled] = useState(
+    config?.model ? hasOneMillionContextSuffix(config.model) : true,
+  )
   const [lastNonBypassPermissionMode, setLastNonBypassPermissionMode] = useState<NonNullable<ClaudeConfig['permissionMode']>>(
     config?.permissionMode && config.permissionMode !== 'bypassPermissions'
       ? config.permissionMode
@@ -217,6 +242,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
           ? configWithDefaults.permissionMode
           : defaultPermissionMode,
       )
+      setOneMillionContextEnabled(hasOneMillionContextSuffix(configWithDefaults.model))
       setFormData(configWithDefaults)
       // Call onFormDataChange with initial data
       if (onFormDataChange) {
@@ -224,25 +250,28 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         onFormDataChange(configWithDefaults, isValid)
       }
     }
-    else if (onFormDataChange) {
-      // Call with default form data
-      const defaultData = {
-        name: '',
-        profileType: 'default' as const,
-        baseUrl: '',
-        authToken: '', // Primary API Key (ANTHROPIC_AUTH_TOKEN)
-        apiKey: '', // Legacy API Key (ANTHROPIC_API_KEY)
-        model: '',
-        permissionMode: defaultPermissionMode,
-        transformerEnabled: false,
-        transformer: 'auto',
-        isDefault: false,
-        enabled: true,
-        claudeCodeDisableNonessentialTraffic: true,
-        claudeCodeDisableExperimentalBetas: true,
+    else {
+      setOneMillionContextEnabled(true)
+      if (onFormDataChange) {
+        // Call with default form data
+        const defaultData = {
+          name: '',
+          profileType: 'default' as const,
+          baseUrl: '',
+          authToken: '', // Primary API Key (ANTHROPIC_AUTH_TOKEN)
+          apiKey: '', // Legacy API Key (ANTHROPIC_API_KEY)
+          model: '',
+          permissionMode: defaultPermissionMode,
+          transformerEnabled: false,
+          transformer: 'auto',
+          isDefault: false,
+          enabled: true,
+          claudeCodeDisableNonessentialTraffic: true,
+          claudeCodeDisableExperimentalBetas: true,
+        }
+        const isValid = isValidConfigFormData(defaultData)
+        onFormDataChange(defaultData, isValid)
       }
-      const isValid = isValidConfigFormData(defaultData)
-      onFormDataChange(defaultData, isValid)
     }
   }, [config, onFormDataChange])
 
@@ -263,6 +292,22 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
   const handleNumberChange = (field: keyof ClaudeConfig, value: string): void => {
     const numericValue = Number(value)
     handleChange(field, value === '' || !Number.isFinite(numericValue) ? undefined : numericValue)
+  }
+
+  const handleModelChange = (value: string): void => {
+    const valueHasSuffix = hasOneMillionContextSuffix(value)
+    const suffixEnabled = valueHasSuffix || (oneMillionContextEnabled && isClaudeModel(value))
+
+    if (valueHasSuffix) {
+      setOneMillionContextEnabled(true)
+    }
+
+    handleChange('model', getModelValue(value, suffixEnabled))
+  }
+
+  const handleOneMillionContextChange = (checked: boolean): void => {
+    setOneMillionContextEnabled(checked)
+    handleChange('model', getModelValue(formData.model ?? '', checked))
   }
 
   const handlePermissionModeChange = (value: string): void => {
@@ -375,6 +420,8 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
   const selectedTransformer = transformers.find(
     transformer => transformer.value === (formData.transformer || 'auto'),
   )
+  const modelHasOneMillionContextSuffix = hasOneMillionContextSuffix(formData.model)
+  const oneMillionContextAvailable = !formData.model || isClaudeModel(formData.model) || modelHasOneMillionContextSuffix
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full" id="config-form">
@@ -552,7 +599,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                     variant="outline"
                     size="sm"
                     className={`h-8 text-xs font-medium ${modelPresetButtonClasses[preset.color]}`}
-                    onClick={() => handleChange('model', preset.model)}
+                    onClick={() => handleModelChange(preset.model)}
                   >
                     {t(`modelPresets.${preset.key}`)}
                   </Button>
@@ -566,13 +613,31 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 {t('modelPermissions.model')}
                 <Badge variant="outline" className="text-xs">Optional</Badge>
               </Label>
-              <Input
-                id="model"
-                value={formData.model ?? ''}
-                onChange={e => handleChange('model', e.target.value)}
-                placeholder={t('modelPermissions.modelPlaceholder')}
-                className="font-mono"
-              />
+              <div className="flex items-stretch gap-2">
+                <Input
+                  id="model"
+                  value={removeOneMillionContextSuffix(formData.model ?? '')}
+                  onChange={e => handleModelChange(e.target.value)}
+                  placeholder={t('modelPermissions.modelPlaceholder')}
+                  className="min-w-0 flex-1 font-mono"
+                />
+                <div className="flex h-10 shrink-0 items-center gap-2 rounded-md border border-input bg-background px-3">
+                  <Label
+                    htmlFor="oneMillionContext"
+                    className="cursor-pointer font-mono text-xs"
+                  >
+                    {oneMillionContextSuffix}
+                  </Label>
+                  <Switch
+                    id="oneMillionContext"
+                    checked={oneMillionContextEnabled && oneMillionContextAvailable}
+                    onCheckedChange={handleOneMillionContextChange}
+                    disabled={!oneMillionContextAvailable}
+                    aria-label={t('modelPermissions.oneMillionContext')}
+                    title={t('modelPermissions.oneMillionContext')}
+                  />
+                </div>
+              </div>
               <p className="text-xs text-muted-foreground">
                 {t('modelPermissions.modelHelpText')}
               </p>
