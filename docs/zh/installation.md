@@ -18,7 +18,7 @@ npm link
 
 ## 前提条件
 
-- Node.js 18+
+- Node.js 24+
 - pnpm（用于安装和 Claude Code CLI）
 
 ## 自动安装功能
