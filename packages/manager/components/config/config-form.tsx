@@ -616,7 +616,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
               <div className="flex items-stretch gap-2">
                 <Input
                   id="model"
-                  value={removeOneMillionContextSuffix(formData.model ?? '')}
+                  value={formData.model ?? ''}
                   onChange={e => handleModelChange(e.target.value)}
                   placeholder={t('modelPermissions.modelPlaceholder')}
                   className="min-w-0 flex-1 font-mono"
