@@ -27,7 +27,7 @@ export async function handleProxyMode(configManager, options, configArg, systemS
         };
         const ui = new UILogger();
         ui.success('🔄 Using existing proxy server');
-        await handleClaudeProviderSettingsSync(buildProxyProviderConfig(baseConfig, 2333, 'sk-claude-proxy-server'), systemSettings, { verbose: options.verbose, debug: debugEnabled });
+        await handleClaudeProviderSettingsSync(buildProxyProviderConfig(baseConfig, 2333, 'sk-claude-proxy-server'), systemSettings, configManager, { verbose: options.verbose, debug: debugEnabled });
         const exitCode = await startClaude(baseConfig, allArgs, cliOverrides);
         process.exit(exitCode);
     }
@@ -169,7 +169,7 @@ export async function handleProxyMode(configManager, options, configArg, systemS
         };
         process.on('SIGINT', handleShutdown);
         process.on('SIGTERM', handleShutdown);
-        await handleClaudeProviderSettingsSync(buildProxyProviderConfig(baseConfig, 2333, proxyServer.getProxyApiKey()), effectiveSystemSettings, { verbose: options.verbose, debug: debugEnabled });
+        await handleClaudeProviderSettingsSync(buildProxyProviderConfig(baseConfig, 2333, proxyServer.getProxyApiKey()), effectiveSystemSettings, configManager, { verbose: options.verbose, debug: debugEnabled });
         const exitCode = await startClaude(baseConfig, allArgs, cliOverrides);
         await proxyServer.stop();
         removeLockFile();
@@ -181,7 +181,7 @@ export async function handleProxyMode(configManager, options, configArg, systemS
         process.exit(1);
     }
 }
-async function handleClaudeProviderSettingsSync(config, systemSettings, options = {}) {
+async function handleClaudeProviderSettingsSync(config, systemSettings, configManager, options = {}) {
     if (!config) {
         return;
     }
@@ -191,7 +191,8 @@ async function handleClaudeProviderSettingsSync(config, systemSettings, options 
         return;
     }
     try {
-        const result = await syncClaudeProviderSettings(config);
+        const knownConfigs = await configManager.listConfigs();
+        const result = await syncClaudeProviderSettings(config, { knownConfigs });
         if (result.backupPath) {
             ui.warning(`Conflicting Claude Code settings env backed up to: ${result.backupPath}`);
         }

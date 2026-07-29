@@ -510,8 +510,10 @@
         "type": "Server Type",
         "typeStdio": "stdio (Local Process)",
         "typeHttp": "HTTP (Remote Server)",
+        "typeSse": "SSE (Remote Server)",
         "typeStdioHint": "Run a local process and communicate via standard input/output",
         "typeHttpHint": "Connect to a remote HTTP MCP server",
+        "typeSseHint": "Connect to a remote MCP server using Server-Sent Events",
         "command": "Command",
         "commandPlaceholder": "e.g., npx",
         "args": "Arguments",
@@ -541,23 +543,43 @@
           "nameExists": "A server with this name already exists",
           "commandRequired": "Command is required for stdio servers",
           "urlRequired": "URL is required for HTTP servers",
-          "urlInvalid": "Please enter a valid URL"
+          "urlInvalid": "Please enter a valid URL",
+          "argsInvalid": "Arguments contain an unterminated quote"
         }
       }
     },
     "skills": {
       "title": "Skills",
-      "description": "Skills extend Claude's capabilities with specialized workflows",
-      "add": "Add Skill",
-      "empty": "No skills configured. Add your first skill to extend Claude's capabilities.",
-      "form": {
+    "description": "Skills extend Claude's capabilities with specialized workflows",
+    "add": "Add Skill",
+    "empty": "No skills configured. Add your first skill to extend Claude's capabilities.",
+    "install": {
+      "button": "Install from SkillsCat",
+      "title": "Install Skill from SkillsCat",
+      "description": "Install a published skill slug or a skill repository into Claude Code.",
+      "source": "Skill slug or repository",
+      "sourcePlaceholder": "e.g., code-review or owner/repo",
+      "skills": "Specific skill names",
+      "skillsPlaceholder": "Optional, comma-separated",
+      "repo": "Treat the source as a repository",
+      "force": "Overwrite existing skill files",
+      "submit": "Install",
+      "installing": "Installing...",
+      "cancel": "Cancel",
+      "sourceRequired": "A skill slug or repository is required",
+      "success": "Skill installed",
+      "successDescription": "SkillsCat installed and synchronized the skill.",
+      "failed": "Installation failed",
+      "failedDescription": "SkillsCat could not install the skill."
+    },
+    "form": {
         "addTitle": "Add Skill",
         "editTitle": "Edit Skill",
         "addDescription": "Create a new skill to extend Claude's capabilities",
         "editDescription": "Update the configuration of this skill",
         "name": "Skill Name",
         "namePlaceholder": "e.g., code-review",
-        "nameHint": "Lowercase letters, numbers, and hyphens only",
+        "nameHint": "Use a valid cross-platform folder name, up to 128 characters",
         "description": "Description",
         "descriptionPlaceholder": "When should this skill be used?",
         "content": "SKILL.md Content",
@@ -577,7 +599,7 @@
         "saveErrorDescription": "Failed to save the skill. Please try again.",
         "validation": {
           "nameRequired": "Skill name is required",
-          "nameFormat": "Name must be lowercase with hyphens only (e.g., my-skill)",
+          "nameFormat": "Name must be a valid cross-platform folder name",
           "nameExists": "A skill with this name already exists",
           "descriptionRequired": "Description is required",
           "contentRequired": "Skill content is required"

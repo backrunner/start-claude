@@ -1,7 +1,11 @@
+import type { SystemSettings } from '@start-claude/cli/src/config/types'
 import type { NextRequest } from 'next/server'
-import { ClaudeConfigSyncer } from '@start-claude/cli/src/extensions/claude-config-syncer'
 import { ConfigManager } from '@start-claude/cli/src/config/manager'
 import { S3ConfigFileManager } from '@start-claude/cli/src/config/s3-config'
+import { ClaudeConfigSyncer } from '@start-claude/cli/src/extensions/claude-config-syncer'
+import { pruneMissingExtensionReferences } from '@start-claude/cli/src/extensions/references'
+import { ExtensionsWriter } from '@start-claude/cli/src/extensions/writer'
+import { resolveClaudeProjectRoot } from '@start-claude/cli/src/utils/system/path-utils'
 import { NextResponse } from 'next/server'
 import { createDefaultSystemSettings } from '@/config/types'
 import { settingsUpdateRequestSchema, systemSettingsSchema } from '@/lib/validation'
@@ -13,6 +17,7 @@ export const revalidate = 0
 // Initialize the ConfigManager instance
 const configManager = ConfigManager.getInstance()
 const s3ConfigManager = S3ConfigFileManager.getInstance()
+const projectRoot = resolveClaudeProjectRoot()
 
 // Track if we've already synced in this session to avoid repeated syncs
 let hasSyncedThisSession = false
@@ -40,7 +45,7 @@ async function getSettings(): Promise<any> {
         }
 
         // Sync Claude Code's native config files
-        const syncer = new ClaudeConfigSyncer()
+        const syncer = new ClaudeConfigSyncer(projectRoot)
         const syncResult = await syncer.syncClaudeConfig(library)
 
         if (syncResult.result.totalChanged > 0) {
@@ -129,17 +134,27 @@ async function getSettings(): Promise<any> {
   }
 }
 
-async function saveSettings(settings: any): Promise<void> {
+async function saveSettings(settings: SystemSettings): Promise<void> {
   try {
     // Extract s3Sync to handle separately
     const { s3Sync, ...restSettings } = settings
 
     // Save main settings (without s3Sync)
     const configFile = await configManager.load()
+    if (restSettings.extensionsLibrary) {
+      const previousLibrary = configFile.settings.extensionsLibrary || {
+        mcpServers: {},
+        skills: {},
+        subagents: {},
+      }
+      new ExtensionsWriter(projectRoot).reconcileLibraryChanges(previousLibrary, restSettings.extensionsLibrary)
+    }
+
     const updatedConfigFile = {
       ...configFile,
       settings: { ...configFile.settings, ...restSettings },
     }
+    pruneMissingExtensionReferences(updatedConfigFile)
     await configManager.save(updatedConfigFile)
 
     // Handle S3 config in separate file only (no backward compatibility)

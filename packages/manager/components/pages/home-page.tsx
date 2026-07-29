@@ -3,7 +3,7 @@
 import type { DragEndEvent } from '@dnd-kit/core'
 import type { ReactNode } from 'react'
 import type { SwitchResult } from '@/components/proxy/config-switch-modal'
-import type { ClaudeConfig, SystemSettings } from '@/config/types'
+import type { ClaudeConfig, ExtensionsLibrary, SystemSettings } from '@/config/types'
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -394,8 +394,13 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
               const updatedSettings = {
                 ...settings,
                 extensionsLibrary: library,
+                defaultEnabledExtensions: reconcileDefaultExtensions(settings, library),
               }
               await saveSettings(updatedSettings, notifyConfigChange)
+            }}
+            onInstalled={async () => {
+              await refetchConfigs()
+              notifyConfigChange()
             }}
           />
 
@@ -418,10 +423,53 @@ export default function HomePage({ isVSCode, initialConfigs, initialSettings }: 
   )
 }
 
+function reconcileDefaultExtensions(
+  settings: SystemSettings,
+  nextLibrary: ExtensionsLibrary,
+): NonNullable<SystemSettings['defaultEnabledExtensions']> {
+  const previousLibrary = settings.extensionsLibrary || {
+    mcpServers: {},
+    skills: {},
+    subagents: {},
+  }
+  const previousDefaults = settings.defaultEnabledExtensions || {
+    mcpServers: [],
+    skills: [],
+    subagents: [],
+  }
+
+  return {
+    mcpServers: reconcileDefaultIds(
+      previousLibrary.mcpServers,
+      nextLibrary.mcpServers,
+      previousDefaults.mcpServers,
+      id => nextLibrary.mcpServers[id].scope !== 'local',
+    ),
+    skills: reconcileDefaultIds(previousLibrary.skills, nextLibrary.skills, previousDefaults.skills),
+    subagents: reconcileDefaultIds(previousLibrary.subagents, nextLibrary.subagents, previousDefaults.subagents),
+  }
+}
+
+function reconcileDefaultIds<T>(
+  previous: Record<string, T>,
+  next: Record<string, T>,
+  enabledIds: string[],
+  shouldEnable: (id: string) => boolean = () => true,
+): string[] {
+  const retainedIds = enabledIds.filter(id => hasOwn(next, id))
+  const addedIds = Object.keys(next)
+    .filter(id => !hasOwn(previous, id) && shouldEnable(id))
+  return [...new Set([...retainedIds, ...addedIds])]
+}
+
+function hasOwn(value: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
 function generateDuplicateName(baseName: string, configs: ClaudeConfig[]): string {
-  const match = baseName.match(/^(.*?)(-(\d+))?$/)
+  const match = baseName.match(/^(.*?)(?:-(\d+))?$/)
   const base = match?.[1] || baseName
-  const existingNum = match?.[3] ? Number.parseInt(match[3], 10) : 1
+  const existingNum = match?.[2] ? Number.parseInt(match[2], 10) : 1
   let num = existingNum + 1
   let newName = `${base}-${num}`
 

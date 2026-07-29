@@ -881,7 +881,7 @@ export class ProxyServer {
     }
     detectOpenAIChatSSE(buffer) {
         const normalizedBuffer = buffer.replace(/\r\n/g, '\n');
-        if (/^event:\s*(message_start|content_block_start|content_block_delta|content_block_stop|message_delta|message_stop|error)$/m.test(normalizedBuffer)) {
+        if (/^event:\s*(?:message_start|content_block_start|content_block_delta|content_block_stop|message_delta|message_stop|error)$/m.test(normalizedBuffer)) {
             return false;
         }
         let sawDone = false;

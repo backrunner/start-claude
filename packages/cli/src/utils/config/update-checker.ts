@@ -800,7 +800,7 @@ function getPackageManagerUpdateCommand(packageManager: PackageManager): { comma
   return { command: 'pnpm', args: ['add', '-g', 'start-claude@latest'] }
 }
 
-function runPackageManagerCommand(command: string, args: string[], inheritStdio: boolean): Promise<{ stdout: string, stderr: string }> {
+async function runPackageManagerCommand(command: string, args: string[], inheritStdio: boolean): Promise<{ stdout: string, stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       shell: process.platform === 'win32' && command !== 'sudo',

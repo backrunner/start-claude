@@ -1,4 +1,4 @@
-import type { ExternalProductConfig, ExternalProductConfigFile, ExternalProductId } from './types'
+import type { ExternalProductConfig, ExternalProductConfigFile, ExternalProductDefinition, ExternalProductId } from './types'
 import { randomUUID } from 'node:crypto'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -27,7 +27,7 @@ export class ExternalProductFileOperations {
     return instance
   }
 
-  private get definition() {
+  private get definition(): ExternalProductDefinition {
     return getProductDefinition(this.productId)
   }
 

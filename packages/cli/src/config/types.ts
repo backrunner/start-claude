@@ -121,10 +121,12 @@ export interface StatusLineConfig {
  * MCP server configuration interface
  */
 export interface McpServerConfig {
-  type?: 'stdio' | 'sse'
-  command: string
+  type?: 'stdio' | 'http' | 'sse'
+  command?: string
   args?: string[]
   env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
 }
 
 /**
@@ -159,7 +161,7 @@ export interface McpServerDefinition {
  */
 export interface SkillDefinition {
   id: string // Unique identifier
-  name: string // Skill name (lowercase, hyphens only)
+  name: string // Skill name and native directory name
   description: string // When this skill should be used
   content: string // Complete SKILL.md file content
   allowedTools?: string[] // Optional: restrict tools when skill is active
@@ -369,15 +371,15 @@ export interface MigrationInfo {
 /**
  * Claude Code installation method types
  */
-export type ClaudeInstallMethod =
-  | 'npm'
-  | 'pnpm'
-  | 'yarn'
-  | 'bun'
-  | 'homebrew'
-  | 'winget'
-  | 'official-script'
-  | 'unknown'
+export type ClaudeInstallMethod
+  = | 'npm'
+    | 'pnpm'
+    | 'yarn'
+    | 'bun'
+    | 'homebrew'
+    | 'winget'
+    | 'official-script'
+    | 'unknown'
 
 /**
  * Installation method information

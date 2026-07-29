@@ -26,10 +26,6 @@ describe('claude provider settings sync', () => {
     return join(dir, '.claude', 'settings.json')
   }
 
-  function createTempStatePath(settingsPath: string): string {
-    return join(dirname(dirname(settingsPath)), '.start-claude', 'claude-provider-settings-state.json')
-  }
-
   function readJson(path: string): unknown {
     return JSON.parse(readFileSync(path, 'utf-8'))
   }
@@ -143,7 +139,11 @@ describe('claude provider settings sync', () => {
 
     const result = await syncClaudeProviderSettings(config, {
       settingsPath,
-      statePath: createTempStatePath(settingsPath),
+      knownConfigs: [{
+        name: 'partial-match',
+        baseUrl: 'https://old.example.com',
+        authToken: 'sk-different',
+      }],
     })
 
     expect(result.removedEnvKeys).toEqual([
@@ -180,22 +180,33 @@ describe('claude provider settings sync', () => {
     })
   })
 
-  it('removes keys previously written by start-claude when the next profile omits them', async () => {
+  it('takes over matching start-claude credentials without creating a backup', async () => {
     const settingsPath = createTempSettingsPath()
-    const statePath = createTempStatePath(settingsPath)
-
-    await syncClaudeProviderSettings({
+    const firstConfig: ClaudeConfig = {
       name: 'first',
       baseUrl: 'https://first.example.com',
       authToken: 'sk-first',
       model: 'claude-sonnet-4-5-20250929',
-    }, { settingsPath, statePath })
-
-    await syncClaudeProviderSettings({
+    }
+    const secondConfig: ClaudeConfig = {
       name: 'second',
       baseUrl: 'https://second.example.com',
       authToken: 'sk-second',
-    }, { settingsPath, statePath })
+    }
+
+    await syncClaudeProviderSettings(firstConfig, { settingsPath })
+
+    const result = await syncClaudeProviderSettings(secondConfig, {
+      settingsPath,
+      knownConfigs: [firstConfig, secondConfig],
+    })
+
+    expect(result.backupPath).toBeUndefined()
+    expect(result.removedEnvKeys).toEqual([
+      'ANTHROPIC_AUTH_TOKEN',
+      'ANTHROPIC_BASE_URL',
+      'ANTHROPIC_MODEL',
+    ])
 
     expect(readJson(settingsPath)).toEqual({
       env: {
@@ -208,16 +219,44 @@ describe('claude provider settings sync', () => {
     })
   })
 
+  it('takes over start-claude proxy credentials without creating a backup', async () => {
+    const settingsPath = createTempSettingsPath()
+    const proxyConfig = buildProxyClaudeProviderConfig({
+      name: 'proxy',
+      model: 'claude-sonnet-4-5-20250929',
+    }, { port: 80 })
+    const nextConfig: ClaudeConfig = {
+      name: 'next',
+      baseUrl: 'https://next.example.com',
+      authToken: 'sk-next',
+    }
+
+    writeSettings(settingsPath, {
+      env: buildClaudeProviderEnv(proxyConfig),
+    })
+
+    const result = await syncClaudeProviderSettings(nextConfig, { settingsPath })
+
+    expect(result.backupPath).toBeUndefined()
+    expect(readJson(settingsPath)).toEqual({
+      env: {
+        ANTHROPIC_BASE_URL: 'https://next.example.com',
+        ANTHROPIC_AUTH_TOKEN: 'sk-next',
+        CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
+      },
+    })
+  })
+
   it('creates a missing settings file', async () => {
     const settingsPath = createTempSettingsPath()
-
-    const statePath = createTempStatePath(settingsPath)
 
     await syncClaudeProviderSettings({
       name: 'created',
       baseUrl: 'https://created.example.com',
       apiKey: 'sk-created',
-    }, { settingsPath, statePath })
+    }, { settingsPath })
 
     expect(readJson(settingsPath)).toEqual({
       env: {
@@ -226,21 +265,6 @@ describe('claude provider settings sync', () => {
         CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
         CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
-      },
-    })
-
-    expect(readJson(statePath)).toEqual({
-      version: 1,
-      settings: {
-        [settingsPath]: {
-          envKeys: [
-            'ANTHROPIC_API_KEY',
-            'ANTHROPIC_BASE_URL',
-            'CLAUDE_CODE_ATTRIBUTION_HEADER',
-            'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
-            'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
-          ],
-        },
       },
     })
   })
@@ -279,6 +303,51 @@ describe('claude provider settings sync', () => {
       permissions: { allow: ['Bash'] },
       env: {
         ANTHROPIC_MODEL: 'claude-sonnet-5',
+        PATH: '/usr/bin',
+      },
+    })
+  })
+
+  it('cleans matching start-claude credentials without creating a backup', () => {
+    const settingsPath = createTempSettingsPath()
+    const previousConfig: ClaudeConfig = {
+      name: 'previous',
+      baseUrl: 'https://previous.example.com',
+      authToken: 'sk-previous',
+      model: 'claude-sonnet-4-5-20250929',
+    }
+    const nextConfig: ClaudeConfig = {
+      name: 'next',
+      baseUrl: 'https://next.example.com',
+      authToken: 'sk-next',
+    }
+
+    writeSettings(settingsPath, {
+      permissions: { allow: ['Bash'] },
+      env: {
+        ...buildClaudeProviderEnv(previousConfig),
+        PATH: '/usr/bin',
+      },
+    })
+
+    const result = cleanClaudeSettingsEnvConflicts(buildClaudeProviderEnv(nextConfig), {
+      settingsPath,
+      envKeys: ['ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL'],
+      knownConfigs: [previousConfig, nextConfig],
+    })
+
+    expect(result.backupPath).toBeUndefined()
+    expect(result.removedEnvKeys).toEqual([
+      'ANTHROPIC_AUTH_TOKEN',
+      'ANTHROPIC_BASE_URL',
+      'ANTHROPIC_MODEL',
+    ])
+    expect(readJson(settingsPath)).toEqual({
+      permissions: { allow: ['Bash'] },
+      env: {
+        CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
         PATH: '/usr/bin',
       },
     })
@@ -374,7 +443,6 @@ describe('claude provider settings sync', () => {
       model: 'claude-sonnet-4-5-20250929',
     }, {
       settingsPath,
-      statePath: createTempStatePath(settingsPath),
     })
 
     expect(readJson(settingsPath)).toEqual({

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import type { SubagentDefinition } from '@/config/types'
 import { Save } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -31,7 +31,7 @@ interface SubagentFormModalProps {
   onClose: () => void
   onSave: (subagent: SubagentDefinition) => Promise<void>
   initialData?: SubagentDefinition
-  existingIds: string[]
+  existingSubagents: SubagentDefinition[]
 }
 
 export function SubagentFormModal({
@@ -39,7 +39,7 @@ export function SubagentFormModal({
   onClose,
   onSave,
   initialData,
-  existingIds,
+  existingSubagents,
 }: SubagentFormModalProps): ReactNode {
   const t = useTranslations('extensions.subagents.form')
   const toastT = useTranslations('toast')
@@ -65,12 +65,43 @@ export function SubagentFormModal({
 
   const { toast } = useToast()
 
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    setFormData(initialData || {
+      id: '',
+      name: '',
+      description: '',
+      systemPrompt: '',
+      tools: undefined,
+      model: undefined,
+    })
+    setToolsText(initialData?.tools?.join(', ') || '')
+    setErrors({})
+  }, [initialData, open])
+
   const generateId = (name: string): string => {
     return name
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '')
+  }
+
+  const generateUniqueId = (name: string): string => {
+    const baseId = generateId(name)
+    const existingIds = new Set(existingSubagents.map(subagent => subagent.id))
+    if (!existingIds.has(baseId)) {
+      return baseId
+    }
+
+    let suffix = 2
+    while (existingIds.has(`${baseId}-${suffix}`)) {
+      suffix++
+    }
+    return `${baseId}-${suffix}`
   }
 
   const validateForm = (): boolean => {
@@ -81,19 +112,18 @@ export function SubagentFormModal({
       newErrors.name = t('validation.nameRequired')
     }
     else {
-      // Validate name format (lowercase, hyphens only)
-      const nameRegex = /^[a-z0-9-]+$/
-      if (!nameRegex.test(formData.name)) {
+      const nameRegex = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/
+      if (!nameRegex.test(formData.name.trim())) {
         newErrors.name = t('validation.nameFormat')
       }
     }
 
-    // Check name uniqueness (only for new subagents or if name changed)
-    const generatedId = generateId(formData.name)
-    if (!isEdit || generatedId !== initialData?.id) {
-      if (existingIds.includes(generatedId)) {
-        newErrors.name = t('validation.nameExists')
-      }
+    const duplicateName = existingSubagents.some(subagent => (
+      subagent.id !== initialData?.id
+      && subagent.name.toLowerCase() === formData.name.trim().toLowerCase()
+    ))
+    if (duplicateName) {
+      newErrors.name = t('validation.nameExists')
     }
 
     // Description is required
@@ -124,7 +154,7 @@ export function SubagentFormModal({
 
       const subagent: SubagentDefinition = {
         ...formData,
-        id: isEdit ? formData.id : generateId(formData.name),
+        id: isEdit ? formData.id : generateUniqueId(formData.name.trim()),
         name: formData.name.trim(),
         description: formData.description.trim(),
         systemPrompt: formData.systemPrompt.trim(),

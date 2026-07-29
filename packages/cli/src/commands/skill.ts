@@ -1,6 +1,10 @@
 import type { SkillDefinition } from '../config/types'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
+import { isSafeSkillName } from '../extensions/names'
+import { pruneMissingExtensionReferences } from '../extensions/references'
+import { installSkillFromSkillsCat as installWithSkillsCat } from '../extensions/skill-installer'
+import { ExtensionsWriter } from '../extensions/writer'
 import { UILogger } from '../utils/cli/ui'
 
 const configManager = ConfigManager.getInstance()
@@ -13,7 +17,7 @@ function generateId(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, '-')
     .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+    .replace(/^-|-$/g, '') || 'skill'
 }
 
 /**
@@ -99,9 +103,25 @@ export async function handleSkillShowCommand(skillId: string, options: { verbose
 /**
  * Add a new skill
  */
-export async function handleSkillAddCommand(options: { verbose?: boolean } = {}): Promise<void> {
+interface SkillAddCommandOptions {
+  force?: boolean
+  repo?: boolean
+  skill?: string[]
+  verbose?: boolean
+  yes?: boolean
+}
+
+export async function handleSkillAddCommand(
+  source?: string,
+  options: SkillAddCommandOptions = {},
+): Promise<void> {
   const ui = new UILogger(options.verbose)
   ui.displayWelcome()
+
+  if (source) {
+    await installSkillFromSkillsCat(source, options, ui)
+    return
+  }
 
   const configFile = await configManager.load()
   const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
@@ -110,20 +130,18 @@ export async function handleSkillAddCommand(options: { verbose?: boolean } = {})
     {
       type: 'input',
       name: 'name',
-      message: 'Skill name (lowercase, hyphens only):',
+      message: 'Skill name:',
       validate: (input: string) => {
         const name = input.trim()
         if (!name)
           return 'Name is required'
 
-        const nameRegex = /^[a-z0-9-]+$/
-        if (!nameRegex.test(name)) {
-          return 'Name must be lowercase with hyphens only (e.g., my-skill)'
+        if (!isSafeSkillName(name)) {
+          return 'Name must be a safe cross-platform folder name'
         }
 
-        const id = generateId(name)
-        if (library.skills[id]) {
-          return `A skill with ID "${id}" already exists. Please use a different name.`
+        if (Object.values(library.skills).some(skill => skill.name.toLowerCase() === name.toLowerCase())) {
+          return `A skill named "${name}" already exists. Please use a different name.`
         }
         return true
       },
@@ -165,10 +183,36 @@ export async function handleSkillAddCommand(options: { verbose?: boolean } = {})
   // Save to config
   library.skills[skill.id] = skill
   configFile.settings.extensionsLibrary = library
+
+  const defaultEnabled = configFile.settings.defaultEnabledExtensions || {
+    mcpServers: [],
+    skills: [],
+    subagents: [],
+  }
+  if (!defaultEnabled.skills.includes(skill.id)) {
+    defaultEnabled.skills.push(skill.id)
+  }
+  configFile.settings.defaultEnabledExtensions = defaultEnabled
+
   await configManager.save(configFile)
 
   ui.displaySuccess(`✅ Skill "${skill.name}" added successfully!`)
   ui.displayInfo(`   ID: ${skill.id}`)
+}
+
+async function installSkillFromSkillsCat(
+  source: string,
+  options: SkillAddCommandOptions,
+  ui: UILogger,
+): Promise<void> {
+  const result = await installWithSkillsCat(source, options, undefined, ui)
+
+  if (result.sync.totalChanged === 0) {
+    ui.displayInfo('SkillsCat completed with no extension library changes.')
+    return
+  }
+
+  ui.displaySuccess(`Synced ${result.sync.skillsAdded} new and ${result.sync.skillsUpdated} updated skill(s) from SkillsCat.`)
 }
 
 /**
@@ -180,6 +224,7 @@ export async function handleSkillEditCommand(skillId: string, options: { verbose
 
   const configFile = await configManager.load()
   const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
+  const previousLibrary = structuredClone(library)
   const skill = library.skills[skillId]
 
   if (!skill) {
@@ -215,16 +260,20 @@ export async function handleSkillEditCommand(skillId: string, options: { verbose
         {
           type: 'input',
           name: 'name',
-          message: 'New name (lowercase, hyphens only):',
+          message: 'New name:',
           default: skill.name,
           validate: (input: string) => {
             const name = input.trim()
             if (!name)
               return 'Name is required'
 
-            const nameRegex = /^[a-z0-9-]+$/
-            if (!nameRegex.test(name)) {
-              return 'Name must be lowercase with hyphens only (e.g., my-skill)'
+            if (!isSafeSkillName(name)) {
+              return 'Name must be a safe cross-platform folder name'
+            }
+            const duplicate = Object.entries(library.skills)
+              .some(([id, item]) => id !== skillId && item.name.toLowerCase() === name.toLowerCase())
+            if (duplicate) {
+              return `A skill named "${name}" already exists. Please use a different name.`
             }
             return true
           },
@@ -283,6 +332,7 @@ export async function handleSkillEditCommand(skillId: string, options: { verbose
   // Save changes
   library.skills[skillId] = skill
   configFile.settings.extensionsLibrary = library
+  new ExtensionsWriter().reconcileLibraryChanges(previousLibrary, library)
   await configManager.save(configFile)
 
   ui.displaySuccess(`✅ Skill "${skill.name}" updated successfully!`)
@@ -297,6 +347,7 @@ export async function handleSkillDeleteCommand(skillId: string, options: { verbo
 
   const configFile = await configManager.load()
   const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
+  const previousLibrary = structuredClone(library)
   const skill = library.skills[skillId]
 
   if (!skill) {
@@ -324,6 +375,8 @@ export async function handleSkillDeleteCommand(skillId: string, options: { verbo
   // Delete the skill
   delete library.skills[skillId]
   configFile.settings.extensionsLibrary = library
+  pruneMissingExtensionReferences(configFile)
+  new ExtensionsWriter().reconcileLibraryChanges(previousLibrary, library)
   await configManager.save(configFile)
 
   ui.displaySuccess(`✅ Skill "${skill.name}" deleted successfully!`)

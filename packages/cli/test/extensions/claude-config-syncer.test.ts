@@ -159,4 +159,138 @@ describe('ClaudeConfigSyncer', () => {
       args: ['-y', '@linear/mcp-server'],
     })
   })
+
+  it('parses YAML frontmatter with CRLF, quoted values, and tool arrays', async () => {
+    const skillsDir = join(projectRoot, '.claude', 'skills', 'code-review')
+    mkdirSync(skillsDir, { recursive: true })
+    const content = [
+      '---',
+      'name: code-review',
+      'description: "Review: changed code paths"',
+      'allowed-tools:',
+      '  - Read',
+      '  - Grep',
+      '---',
+      '',
+      'Review the current change.',
+    ].join('\r\n')
+    writeFileSync(join(skillsDir, 'SKILL.md'), content)
+
+    const syncer = new ClaudeConfigSyncer(projectRoot)
+    const { library, result } = await syncer.syncClaudeConfig({
+      mcpServers: {},
+      skills: {},
+      subagents: {},
+    })
+
+    expect(result.skillsAdded).toBe(1)
+    expect(library.skills['code-review']).toMatchObject({
+      description: 'Review: changed code paths',
+      allowedTools: ['Read', 'Grep'],
+      content,
+    })
+  })
+
+  it('keeps library metadata when the native skill content has not changed', async () => {
+    const skillsDir = join(projectRoot, '.claude', 'skills', 'code-review')
+    mkdirSync(skillsDir, { recursive: true })
+    const content = [
+      '---',
+      'name: code-review',
+      'description: Old description',
+      '---',
+      '',
+      'Review the current change.',
+    ].join('\n')
+    writeFileSync(join(skillsDir, 'SKILL.md'), content)
+
+    const syncer = new ClaudeConfigSyncer(projectRoot)
+    const { library, result } = await syncer.syncClaudeConfig({
+      mcpServers: {},
+      skills: {
+        'code-review': {
+          id: 'code-review',
+          name: 'code-review',
+          description: 'Edited in Start Claude',
+          content,
+        },
+      },
+      subagents: {},
+    })
+
+    expect(result.skillsUpdated).toBe(0)
+    expect(library.skills['code-review'].description).toBe('Edited in Start Claude')
+  })
+
+  it('skips skills with unsafe frontmatter names', async () => {
+    const skillsDir = join(projectRoot, '.claude', 'skills', 'unsafe-skill')
+    mkdirSync(skillsDir, { recursive: true })
+    writeFileSync(join(skillsDir, 'SKILL.md'), [
+      '---',
+      'name: ../unsafe',
+      'description: Unsafe path',
+      '---',
+      '',
+      'Do not import this skill.',
+    ].join('\n'))
+
+    const syncer = new ClaudeConfigSyncer(projectRoot)
+    const { library, result } = await syncer.syncClaudeConfig({
+      mcpServers: {},
+      skills: {},
+      subagents: {},
+    })
+
+    expect(result.skillsAdded).toBe(0)
+    expect(library.skills).toEqual({})
+  })
+
+  it('skips malformed MCP entries without blocking valid servers', async () => {
+    writeFileSync(join(projectRoot, '.mcp.json'), JSON.stringify({
+      mcpServers: {
+        broken: null,
+        valid: {
+          command: 'npx',
+          args: ['-y', 'valid-mcp'],
+        },
+      },
+    }))
+
+    const syncer = new ClaudeConfigSyncer(projectRoot)
+    const { library, result } = await syncer.syncClaudeConfig({
+      mcpServers: {},
+      skills: {},
+      subagents: {},
+    })
+
+    expect(result.mcpServersAdded).toBe(1)
+    expect(library.mcpServers.valid).toMatchObject({
+      command: 'npx',
+      args: ['-y', 'valid-mcp'],
+    })
+    expect(library.mcpServers.broken).toBeUndefined()
+  })
+
+  it('skips subagents with unsafe frontmatter names', async () => {
+    const agentsDir = join(projectRoot, '.claude', 'agents')
+    mkdirSync(agentsDir, { recursive: true })
+    writeFileSync(join(agentsDir, 'unsafe.md'), [
+      '---',
+      'name: ../unsafe',
+      'description: Unsafe path',
+      '---',
+      '',
+      'Do not import this subagent.',
+    ].join('\n'))
+
+    const syncer = new ClaudeConfigSyncer(projectRoot)
+    const { library, result } = await syncer.syncClaudeConfig({
+      mcpServers: {},
+      skills: {},
+      subagents: {},
+    })
+
+    expect(result.subagentsAdded).toBe(0)
+    expect(library.subagents).toEqual({})
+  })
 })

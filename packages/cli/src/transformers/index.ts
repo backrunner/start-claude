@@ -5,10 +5,10 @@ export { OpenrouterTransformer } from './openrouter'
 
 // Export all available transformers
 export const availableTransformers = {
-  openai: async () => import('./openai').then(m => m.OpenaiTransformer),
+  'openai': async () => import('./openai').then(m => m.OpenaiTransformer),
   'openai-responses': async () => import('./openai-responses').then(m => m.OpenAIResponsesTransformer),
-  openrouter: async () => import('./openrouter').then(m => m.OpenrouterTransformer),
-  gemini: async () => import('./gemini').then(m => m.GeminiTransformer),
+  'openrouter': async () => import('./openrouter').then(m => m.OpenrouterTransformer),
+  'gemini': async () => import('./gemini').then(m => m.GeminiTransformer),
 }
 
 // Helper function to get transformer by name

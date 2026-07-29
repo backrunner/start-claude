@@ -4,7 +4,7 @@ import process from 'node:process'
 
 async function cleanDirectories(): Promise<void> {
   const directories = [
-    join(process.cwd(), 'src/manager/.next'),
+    join(process.cwd(), 'packages/manager/.next'),
     join(process.cwd(), 'bin'),
   ]
 

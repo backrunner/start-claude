@@ -9,9 +9,9 @@ import { UILogger } from '../utils/cli/ui'
  */
 function generateNewName(baseName: string, existingConfigs: ClaudeConfig[]): string {
   // Extract base name and existing number suffix
-  const match = baseName.match(/^(.*?)(-(\d+))?$/)
+  const match = baseName.match(/^(.*?)(?:-(\d+))?$/)
   const base = match?.[1] || baseName
-  const existingNum = match?.[3] ? parseInt(match[3], 10) : 1
+  const existingNum = match?.[2] ? Number.parseInt(match[2], 10) : 1
 
   // Find the next available number
   let num = existingNum + 1

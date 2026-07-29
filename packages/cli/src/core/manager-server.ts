@@ -9,6 +9,7 @@ import open from 'open'
 import { UILogger } from '../utils/cli/ui'
 import { checkExistingInstance, createLock, removeLock, startHeartbeat } from '../utils/manager/lock'
 import { findAvailablePort } from '../utils/network/port-finder'
+import { START_CLAUDE_PROJECT_ROOT_ENV } from '../utils/system/path-utils'
 
 export class ManagerServer {
   private childProcess: ChildProcess | null = null
@@ -78,6 +79,7 @@ export class ManagerServer {
           ...process.env,
           PORT: this.port.toString(),
           HOSTNAME: 'localhost',
+          [START_CLAUDE_PROJECT_ROOT_ENV]: process.cwd(),
         },
         stdio,
       })

@@ -6,10 +6,19 @@ import dayjs from 'dayjs';
 import { UILogger } from '../cli/ui';
 export class McpSyncManager {
     static instance;
-    CLAUDE_DESKTOP_CONFIG_PATH_MACOS = join(homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
-    CLAUDE_DESKTOP_CONFIG_PATH_WINDOWS = join(homedir(), 'AppData', 'Roaming', 'Claude', 'claude_desktop_config.json');
-    CLAUDE_CODE_SETTINGS_PATH = join(homedir(), '.claude', 'settings.json');
-    constructor() { }
+    CLAUDE_DESKTOP_CONFIG_PATH_MACOS;
+    CLAUDE_DESKTOP_CONFIG_PATH_WINDOWS;
+    CLAUDE_CODE_CONFIG_PATH;
+    CLAUDE_CODE_LEGACY_SETTINGS_PATH;
+    constructor(paths = {}) {
+        this.CLAUDE_DESKTOP_CONFIG_PATH_MACOS = paths.claudeDesktopConfigPathMacos
+            ?? join(homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+        this.CLAUDE_DESKTOP_CONFIG_PATH_WINDOWS = paths.claudeDesktopConfigPathWindows
+            ?? join(homedir(), 'AppData', 'Roaming', 'Claude', 'claude_desktop_config.json');
+        this.CLAUDE_CODE_CONFIG_PATH = paths.claudeCodeConfigPath ?? join(homedir(), '.claude.json');
+        this.CLAUDE_CODE_LEGACY_SETTINGS_PATH = paths.claudeCodeLegacySettingsPath
+            ?? join(homedir(), '.claude', 'settings.json');
+    }
     static getInstance() {
         if (!McpSyncManager.instance) {
             McpSyncManager.instance = new McpSyncManager();
@@ -40,12 +49,12 @@ export class McpSyncManager {
             logger.displayVerbose(`📁 Reading Claude Desktop config: ${configPath}`);
             const configData = readFileSync(configPath, 'utf8');
             const config = JSON.parse(configData);
-            if (!config.mcpServers || Object.keys(config.mcpServers).length === 0) {
+            const serverConfigs = getMcpServers(config);
+            if (!serverConfigs || Object.keys(serverConfigs).length === 0) {
                 logger.displayVerbose('📋 No MCP servers found in Claude Desktop config');
                 return null;
             }
-            const serverConfigs = Object.values(config.mcpServers);
-            logger.displayVerbose(`✅ Found ${serverConfigs.length} MCP server(s) in Claude Desktop config`);
+            logger.displayVerbose(`✅ Found ${Object.keys(serverConfigs).length} MCP server(s) in Claude Desktop config`);
             return serverConfigs;
         }
         catch (error) {
@@ -55,20 +64,32 @@ export class McpSyncManager {
     }
     extractMcpFromClaudeCodeSettings(options = {}) {
         const logger = new UILogger(options.verbose);
-        if (!existsSync(this.CLAUDE_CODE_SETTINGS_PATH)) {
-            logger.displayVerbose('📁 ~/.claude/settings.json not found');
+        const configPaths = [
+            this.CLAUDE_CODE_LEGACY_SETTINGS_PATH,
+            this.CLAUDE_CODE_CONFIG_PATH,
+        ].filter(existsSync);
+        if (configPaths.length === 0) {
+            logger.displayVerbose('📁 Claude Code MCP config not found');
             return null;
         }
         try {
-            logger.displayVerbose(`📁 Reading ~/.claude/settings.json`);
-            const configData = readFileSync(this.CLAUDE_CODE_SETTINGS_PATH, 'utf8');
-            const config = JSON.parse(configData);
-            if (!config.mcpServers || Object.keys(config.mcpServers).length === 0) {
-                logger.displayVerbose('📋 No MCP servers found in ~/.claude/settings.json');
+            const serverConfigs = {};
+            for (const configPath of configPaths) {
+                try {
+                    logger.displayVerbose(`📁 Reading Claude Code config: ${configPath}`);
+                    const configData = readFileSync(configPath, 'utf8');
+                    const config = JSON.parse(configData);
+                    Object.assign(serverConfigs, getMcpServers(config) ?? {});
+                }
+                catch (error) {
+                    logger.displayVerbose(`⚠️ Error reading Claude Code config ${configPath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                }
+            }
+            if (Object.keys(serverConfigs).length === 0) {
+                logger.displayVerbose('📋 No MCP servers found in Claude Code config');
                 return null;
             }
-            const serverConfigs = Object.values(config.mcpServers);
-            logger.displayVerbose(`✅ Found ${serverConfigs.length} MCP server(s) in ~/.claude/settings.json`);
+            logger.displayVerbose(`✅ Found ${Object.keys(serverConfigs).length} MCP server(s) in ~/.claude/settings.json`);
             return serverConfigs;
         }
         catch (error) {
@@ -79,8 +100,8 @@ export class McpSyncManager {
     async syncMcpSettings(options = {}) {
         const logger = new UILogger(options.verbose);
         const configManager = await this.getConfigManager();
-        const settings = configManager.getSettings();
-        if (!settings.mcpSync?.enabled && !options.force) {
+        const settings = await configManager.getSettings();
+        if ((settings.mcpSync?.enabled ?? true) === false && !options.force) {
             logger.displayVerbose('🔄 MCP sync is disabled, skipping');
             return true;
         }
@@ -91,19 +112,10 @@ export class McpSyncManager {
             logger.displayVerbose('ℹ️ No MCP servers found to sync');
             return true;
         }
-        const allServers = {};
-        if (codeServers) {
-            codeServers.forEach((server, index) => {
-                const serverName = `code-server-${index}`;
-                allServers[serverName] = server;
-            });
-        }
-        if (desktopServers) {
-            desktopServers.forEach((server, index) => {
-                const serverName = `desktop-server-${index}`;
-                allServers[serverName] = server;
-            });
-        }
+        const allServers = {
+            ...(codeServers ?? {}),
+            ...(desktopServers ?? {}),
+        };
         const mcpSyncConfig = {
             enabled: settings.mcpSync?.enabled ?? true,
             servers: allServers,
@@ -119,7 +131,7 @@ export class McpSyncManager {
     async checkAndSyncMcp(options = {}) {
         const logger = new UILogger(options.verbose);
         const configManager = await this.getConfigManager();
-        const settings = configManager.getSettings();
+        const settings = await configManager.getSettings();
         const mcpSyncEnabled = settings.mcpSync?.enabled ?? true;
         if (!mcpSyncEnabled) {
             logger.displayVerbose('🔄 MCP sync is disabled');
@@ -135,17 +147,17 @@ export class McpSyncManager {
     }
     async getMcpSyncStatus() {
         const configManager = await this.getConfigManager();
-        const settings = configManager.getSettings();
+        const settings = await configManager.getSettings();
         const mcpSync = settings.mcpSync;
         return {
-            enabled: mcpSync?.enabled ?? false,
+            enabled: mcpSync?.enabled ?? true,
             serverCount: mcpSync?.servers ? Object.keys(mcpSync.servers).length : 0,
             lastSync: mcpSync?.lastSyncTime,
         };
     }
     async setMcpSyncEnabled(enabled) {
         const configManager = await this.getConfigManager();
-        const settings = configManager.getSettings();
+        const settings = await configManager.getSettings();
         await configManager.updateSettings({
             mcpSync: {
                 ...settings.mcpSync,
@@ -154,4 +166,47 @@ export class McpSyncManager {
             },
         });
     }
+}
+function getMcpServers(config) {
+    if (!isRecord(config) || !isRecord(config.mcpServers)) {
+        return null;
+    }
+    const servers = {};
+    for (const [name, server] of Object.entries(config.mcpServers)) {
+        if (isMcpServerConfig(server)) {
+            servers[name] = server;
+        }
+    }
+    return servers;
+}
+function isMcpServerConfig(value) {
+    if (!isRecord(value)) {
+        return false;
+    }
+    const type = value.type ?? 'stdio';
+    if (type !== 'stdio' && type !== 'http' && type !== 'sse') {
+        return false;
+    }
+    if (type === 'stdio' && (typeof value.command !== 'string' || !value.command.trim())) {
+        return false;
+    }
+    if ((type === 'http' || type === 'sse') && (typeof value.url !== 'string' || !value.url.trim())) {
+        return false;
+    }
+    if (value.args !== undefined && (!Array.isArray(value.args) || !value.args.every(item => typeof item === 'string'))) {
+        return false;
+    }
+    if (value.env !== undefined && !isStringRecord(value.env)) {
+        return false;
+    }
+    if (value.headers !== undefined && !isStringRecord(value.headers)) {
+        return false;
+    }
+    return true;
+}
+function isStringRecord(value) {
+    return isRecord(value) && Object.values(value).every(item => typeof item === 'string');
+}
+function isRecord(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

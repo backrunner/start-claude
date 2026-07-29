@@ -406,12 +406,12 @@ export function buildRequestBody(
   const thinkingBudget = request.reasoning?.max_tokens ?? request.thinking?.budget_tokens
   const reasoningEnabled = request.reasoning
     ? request.reasoning.enabled !== false
-      && (
-        request.reasoning.enabled === true
-        || request.reasoning.effort !== undefined
-        || request.reasoning.max_tokens !== undefined
-      )
-      && request.reasoning.effort !== 'none'
+    && (
+      request.reasoning.enabled === true
+      || request.reasoning.effort !== undefined
+      || request.reasoning.max_tokens !== undefined
+    )
+    && request.reasoning.effort !== 'none'
     : false
   const thinkingEnabled = reasoningEnabled
     || request.thinking?.type === 'enabled'

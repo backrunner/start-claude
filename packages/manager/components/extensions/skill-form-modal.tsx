@@ -2,9 +2,10 @@
 
 import type { ReactNode } from 'react'
 import type { SkillDefinition } from '@/config/types'
+import { isSafeSkillName } from '@start-claude/cli/src/extensions/names'
 import { Save } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -24,7 +25,7 @@ interface SkillFormModalProps {
   onClose: () => void
   onSave: (skill: SkillDefinition) => Promise<void>
   initialData?: SkillDefinition
-  existingIds: string[]
+  existingSkills: SkillDefinition[]
 }
 
 export function SkillFormModal({
@@ -32,7 +33,7 @@ export function SkillFormModal({
   onClose,
   onSave,
   initialData,
-  existingIds,
+  existingSkills,
 }: SkillFormModalProps): ReactNode {
   const t = useTranslations('extensions.skills.form')
   const toastT = useTranslations('toast')
@@ -57,12 +58,42 @@ export function SkillFormModal({
 
   const { toast } = useToast()
 
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    setFormData(initialData || {
+      id: '',
+      name: '',
+      description: '',
+      content: '',
+      allowedTools: undefined,
+    })
+    setAllowedToolsText(initialData?.allowedTools?.join(', ') || '')
+    setErrors({})
+  }, [initialData, open])
+
   const generateId = (name: string): string => {
     return name
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, '-')
       .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
+      .replace(/^-|-$/g, '') || 'skill'
+  }
+
+  const generateUniqueId = (name: string): string => {
+    const baseId = generateId(name)
+    const existingIds = new Set(existingSkills.map(skill => skill.id))
+    if (!existingIds.has(baseId)) {
+      return baseId
+    }
+
+    let suffix = 2
+    while (existingIds.has(`${baseId}-${suffix}`)) {
+      suffix++
+    }
+    return `${baseId}-${suffix}`
   }
 
   const validateForm = (): boolean => {
@@ -72,20 +103,16 @@ export function SkillFormModal({
     if (!formData.name.trim()) {
       newErrors.name = t('validation.nameRequired')
     }
-    else {
-      // Validate name format (lowercase, hyphens only)
-      const nameRegex = /^[a-z0-9-]+$/
-      if (!nameRegex.test(formData.name)) {
-        newErrors.name = t('validation.nameFormat')
-      }
+    else if (!isSafeSkillName(formData.name.trim())) {
+      newErrors.name = t('validation.nameFormat')
     }
 
-    // Check name uniqueness (only for new skills or if name changed)
-    const generatedId = generateId(formData.name)
-    if (!isEdit || generatedId !== initialData?.id) {
-      if (existingIds.includes(generatedId)) {
-        newErrors.name = t('validation.nameExists')
-      }
+    const duplicateName = existingSkills.some(skill => (
+      skill.id !== initialData?.id
+      && skill.name.toLowerCase() === formData.name.trim().toLowerCase()
+    ))
+    if (duplicateName) {
+      newErrors.name = t('validation.nameExists')
     }
 
     // Description is required
@@ -116,7 +143,7 @@ export function SkillFormModal({
 
       const skill: SkillDefinition = {
         ...formData,
-        id: isEdit ? formData.id : generateId(formData.name),
+        id: isEdit ? formData.id : generateUniqueId(formData.name.trim()),
         name: formData.name.trim(),
         description: formData.description.trim(),
         content: formData.content.trim(),

@@ -10,29 +10,34 @@ export class ClaudeConfigWatcher {
     watchers = [];
     debounceTimer = null;
     debounceMs = 1000;
+    currentLibrary = null;
+    getCurrentLibraryCallback;
     onSyncCallback;
     constructor(projectRoot = process.cwd(), ui, options) {
         this.projectRoot = projectRoot;
         this.ui = ui || new UILogger(false);
         this.syncer = new ClaudeConfigSyncer(projectRoot, this.ui);
-        if (options?.debounceMs) {
+        if (options?.debounceMs !== undefined) {
             this.debounceMs = options.debounceMs;
         }
     }
-    start(currentLibrary, onSync) {
+    start(currentLibrary, onSync, getCurrentLibrary) {
+        this.stop();
+        this.currentLibrary = currentLibrary;
         this.onSyncCallback = onSync;
+        this.getCurrentLibraryCallback = getCurrentLibrary;
         this.ui.verbose('Starting Claude Code config file watcher...');
         const mcpConfigPath = path.join(this.projectRoot, '.mcp.json');
         if (fs.existsSync(mcpConfigPath)) {
-            this.watchFile(mcpConfigPath, currentLibrary);
+            this.watchFile(mcpConfigPath);
         }
         const skillsDir = path.join(this.projectRoot, '.claude', 'skills');
         if (fs.existsSync(skillsDir)) {
-            this.watchDirectory(skillsDir, currentLibrary);
+            this.watchDirectory(skillsDir);
         }
         const agentsDir = path.join(this.projectRoot, '.claude', 'agents');
         if (fs.existsSync(agentsDir)) {
-            this.watchDirectory(agentsDir, currentLibrary);
+            this.watchDirectory(agentsDir);
         }
         this.ui.verbose(`Watching ${this.watchers.length} paths for changes`);
     }
@@ -46,14 +51,17 @@ export class ClaudeConfigWatcher {
             watcher.close();
         }
         this.watchers = [];
+        this.currentLibrary = null;
+        this.getCurrentLibraryCallback = undefined;
+        this.onSyncCallback = undefined;
         this.ui.verbose('File watcher stopped');
     }
-    watchFile(filePath, currentLibrary) {
+    watchFile(filePath) {
         try {
             const watcher = fs.watch(filePath, (eventType) => {
                 if (eventType === 'change') {
                     this.ui.verbose(`Detected change in ${path.basename(filePath)}`);
-                    this.debouncedSync(currentLibrary);
+                    this.debouncedSync();
                 }
             });
             watcher.on('error', (error) => {
@@ -66,12 +74,12 @@ export class ClaudeConfigWatcher {
             this.ui.error(`Failed to watch ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
-    watchDirectory(dirPath, currentLibrary) {
+    watchDirectory(dirPath) {
         try {
             const watcher = fs.watch(dirPath, { recursive: true }, (eventType, filename) => {
                 if (filename) {
                     this.ui.verbose(`Detected ${eventType} in ${dirPath}/${filename}`);
-                    this.debouncedSync(currentLibrary);
+                    this.debouncedSync();
                 }
             });
             watcher.on('error', (error) => {
@@ -84,17 +92,23 @@ export class ClaudeConfigWatcher {
             this.ui.error(`Failed to watch ${dirPath}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
-    debouncedSync(currentLibrary) {
+    debouncedSync() {
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer);
         }
         this.debounceTimer = setTimeout(() => {
-            void this.performSync(currentLibrary);
+            void this.performSync();
         }, this.debounceMs);
     }
-    async performSync(currentLibrary) {
+    async performSync() {
         try {
             this.ui.verbose('Syncing Claude Code config changes...');
+            const currentLibrary = this.getCurrentLibraryCallback
+                ? await this.getCurrentLibraryCallback()
+                : this.currentLibrary;
+            if (!currentLibrary) {
+                return;
+            }
             const syncResult = await this.syncer.syncClaudeConfig(currentLibrary);
             if (syncResult.result.totalChanged > 0) {
                 this.ui.verbose(`Synced ${syncResult.result.totalChanged} extension changes:`);
@@ -117,8 +131,9 @@ export class ClaudeConfigWatcher {
                     this.ui.verbose(`  - ${syncResult.result.subagentsUpdated} subagents updated`);
                 }
                 if (this.onSyncCallback) {
-                    await this.onSyncCallback(syncResult.library);
+                    await this.onSyncCallback(syncResult.library, syncResult.defaultEnabled);
                 }
+                this.currentLibrary = syncResult.library;
             }
             else {
                 this.ui.verbose('No new extensions detected');

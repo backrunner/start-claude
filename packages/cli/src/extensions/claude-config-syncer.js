@@ -2,6 +2,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import process from 'node:process';
 import { UILogger } from '../utils/cli/ui';
+import { getFrontmatterString, getFrontmatterStringList, parseMarkdownFrontmatter, } from './frontmatter';
+import { isSafeSkillName, isSafeSubagentName } from './names';
 export class ClaudeConfigSyncer {
     projectRoot;
     ui;
@@ -56,41 +58,45 @@ export class ClaudeConfigSyncer {
         try {
             const content = fs.readFileSync(mcpConfigPath, 'utf-8');
             const mcpConfig = JSON.parse(content);
-            if (!mcpConfig.mcpServers || typeof mcpConfig.mcpServers !== 'object') {
+            if (!isRecord(mcpConfig) || !isRecord(mcpConfig.mcpServers)) {
                 return createEmptyChanges();
             }
             const changes = createEmptyChanges();
             for (const [serverName, serverConfig] of Object.entries(mcpConfig.mcpServers)) {
-                const baseId = this.generateId(serverName);
-                const type = serverConfig.type === 'sse'
-                    ? 'sse'
-                    : serverConfig.type === 'http'
-                        ? 'http'
-                        : 'stdio';
-                const { id, status } = this.upsertExtension(library.mcpServers, baseId, serverName, (id, existing) => {
-                    const server = {
-                        id,
-                        name: serverName,
-                        description: existing?.description || `Imported from .mcp.json`,
-                        type,
-                        scope: existing?.scope,
-                    };
-                    if (type === 'stdio') {
-                        server.command = serverConfig.command || '';
-                        server.args = Array.isArray(serverConfig.args) ? serverConfig.args : [];
-                        server.env = isRecord(serverConfig.env) ? serverConfig.env : {};
+                try {
+                    if (!isRecord(serverConfig)) {
+                        throw new Error('configuration must be an object');
                     }
-                    else {
-                        server.url = serverConfig.url || '';
-                        server.headers = isRecord(serverConfig.headers) ? serverConfig.headers : {};
+                    const baseId = this.generateId(serverName);
+                    const type = getMcpTransport(serverConfig.type);
+                    const { id, status } = this.upsertExtension(library.mcpServers, baseId, serverName, (id, existing) => {
+                        const server = {
+                            id,
+                            name: serverName,
+                            description: existing?.description || `Imported from .mcp.json`,
+                            type,
+                            scope: existing?.scope,
+                        };
+                        if (type === 'stdio') {
+                            server.command = getRequiredString(serverConfig, 'command');
+                            server.args = getStringArray(serverConfig, 'args');
+                            server.env = getStringRecord(serverConfig, 'env');
+                        }
+                        else {
+                            server.url = getRequiredString(serverConfig, 'url');
+                            server.headers = getStringRecord(serverConfig, 'headers');
+                        }
+                        return server;
+                    });
+                    if (status === 'added') {
+                        changes.added.push(id);
                     }
-                    return server;
-                });
-                if (status === 'added') {
-                    changes.added.push(id);
+                    else if (status === 'updated') {
+                        changes.updated.push(id);
+                    }
                 }
-                else if (status === 'updated') {
-                    changes.updated.push(id);
+                catch (error) {
+                    this.ui.error(`Error syncing MCP server "${serverName}": ${error instanceof Error ? error.message : String(error)}`);
                 }
             }
             return changes;
@@ -110,29 +116,40 @@ export class ClaudeConfigSyncer {
                 .filter(dirent => dirent.isDirectory());
             const changes = createEmptyChanges();
             for (const dirent of skillDirs) {
-                const skillDir = path.join(skillsDir, dirent.name);
-                const skillFile = path.join(skillDir, 'SKILL.md');
-                if (!fs.existsSync(skillFile)) {
-                    continue;
+                try {
+                    const skillDir = path.join(skillsDir, dirent.name);
+                    const skillFile = path.join(skillDir, 'SKILL.md');
+                    if (!fs.existsSync(skillFile)) {
+                        continue;
+                    }
+                    const content = fs.readFileSync(skillFile, 'utf-8');
+                    const { attributes } = parseMarkdownFrontmatter(content);
+                    const skillName = getFrontmatterString(attributes, 'name') || dirent.name;
+                    if (!isSafeSkillName(skillName)) {
+                        throw new Error(`unsafe cross-platform skill name: ${skillName}`);
+                    }
+                    const baseId = this.generateId(skillName);
+                    const unchangedManagedSkill = Object.entries(library.skills).find(([id, skill]) => (skill.content === content
+                        && (id === baseId || skill.name.toLowerCase() === skillName.toLowerCase())));
+                    if (unchangedManagedSkill) {
+                        continue;
+                    }
+                    const { id, status } = this.upsertExtension(library.skills, baseId, skillName, (id) => ({
+                        id,
+                        name: skillName,
+                        description: getFrontmatterString(attributes, 'description') || `Imported from .claude/skills/${dirent.name}`,
+                        content,
+                        allowedTools: getFrontmatterStringList(attributes, 'allowed-tools'),
+                    }));
+                    if (status === 'added') {
+                        changes.added.push(id);
+                    }
+                    else if (status === 'updated') {
+                        changes.updated.push(id);
+                    }
                 }
-                const content = fs.readFileSync(skillFile, 'utf-8');
-                const { frontmatter } = this.parseFrontmatter(content);
-                const skillName = frontmatter.name || dirent.name;
-                const baseId = this.generateId(skillName);
-                const { id, status } = this.upsertExtension(library.skills, baseId, skillName, id => ({
-                    id,
-                    name: skillName,
-                    description: frontmatter.description || `Imported from .claude/skills/${dirent.name}`,
-                    content,
-                    allowedTools: frontmatter['allowed-tools']
-                        ? frontmatter['allowed-tools'].split(',').map((t) => t.trim()).filter(Boolean)
-                        : undefined,
-                }));
-                if (status === 'added') {
-                    changes.added.push(id);
-                }
-                else if (status === 'updated') {
-                    changes.updated.push(id);
+                catch (error) {
+                    this.ui.error(`Error syncing skill "${dirent.name}": ${error instanceof Error ? error.message : String(error)}`);
                 }
             }
             return changes;
@@ -152,27 +169,33 @@ export class ClaudeConfigSyncer {
                 .filter(dirent => dirent.isFile() && dirent.name.endsWith('.md'));
             const changes = createEmptyChanges();
             for (const dirent of agentFiles) {
-                const agentFile = path.join(agentsDir, dirent.name);
-                const content = fs.readFileSync(agentFile, 'utf-8');
-                const { frontmatter, body } = this.parseFrontmatter(content);
+                try {
+                    const agentFile = path.join(agentsDir, dirent.name);
+                    const content = fs.readFileSync(agentFile, 'utf-8');
+                    const { attributes, body } = parseMarkdownFrontmatter(content);
                 const agentNameFromFile = dirent.name.replace(/\.md$/, '');
-                const agentName = frontmatter.name || agentNameFromFile;
-                const baseId = this.generateId(agentName);
-                const { id, status } = this.upsertExtension(library.subagents, baseId, agentName, id => ({
-                    id,
-                    name: agentName,
-                    description: frontmatter.description || `Imported from .claude/agents/${dirent.name}`,
-                    systemPrompt: body,
-                    tools: frontmatter.tools
-                        ? frontmatter.tools.split(',').map((t) => t.trim()).filter(Boolean)
-                        : undefined,
-                    model: frontmatter.model,
-                }));
-                if (status === 'added') {
-                    changes.added.push(id);
+                const agentName = getFrontmatterString(attributes, 'name') || agentNameFromFile;
+                if (!isSafeSubagentName(agentName)) {
+                    throw new Error(`unsafe subagent name: ${agentName}`);
                 }
-                else if (status === 'updated') {
-                    changes.updated.push(id);
+                const baseId = this.generateId(agentName);
+                    const { id, status } = this.upsertExtension(library.subagents, baseId, agentName, (id) => ({
+                        id,
+                        name: agentName,
+                        description: getFrontmatterString(attributes, 'description') || `Imported from .claude/agents/${dirent.name}`,
+                        systemPrompt: body,
+                        tools: getFrontmatterStringList(attributes, 'tools'),
+                        model: getSubagentModel(attributes.model),
+                    }));
+                    if (status === 'added') {
+                        changes.added.push(id);
+                    }
+                    else if (status === 'updated') {
+                        changes.updated.push(id);
+                    }
+                }
+                catch (error) {
+                    this.ui.error(`Error syncing subagent "${dirent.name}": ${error instanceof Error ? error.message : String(error)}`);
                 }
             }
             return changes;
@@ -182,33 +205,12 @@ export class ClaudeConfigSyncer {
             return createEmptyChanges();
         }
     }
-    parseFrontmatter(content) {
-        const frontmatterRegex = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
-        const match = content.match(frontmatterRegex);
-        if (!match) {
-            return { frontmatter: {}, body: content };
-        }
-        const frontmatterText = match[1];
-        const body = match[2];
-        const frontmatter = {};
-        const lines = frontmatterText.split('\n');
-        for (const line of lines) {
-            const colonIndex = line.indexOf(':');
-            if (colonIndex === -1) {
-                continue;
-            }
-            const key = line.substring(0, colonIndex).trim();
-            const value = line.substring(colonIndex + 1).trim();
-            frontmatter[key] = value;
-        }
-        return { frontmatter, body };
-    }
     generateId(name) {
         return name
             .toLowerCase()
             .replace(/[^a-z0-9-]/g, '-')
             .replace(/-+/g, '-')
-            .replace(/^-|-$/g, '');
+            .replace(/^-|-$/g, '') || 'extension';
     }
     getUniqueId(baseId, existing) {
         if (!existing[baseId]) {
@@ -252,4 +254,45 @@ function createEmptyChanges() {
 }
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function getMcpTransport(value) {
+    if (value === undefined || value === 'stdio') {
+        return 'stdio';
+    }
+    if (value === 'http' || value === 'sse') {
+        return value;
+    }
+    throw new Error(`unsupported transport type: ${String(value)}`);
+}
+function getRequiredString(record, key) {
+    const value = record[key];
+    if (typeof value !== 'string' || !value.trim()) {
+        throw new Error(`"${key}" must be a non-empty string`);
+    }
+    return value;
+}
+function getStringArray(record, key) {
+    const value = record[key];
+    if (value === undefined) {
+        return [];
+    }
+    if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) {
+        throw new Error(`"${key}" must be an array of strings`);
+    }
+    return value;
+}
+function getStringRecord(record, key) {
+    const value = record[key];
+    if (value === undefined) {
+        return {};
+    }
+    if (!isRecord(value) || !Object.values(value).every(item => typeof item === 'string')) {
+        throw new Error(`"${key}" must be an object with string values`);
+    }
+    return value;
+}
+function getSubagentModel(value) {
+    return value === 'sonnet' || value === 'opus' || value === 'haiku' || value === 'inherit'
+        ? value
+        : undefined;
 }

@@ -510,8 +510,10 @@
         "type": "伺服器類型",
         "typeStdio": "stdio（本機程序）",
         "typeHttp": "HTTP（遠端伺服器）",
+        "typeSse": "SSE（遠端伺服器）",
         "typeStdioHint": "執行本機程序並透過標準輸入/輸出通訊",
         "typeHttpHint": "連接到遠端 HTTP MCP 伺服器",
+        "typeSseHint": "透過伺服器傳送事件連接遠端 MCP 伺服器",
         "command": "指令",
         "commandPlaceholder": "例如：npx",
         "args": "參數",
@@ -541,23 +543,43 @@
           "nameExists": "已存在同名伺服器",
           "commandRequired": "stdio 伺服器需要提供指令",
           "urlRequired": "HTTP 伺服器需要提供 URL",
-          "urlInvalid": "請輸入有效的 URL"
+          "urlInvalid": "請輸入有效的 URL",
+          "argsInvalid": "參數中存在未閉合的引號"
         }
       }
     },
     "skills": {
       "title": "技能",
-      "description": "技能透過專門的工作流程擴充 Claude 的能力",
-      "add": "新增技能",
-      "empty": "未設定技能。新增您的第一個技能以擴充 Claude 的能力。",
-      "form": {
+    "description": "技能透過專門的工作流程擴充 Claude 的能力",
+    "add": "新增技能",
+    "empty": "未設定技能。新增您的第一個技能以擴充 Claude 的能力。",
+    "install": {
+      "button": "從 SkillsCat 安裝",
+      "title": "從 SkillsCat 安裝技能",
+      "description": "將已發佈的技能 slug 或技能儲存庫安裝到 Claude Code。",
+      "source": "技能 slug 或儲存庫",
+      "sourcePlaceholder": "例如：code-review 或 owner/repo",
+      "skills": "指定技能名稱",
+      "skillsPlaceholder": "選填，使用逗號分隔",
+      "repo": "將來源視為儲存庫",
+      "force": "覆寫現有技能檔案",
+      "submit": "安裝",
+      "installing": "安裝中...",
+      "cancel": "取消",
+      "sourceRequired": "請輸入技能 slug 或儲存庫",
+      "success": "技能已安裝",
+      "successDescription": "SkillsCat 已安裝並同步該技能。",
+      "failed": "安裝失敗",
+      "failedDescription": "SkillsCat 無法安裝該技能。"
+    },
+    "form": {
         "addTitle": "新增技能",
         "editTitle": "編輯技能",
         "addDescription": "建立新技能以擴充 Claude 的能力",
         "editDescription": "更新此技能的設定",
         "name": "技能名稱",
         "namePlaceholder": "例如：code-review",
-        "nameHint": "僅限小寫字母、數字和連字號",
+        "nameHint": "使用有效的跨平台資料夾名稱，最多 128 個字元",
         "description": "說明",
         "descriptionPlaceholder": "何時使用此技能？",
         "content": "SKILL.md 內容",
@@ -577,7 +599,7 @@
         "saveErrorDescription": "無法儲存技能，請重試。",
         "validation": {
           "nameRequired": "技能名稱為必填項",
-          "nameFormat": "名稱必須僅包含小寫字母和連字號（例如：my-skill）",
+          "nameFormat": "名稱必須是有效的跨平台資料夾名稱",
           "nameExists": "已存在同名技能",
           "descriptionRequired": "說明為必填項",
           "contentRequired": "技能內容為必填項"

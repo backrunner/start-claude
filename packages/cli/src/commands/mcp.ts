@@ -1,5 +1,7 @@
 import type { ExtensionsLibrary, McpServerDefinition } from '../config/types'
 import { ConfigManager } from '../config/manager'
+import { pruneMissingExtensionReferences } from '../extensions/references'
+import { ExtensionsWriter } from '../extensions/writer'
 import { UILogger } from '../utils/cli/ui'
 
 const configManager = ConfigManager.getInstance()
@@ -8,13 +10,67 @@ const configManager = ConfigManager.getInstance()
  * Server config from JSON input
  */
 interface ServerConfigJson {
-  type: string
+  type: 'stdio' | 'http' | 'sse'
   command?: string
   args?: string[]
   env?: Record<string, string>
   url?: string
   headers?: Record<string, string>
   description?: string
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isUnknownRecord(value)
+    && Object.values(value).every(item => typeof item === 'string')
+}
+
+export function parseMcpServerConfig(value: unknown): ServerConfigJson {
+  if (!isUnknownRecord(value)) {
+    throw new Error('Configuration must be a JSON object.')
+  }
+
+  if (value.type !== 'stdio' && value.type !== 'http' && value.type !== 'sse') {
+    throw new Error('Invalid or missing "type" field. Must be stdio, http, or sse.')
+  }
+  if (value.args !== undefined
+    && (!Array.isArray(value.args) || !value.args.every(item => typeof item === 'string'))) {
+    throw new Error('The "args" field must be an array of strings.')
+  }
+  if (value.env !== undefined && !isStringRecord(value.env)) {
+    throw new Error('The "env" field must be an object with string values.')
+  }
+  if (value.headers !== undefined && !isStringRecord(value.headers)) {
+    throw new Error('The "headers" field must be an object with string values.')
+  }
+  if (value.description !== undefined && typeof value.description !== 'string') {
+    throw new Error('The "description" field must be a string.')
+  }
+  if (value.command !== undefined && typeof value.command !== 'string') {
+    throw new Error('The "command" field must be a string.')
+  }
+  if (value.url !== undefined && typeof value.url !== 'string') {
+    throw new Error('The "url" field must be a string.')
+  }
+  if (value.type === 'stdio' && !value.command?.trim()) {
+    throw new Error('Missing "command" field for stdio transport.')
+  }
+  if ((value.type === 'http' || value.type === 'sse') && !value.url?.trim()) {
+    throw new Error(`Missing "url" field for ${value.type} transport.`)
+  }
+
+  return {
+    type: value.type,
+    command: value.command,
+    args: value.args,
+    env: value.env,
+    url: value.url,
+    headers: value.headers,
+    description: value.description,
+  }
 }
 
 /**
@@ -25,7 +81,13 @@ function generateId(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, '-')
     .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+    .replace(/^-|-$/g, '') || 'mcp-server'
+}
+
+function hasServerName(library: ExtensionsLibrary, name: string): boolean {
+  const normalizedName = name.trim().toLowerCase()
+  return Object.values(library.mcpServers)
+    .some(server => server.name.trim().toLowerCase() === normalizedName)
 }
 
 /**
@@ -126,12 +188,22 @@ export async function handleMcpAddCommand(
     subagents: {},
   }
 
-  const baseId = generateId(name)
+  const serverName = name.trim()
+  if (!serverName) {
+    ui.displayError('MCP server name is required.')
+    return
+  }
+  if (hasServerName(library, serverName)) {
+    ui.displayError(`An MCP server named "${serverName}" already exists.`)
+    return
+  }
+
+  const baseId = generateId(serverName)
   const id = getUniqueId(baseId, library.mcpServers)
 
   const server: McpServerDefinition = {
     id,
-    name,
+    name: serverName,
     type: transport as 'stdio' | 'http' | 'sse',
     scope: scope as 'local' | 'user' | 'project',
   }
@@ -243,6 +315,7 @@ export async function handleMcpRemoveCommand(
     skills: {},
     subagents: {},
   }
+  const previousLibrary = structuredClone(library)
 
   // Find server by name or ID
   let serverId: string | null = null
@@ -284,6 +357,8 @@ export async function handleMcpRemoveCommand(
 
   // Save config
   configFile.settings.extensionsLibrary = library
+  pruneMissingExtensionReferences(configFile)
+  new ExtensionsWriter().reconcileLibraryChanges(previousLibrary, library)
   await configManager.save(configFile)
 
   ui.displaySuccess(`✅ MCP server "${server.name}" removed successfully!`)
@@ -443,18 +518,21 @@ export async function handleMcpAddJsonCommand(
   }
 
   // Parse JSON
-  let serverConfig: ServerConfigJson
+  let parsedConfig: unknown
   try {
-    serverConfig = JSON.parse(jsonStr) as ServerConfigJson
+    parsedConfig = JSON.parse(jsonStr)
   }
   catch (error) {
     ui.displayError(`Invalid JSON: ${error instanceof Error ? error.message : 'Parse error'}`)
     return
   }
 
-  // Validate server config
-  if (!serverConfig.type || !['stdio', 'http', 'sse'].includes(serverConfig.type)) {
-    ui.displayError('Invalid or missing "type" field in JSON. Must be stdio, http, or sse.')
+  let serverConfig: ServerConfigJson
+  try {
+    serverConfig = parseMcpServerConfig(parsedConfig)
+  }
+  catch (error) {
+    ui.displayError(`Invalid MCP server config: ${error instanceof Error ? error.message : 'Validation error'}`)
     return
   }
 
@@ -465,22 +543,28 @@ export async function handleMcpAddJsonCommand(
     subagents: {},
   }
 
-  const baseId = generateId(name)
+  const serverName = name.trim()
+  if (!serverName) {
+    ui.displayError('MCP server name is required.')
+    return
+  }
+  if (hasServerName(library, serverName)) {
+    ui.displayError(`An MCP server named "${serverName}" already exists.`)
+    return
+  }
+
+  const baseId = generateId(serverName)
   const id = getUniqueId(baseId, library.mcpServers)
 
   const server: McpServerDefinition = {
     id,
-    name,
-    type: serverConfig.type as 'stdio' | 'http' | 'sse',
+    name: serverName,
+    type: serverConfig.type,
     scope: scope as 'local' | 'user' | 'project',
   }
 
   // Copy relevant fields based on type
   if (serverConfig.type === 'stdio') {
-    if (!serverConfig.command) {
-      ui.displayError('Missing "command" field for stdio transport')
-      return
-    }
     server.command = serverConfig.command
     if (serverConfig.args) {
       server.args = serverConfig.args
@@ -490,10 +574,6 @@ export async function handleMcpAddJsonCommand(
     }
   }
   else if (serverConfig.type === 'http' || serverConfig.type === 'sse') {
-    if (!serverConfig.url) {
-      ui.displayError(`Missing "url" field for ${serverConfig.type} transport`)
-      return
-    }
     server.url = serverConfig.url
     if (serverConfig.headers) {
       server.headers = serverConfig.headers

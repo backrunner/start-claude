@@ -14,12 +14,13 @@ export interface ClaudeProviderSettingsSyncResult {
 
 interface ClaudeProviderSettingsSyncOptions {
   settingsPath?: string
-  statePath?: string
+  knownConfigs?: Iterable<ClaudeConfig>
 }
 
 interface ClaudeSettingsEnvCleanupOptions {
   settingsPath?: string
   envKeys: Iterable<string>
+  knownConfigs?: Iterable<ClaudeConfig>
 }
 
 export interface ClaudeSettingsEnvCleanupResult {
@@ -32,13 +33,6 @@ interface ClaudeCodeSettings {
   env?: Record<string, unknown>
   [key: string]: unknown
 }
-
-interface ClaudeProviderSettingsState {
-  version: 1
-  settings: Record<string, { envKeys: string[] }>
-}
-
-const providerSettingsStateVersion = 1
 
 const basicEnvMap: Array<[keyof ClaudeConfig, string]> = [
   ['baseUrl', 'ANTHROPIC_BASE_URL'],
@@ -135,14 +129,14 @@ const additionalManagedEnvKeys = [
   'DISABLE_PROMPT_CACHING_SONNET',
 ]
 
-const officialProfileProviderEnvKeys = [
+const claudeProviderCredentialEnvKeys: readonly string[] = [
   'ANTHROPIC_BASE_URL',
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_AUTH_TOKEN',
   'ANTHROPIC_CUSTOM_HEADERS',
 ]
 
-const proxyClientProviderEnvKeys = new Set(officialProfileProviderEnvKeys)
+const proxyClientProviderEnvKeys = new Set<string>(claudeProviderCredentialEnvKeys)
 
 export const MANAGED_CLAUDE_PROVIDER_ENV_KEYS = new Set([
   ...basicEnvMap.map(([, envKey]) => envKey),
@@ -157,10 +151,6 @@ export function getClaudeCodeSettingsPath(
   configDir = process.env.CLAUDE_CONFIG_DIR,
 ): string {
   return join(resolveClaudeConfigDir(configDir, homeDir), 'settings.json')
-}
-
-export function getClaudeProviderSettingsStatePath(homeDir = homedir()): string {
-  return join(homeDir, '.start-claude', 'claude-provider-settings-state.json')
 }
 
 export function buildClaudeProviderEnv(config: ClaudeConfig): Record<string, string> {
@@ -189,7 +179,7 @@ export function buildClaudeProviderEnv(config: ClaudeConfig): Record<string, str
       return
     }
 
-    if (config.profileType === 'official' && officialProfileProviderEnvKeys.includes(envKey)) {
+    if (config.profileType === 'official' && claudeProviderCredentialEnvKeys.includes(envKey)) {
       delete env[envKey]
       return
     }
@@ -216,7 +206,7 @@ export function buildClaudeProviderEnv(config: ClaudeConfig): Record<string, str
     }
   }
   else {
-    officialProfileProviderEnvKeys.forEach(key => delete env[key])
+    claudeProviderCredentialEnvKeys.forEach(key => delete env[key])
   }
 
   numericEnvMap.forEach(([configKey, envKey]) => {
@@ -295,10 +285,7 @@ export async function syncClaudeProviderSettings(
     homedir(),
     getClaudeConfigDir(config),
   )
-  const statePath = options.statePath || getClaudeProviderSettingsStatePath()
   const settings = loadClaudeCodeSettings(settingsPath)
-  const state = loadClaudeProviderSettingsState(statePath)
-  const stateSettingsKey = resolve(settingsPath)
   const providerEnv = buildClaudeProviderEnv(config)
   const hasInvalidEnv = settings.env !== undefined && !isRecord(settings.env)
   const currentEnv = isRecord(settings.env) ? { ...settings.env } : {}
@@ -307,17 +294,17 @@ export async function syncClaudeProviderSettings(
     providerEnv,
     MANAGED_CLAUDE_PROVIDER_ENV_KEYS,
   )
-  const backupPath = existsSync(settingsPath) && (hasInvalidEnv || removedEnvKeys.length > 0)
+  const isManagedByStartClaude = matchesStartClaudeProviderCredentials(
+    currentEnv,
+    [config, ...(options.knownConfigs ?? [])],
+  )
+  const backupPath = existsSync(settingsPath)
+    && (hasInvalidEnv || removedEnvKeys.length > 0)
+    && !isManagedByStartClaude
     ? backupClaudeCodeSettings(settingsPath)
     : undefined
 
   removedEnvKeys.forEach(key => delete currentEnv[key])
-
-  state.settings[stateSettingsKey]?.envKeys.forEach((key) => {
-    if (!(key in providerEnv)) {
-      delete currentEnv[key]
-    }
-  })
 
   settings.env = {
     ...currentEnv,
@@ -325,7 +312,6 @@ export async function syncClaudeProviderSettings(
   }
 
   writeClaudeCodeSettings(settingsPath, settings)
-  updateClaudeProviderSettingsState(statePath, state, stateSettingsKey, Object.keys(providerEnv))
 
   return {
     settingsPath,
@@ -362,7 +348,9 @@ export function cleanClaudeSettingsEnvConflicts(
     return { settingsPath, removedEnvKeys }
   }
 
-  const backupPath = backupClaudeCodeSettings(settingsPath)
+  const backupPath = matchesStartClaudeProviderCredentials(currentEnv, options.knownConfigs ?? [])
+    ? undefined
+    : backupClaudeCodeSettings(settingsPath)
   removedEnvKeys.forEach(key => delete currentEnv[key])
 
   if (Object.keys(currentEnv).length > 0) {
@@ -391,6 +379,55 @@ function findConflictingEnvKeys(
   return Object.keys(currentEnv)
     .filter(key => controlledKeys.has(key) && currentEnv[key] !== expectedEnv[key])
     .sort()
+}
+
+function matchesStartClaudeProviderCredentials(
+  currentEnv: Record<string, unknown>,
+  knownConfigs: Iterable<ClaudeConfig>,
+): boolean {
+  if (matchesStartClaudeProxyCredentials(currentEnv)) {
+    return true
+  }
+
+  for (const config of knownConfigs) {
+    const knownEnv = buildClaudeProviderEnv(config)
+    const hasCredentials = claudeProviderCredentialEnvKeys.some(key => knownEnv[key] !== undefined)
+
+    if (hasCredentials && claudeProviderCredentialEnvKeys.every(key => currentEnv[key] === knownEnv[key])) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function matchesStartClaudeProxyCredentials(currentEnv: Record<string, unknown>): boolean {
+  if (
+    currentEnv.ANTHROPIC_AUTH_TOKEN !== 'sk-claude-proxy-server'
+    || currentEnv.ANTHROPIC_API_KEY !== undefined
+    || currentEnv.ANTHROPIC_CUSTOM_HEADERS !== undefined
+  ) {
+    return false
+  }
+
+  const baseUrl = currentEnv.ANTHROPIC_BASE_URL
+  if (typeof baseUrl !== 'string' || !/^http:\/\/localhost:\d+$/.test(baseUrl)) {
+    return false
+  }
+
+  try {
+    const parsedUrl = new URL(baseUrl)
+    return parsedUrl.protocol === 'http:'
+      && parsedUrl.hostname === 'localhost'
+      && parsedUrl.username === ''
+      && parsedUrl.password === ''
+      && parsedUrl.pathname === '/'
+      && parsedUrl.search === ''
+      && parsedUrl.hash === ''
+  }
+  catch {
+    return false
+  }
 }
 
 function backupClaudeCodeSettings(settingsPath: string): string {
@@ -427,85 +464,6 @@ function writeClaudeCodeSettings(settingsPath: string, settings: ClaudeCodeSetti
   catch (error) {
     rmSync(tempPath, { force: true })
     throw error
-  }
-}
-
-function loadClaudeProviderSettingsState(statePath: string): ClaudeProviderSettingsState {
-  if (!existsSync(statePath)) {
-    return createEmptyProviderSettingsState()
-  }
-
-  let parsed: unknown
-  try {
-    const content = readFileSync(statePath, 'utf-8')
-    parsed = JSON.parse(content)
-  }
-  catch {
-    return createEmptyProviderSettingsState()
-  }
-
-  if (!isRecord(parsed) || !isRecord(parsed.settings)) {
-    return createEmptyProviderSettingsState()
-  }
-
-  const settings: ClaudeProviderSettingsState['settings'] = {}
-
-  Object.entries(parsed.settings).forEach(([settingsPath, value]) => {
-    if (!isRecord(value) || !Array.isArray(value.envKeys)) {
-      return
-    }
-
-    const envKeys = value.envKeys.filter((key): key is string => typeof key === 'string')
-    settings[settingsPath] = { envKeys }
-  })
-
-  return {
-    version: providerSettingsStateVersion,
-    settings,
-  }
-}
-
-function updateClaudeProviderSettingsState(
-  statePath: string,
-  state: ClaudeProviderSettingsState,
-  settingsPath: string,
-  envKeys: string[],
-): void {
-  if (envKeys.length > 0) {
-    state.settings[settingsPath] = {
-      envKeys: [...new Set(envKeys)].sort(),
-    }
-  }
-  else {
-    delete state.settings[settingsPath]
-  }
-
-  writeClaudeProviderSettingsState(statePath, state)
-}
-
-function writeClaudeProviderSettingsState(
-  statePath: string,
-  state: ClaudeProviderSettingsState,
-): void {
-  const stateDir = dirname(statePath)
-  mkdirSync(stateDir, { recursive: true })
-
-  const tempPath = join(stateDir, `${basename(statePath)}.tmp.${randomUUID()}`)
-
-  try {
-    writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`)
-    renameSync(tempPath, statePath)
-  }
-  catch (error) {
-    rmSync(tempPath, { force: true })
-    throw error
-  }
-}
-
-function createEmptyProviderSettingsState(): ClaudeProviderSettingsState {
-  return {
-    version: providerSettingsStateVersion,
-    settings: {},
   }
 }
 

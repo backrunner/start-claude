@@ -3,7 +3,6 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, 
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import process from 'node:process';
-const providerSettingsStateVersion = 1;
 const basicEnvMap = [
     ['baseUrl', 'ANTHROPIC_BASE_URL'],
     ['apiKey', 'ANTHROPIC_API_KEY'],
@@ -92,13 +91,13 @@ const additionalManagedEnvKeys = [
     'DISABLE_PROMPT_CACHING_OPUS',
     'DISABLE_PROMPT_CACHING_SONNET',
 ];
-const officialProfileProviderEnvKeys = [
+const claudeProviderCredentialEnvKeys = [
     'ANTHROPIC_BASE_URL',
     'ANTHROPIC_API_KEY',
     'ANTHROPIC_AUTH_TOKEN',
     'ANTHROPIC_CUSTOM_HEADERS',
 ];
-const proxyClientProviderEnvKeys = new Set(officialProfileProviderEnvKeys);
+const proxyClientProviderEnvKeys = new Set(claudeProviderCredentialEnvKeys);
 export const MANAGED_CLAUDE_PROVIDER_ENV_KEYS = new Set([
     ...basicEnvMap.map(([, envKey]) => envKey),
     ...numericEnvMap.map(([, envKey]) => envKey),
@@ -108,9 +107,6 @@ export const MANAGED_CLAUDE_PROVIDER_ENV_KEYS = new Set([
 ]);
 export function getClaudeCodeSettingsPath(homeDir = homedir(), configDir = process.env.CLAUDE_CONFIG_DIR) {
     return join(resolveClaudeConfigDir(configDir, homeDir), 'settings.json');
-}
-export function getClaudeProviderSettingsStatePath(homeDir = homedir()) {
-    return join(homeDir, '.start-claude', 'claude-provider-settings-state.json');
 }
 export function buildClaudeProviderEnv(config) {
     const env = {};
@@ -135,7 +131,7 @@ export function buildClaudeProviderEnv(config) {
         if (configKey === 'customHeaders') {
             return;
         }
-        if (config.profileType === 'official' && officialProfileProviderEnvKeys.includes(envKey)) {
+        if (config.profileType === 'official' && claudeProviderCredentialEnvKeys.includes(envKey)) {
             delete env[envKey];
             return;
         }
@@ -157,7 +153,7 @@ export function buildClaudeProviderEnv(config) {
         }
     }
     else {
-        officialProfileProviderEnvKeys.forEach(key => delete env[key]);
+        claudeProviderCredentialEnvKeys.forEach(key => delete env[key]);
     }
     numericEnvMap.forEach(([configKey, envKey]) => {
         const value = config[configKey];
@@ -214,29 +210,23 @@ export function buildProxyClaudeProviderConfig(config, options = {}) {
 }
 export async function syncClaudeProviderSettings(config, options = {}) {
     const settingsPath = options.settingsPath || getClaudeCodeSettingsPath(homedir(), getClaudeConfigDir(config));
-    const statePath = options.statePath || getClaudeProviderSettingsStatePath();
     const settings = loadClaudeCodeSettings(settingsPath);
-    const state = loadClaudeProviderSettingsState(statePath);
-    const stateSettingsKey = resolve(settingsPath);
     const providerEnv = buildClaudeProviderEnv(config);
     const hasInvalidEnv = settings.env !== undefined && !isRecord(settings.env);
     const currentEnv = isRecord(settings.env) ? { ...settings.env } : {};
     const removedEnvKeys = findConflictingEnvKeys(currentEnv, providerEnv, MANAGED_CLAUDE_PROVIDER_ENV_KEYS);
-    const backupPath = existsSync(settingsPath) && (hasInvalidEnv || removedEnvKeys.length > 0)
+    const isManagedByStartClaude = matchesStartClaudeProviderCredentials(currentEnv, [config, ...(options.knownConfigs ?? [])]);
+    const backupPath = existsSync(settingsPath)
+        && (hasInvalidEnv || removedEnvKeys.length > 0)
+        && !isManagedByStartClaude
         ? backupClaudeCodeSettings(settingsPath)
         : undefined;
     removedEnvKeys.forEach(key => delete currentEnv[key]);
-    state.settings[stateSettingsKey]?.envKeys.forEach((key) => {
-        if (!(key in providerEnv)) {
-            delete currentEnv[key];
-        }
-    });
     settings.env = {
         ...currentEnv,
         ...providerEnv,
     };
     writeClaudeCodeSettings(settingsPath, settings);
-    updateClaudeProviderSettingsState(statePath, state, stateSettingsKey, Object.keys(providerEnv));
     return {
         settingsPath,
         env: providerEnv,
@@ -261,7 +251,9 @@ export function cleanClaudeSettingsEnvConflicts(startupEnv, options) {
     if (removedEnvKeys.length === 0) {
         return { settingsPath, removedEnvKeys };
     }
-    const backupPath = backupClaudeCodeSettings(settingsPath);
+    const backupPath = matchesStartClaudeProviderCredentials(currentEnv, options.knownConfigs ?? [])
+        ? undefined
+        : backupClaudeCodeSettings(settingsPath);
     removedEnvKeys.forEach(key => delete currentEnv[key]);
     if (Object.keys(currentEnv).length > 0) {
         settings.env = currentEnv;
@@ -281,6 +273,43 @@ function findConflictingEnvKeys(currentEnv, expectedEnv, controlledEnvKeys) {
     return Object.keys(currentEnv)
         .filter(key => controlledKeys.has(key) && currentEnv[key] !== expectedEnv[key])
         .sort();
+}
+function matchesStartClaudeProviderCredentials(currentEnv, knownConfigs) {
+    if (matchesStartClaudeProxyCredentials(currentEnv)) {
+        return true;
+    }
+    for (const config of knownConfigs) {
+        const knownEnv = buildClaudeProviderEnv(config);
+        const hasCredentials = claudeProviderCredentialEnvKeys.some(key => knownEnv[key] !== undefined);
+        if (hasCredentials && claudeProviderCredentialEnvKeys.every(key => currentEnv[key] === knownEnv[key])) {
+            return true;
+        }
+    }
+    return false;
+}
+function matchesStartClaudeProxyCredentials(currentEnv) {
+    if (currentEnv.ANTHROPIC_AUTH_TOKEN !== 'sk-claude-proxy-server'
+        || currentEnv.ANTHROPIC_API_KEY !== undefined
+        || currentEnv.ANTHROPIC_CUSTOM_HEADERS !== undefined) {
+        return false;
+    }
+    const baseUrl = currentEnv.ANTHROPIC_BASE_URL;
+    if (typeof baseUrl !== 'string' || !/^http:\/\/localhost:\d+$/.test(baseUrl)) {
+        return false;
+    }
+    try {
+        const parsedUrl = new URL(baseUrl);
+        return parsedUrl.protocol === 'http:'
+            && parsedUrl.hostname === 'localhost'
+            && parsedUrl.username === ''
+            && parsedUrl.password === ''
+            && parsedUrl.pathname === '/'
+            && parsedUrl.search === ''
+            && parsedUrl.hash === '';
+    }
+    catch {
+        return false;
+    }
 }
 function backupClaudeCodeSettings(settingsPath) {
     const backupPath = `${settingsPath}.backup.${Date.now()}.${randomUUID()}`;
@@ -310,64 +339,6 @@ function writeClaudeCodeSettings(settingsPath, settings) {
         rmSync(tempPath, { force: true });
         throw error;
     }
-}
-function loadClaudeProviderSettingsState(statePath) {
-    if (!existsSync(statePath)) {
-        return createEmptyProviderSettingsState();
-    }
-    let parsed;
-    try {
-        const content = readFileSync(statePath, 'utf-8');
-        parsed = JSON.parse(content);
-    }
-    catch {
-        return createEmptyProviderSettingsState();
-    }
-    if (!isRecord(parsed) || !isRecord(parsed.settings)) {
-        return createEmptyProviderSettingsState();
-    }
-    const settings = {};
-    Object.entries(parsed.settings).forEach(([settingsPath, value]) => {
-        if (!isRecord(value) || !Array.isArray(value.envKeys)) {
-            return;
-        }
-        const envKeys = value.envKeys.filter((key) => typeof key === 'string');
-        settings[settingsPath] = { envKeys };
-    });
-    return {
-        version: providerSettingsStateVersion,
-        settings,
-    };
-}
-function updateClaudeProviderSettingsState(statePath, state, settingsPath, envKeys) {
-    if (envKeys.length > 0) {
-        state.settings[settingsPath] = {
-            envKeys: [...new Set(envKeys)].sort(),
-        };
-    }
-    else {
-        delete state.settings[settingsPath];
-    }
-    writeClaudeProviderSettingsState(statePath, state);
-}
-function writeClaudeProviderSettingsState(statePath, state) {
-    const stateDir = dirname(statePath);
-    mkdirSync(stateDir, { recursive: true });
-    const tempPath = join(stateDir, `${basename(statePath)}.tmp.${randomUUID()}`);
-    try {
-        writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`);
-        renameSync(tempPath, statePath);
-    }
-    catch (error) {
-        rmSync(tempPath, { force: true });
-        throw error;
-    }
-}
-function createEmptyProviderSettingsState() {
-    return {
-        version: providerSettingsStateVersion,
-        settings: {},
-    };
 }
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);

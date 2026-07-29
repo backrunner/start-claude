@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 import type { ExtensionsLibrary, McpServerDefinition, SkillDefinition, SubagentDefinition } from '@/config/types'
-import { Blocks, Edit, Plus, Trash2 } from 'lucide-react'
+import { Blocks, Download, Edit, Plus, Trash2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/lib/use-toast'
 import { McpServerFormModal } from './mcp-server-form-modal'
 import { SkillFormModal } from './skill-form-modal'
+import { SkillInstallModal } from './skill-install-modal'
 import { SubagentFormModal } from './subagent-form-modal'
 
 interface ExtensionsModalProps {
@@ -18,6 +19,7 @@ interface ExtensionsModalProps {
   onClose: () => void
   initialLibrary?: ExtensionsLibrary
   onSave: (library: ExtensionsLibrary) => Promise<void>
+  onInstalled?: () => Promise<void>
 }
 
 export function ExtensionsModal({
@@ -25,6 +27,7 @@ export function ExtensionsModal({
   onClose,
   initialLibrary,
   onSave,
+  onInstalled,
 }: ExtensionsModalProps): ReactNode {
   const t = useTranslations('extensions')
   const toastT = useTranslations('toast')
@@ -50,6 +53,7 @@ export function ExtensionsModal({
   // Form modal states
   const [mcpFormOpen, setMcpFormOpen] = useState(false)
   const [skillFormOpen, setSkillFormOpen] = useState(false)
+  const [skillInstallOpen, setSkillInstallOpen] = useState(false)
   const [subagentFormOpen, setSubagentFormOpen] = useState(false)
 
   // Edit data states
@@ -98,6 +102,11 @@ export function ExtensionsModal({
   const handleAddSkill = (): void => {
     setEditingSkill(undefined)
     setSkillFormOpen(true)
+  }
+
+  const handleSkillsInstalled = async (installedLibrary: ExtensionsLibrary): Promise<void> => {
+    setLibrary(installedLibrary)
+    await onInstalled?.()
   }
 
   const handleAddSubagent = (): void => {
@@ -331,15 +340,21 @@ export function ExtensionsModal({
               {/* Skills Tab */}
               <TabsContent value="skills" className="mt-0 space-y-4">
                 <div className="space-y-4 py-4 px-1">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h3 className="text-lg font-semibold">{t('skills.title')}</h3>
                       <p className="text-sm text-muted-foreground">{t('skills.description')}</p>
                     </div>
-                    <Button onClick={handleAddSkill} size="sm">
-                      <Plus className="mr-2 h-4 w-4" />
-                      {t('skills.add')}
-                    </Button>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button variant="outline" onClick={() => setSkillInstallOpen(true)} size="sm">
+                        <Download className="mr-2 h-4 w-4" />
+                        {t('skills.install.button')}
+                      </Button>
+                      <Button onClick={handleAddSkill} size="sm">
+                        <Plus className="mr-2 h-4 w-4" />
+                        {t('skills.add')}
+                      </Button>
+                    </div>
                   </div>
 
                   {skillsCount === 0
@@ -475,7 +490,7 @@ export function ExtensionsModal({
         }}
         onSave={handleSaveMcp}
         initialData={editingMcp}
-        existingIds={Object.keys(library.mcpServers)}
+        existingServers={Object.values(library.mcpServers)}
       />
 
       <SkillFormModal
@@ -486,7 +501,16 @@ export function ExtensionsModal({
         }}
         onSave={handleSaveSkill}
         initialData={editingSkill}
-        existingIds={Object.keys(library.skills)}
+        existingSkills={Object.values(library.skills)}
+      />
+
+      <SkillInstallModal
+        open={skillInstallOpen}
+        onClose={() => setSkillInstallOpen(false)}
+        beforeInstall={async () => {
+          await onSave(library)
+        }}
+        onInstalled={handleSkillsInstalled}
       />
 
       <SubagentFormModal
@@ -497,7 +521,7 @@ export function ExtensionsModal({
         }}
         onSave={handleSaveSubagent}
         initialData={editingSubagent}
-        existingIds={Object.keys(library.subagents)}
+        existingSubagents={Object.values(library.subagents)}
       />
 
       {/* Delete Confirmation Dialog */}

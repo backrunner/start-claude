@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(),
   getSettings: vi.fn(),
+  listConfigs: vi.fn(),
   syncClaudeProviderSettings: vi.fn(),
   buildProxyClaudeProviderConfig: vi.fn((config: ClaudeConfig, options: { port?: number, authToken?: string } = {}) => ({
     ...config,
@@ -30,6 +31,7 @@ vi.mock('../../src/config/manager', () => ({
     getInstance: () => ({
       getConfig: mocks.getConfig,
       getSettings: mocks.getSettings,
+      listConfigs: mocks.listConfigs,
     }),
   },
 }))
@@ -69,6 +71,7 @@ describe('switch command', () => {
       overrideClaudeCommand: false,
       syncClaudeProviderSettings: true,
     })
+    mocks.listConfigs.mockReset().mockResolvedValue([])
     mocks.syncClaudeProviderSettings.mockReset()
     mocks.buildProxyClaudeProviderConfig.mockClear()
     mocks.getProxyStatus.mockReset()
@@ -106,7 +109,7 @@ describe('switch command', () => {
     await handleSwitchCommand('prod')
 
     expect(mocks.getConfig).toHaveBeenCalledWith('prod')
-    expect(mocks.syncClaudeProviderSettings).toHaveBeenCalledWith(config)
+    expect(mocks.syncClaudeProviderSettings).toHaveBeenCalledWith(config, { knownConfigs: [] })
     expect(mocks.getProxyStatus).toHaveBeenCalledWith(2333)
     expect(mocks.sendProxySwitchRequest).not.toHaveBeenCalled()
     expect(mocks.success).toHaveBeenCalledWith('Claude Code provider settings switched to "prod"')
@@ -173,7 +176,7 @@ describe('switch command', () => {
       apiKey: undefined,
       authorization: undefined,
       customHeaders: undefined,
-    }))
+    }), { knownConfigs: [] })
     expect(mocks.sendProxySwitchRequest).toHaveBeenCalledWith(2444, [config])
     expect(mocks.success).toHaveBeenCalledWith('Running transformer proxy switched to "openai-transformer"')
     expect(exitSpy).not.toHaveBeenCalled()
@@ -202,7 +205,7 @@ describe('switch command', () => {
     await handleSwitchCommand('prod')
 
     expect(mocks.sendProxySwitchRequest).not.toHaveBeenCalled()
-    expect(mocks.syncClaudeProviderSettings).toHaveBeenCalledWith(config)
+    expect(mocks.syncClaudeProviderSettings).toHaveBeenCalledWith(config, { knownConfigs: [] })
     expect(mocks.warning).toHaveBeenCalledWith('Running transformer proxy was not switched because "prod" is not transformer-enabled')
   })
 

@@ -5,8 +5,8 @@ import { ConfigManager } from '../config/manager';
 import { SpeedTestStrategy } from '../config/types';
 import { TransformerService } from '../services/transformer';
 import { S3SyncManager } from '../storage/s3-sync';
-import { checkClaudeInstallation, promptClaudeInstallation, } from '../utils/cli/detection';
 import { syncClaudeProviderSettings } from '../utils/claude/provider-settings';
+import { checkClaudeInstallation, promptClaudeInstallation, } from '../utils/cli/detection';
 import { UILogger } from '../utils/cli/ui';
 import { hasConfigApiCredentials } from '../utils/config/credentials';
 import { checkForUpdates, handleBackgroundUpgradeResult, isBackgroundUpgradeProcess, performBackgroundUpgrade, runBackgroundUpgradeWorker } from '../utils/config/update-checker';
@@ -57,7 +57,8 @@ async function handleClaudeProviderSettingsSync(config, options = {}) {
             ui.verbose('Claude Code provider settings sync disabled');
             return;
         }
-        const result = await syncClaudeProviderSettings(config);
+        const knownConfigs = await configManager.listConfigs();
+        const result = await syncClaudeProviderSettings(config, { knownConfigs });
         if (result.backupPath) {
             ui.warning(`Conflicting Claude Code settings env backed up to: ${result.backupPath}`);
         }
@@ -437,10 +438,15 @@ skillCmd
     .option('--verbose', 'Enable verbose output')
     .action(async (skillId, options) => (await import('../commands/skill')).handleSkillShowCommand(skillId, options));
 skillCmd
-    .command('add')
-    .description('Add a new skill')
+    .command('add [source]')
+    .alias('install')
+    .description('Create a skill or install one from SkillsCat')
+    .option('-r, --repo', 'Treat source as a repository')
+    .option('-s, --skill <skills...>', 'Install specific skills by name')
+    .option('-y, --yes', 'Skip SkillsCat confirmation prompts')
+    .option('-f, --force', 'Overwrite existing skill files')
     .option('--verbose', 'Enable verbose output')
-    .action(async (options) => (await import('../commands/skill')).handleSkillAddCommand(options));
+    .action(async (source, options) => (await import('../commands/skill')).handleSkillAddCommand(source, options));
 skillCmd
     .command('edit <skill-id>')
     .description('Edit an existing skill')
@@ -589,7 +595,7 @@ async function main() {
         return;
     }
     await ensureMigrationsRun();
-    program.parse();
+    await program.parseAsync();
 }
 main().catch((error) => {
     const ui = new UILogger();

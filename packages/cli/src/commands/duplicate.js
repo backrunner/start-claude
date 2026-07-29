@@ -3,9 +3,9 @@ import inquirer from 'inquirer';
 import { ConfigManager } from '../config/manager';
 import { UILogger } from '../utils/cli/ui';
 function generateNewName(baseName, existingConfigs) {
-    const match = baseName.match(/^(.*?)(-(\d+))?$/);
+    const match = baseName.match(/^(.*?)(?:-(\d+))?$/);
     const base = match?.[1] || baseName;
-    const existingNum = match?.[3] ? parseInt(match[3], 10) : 1;
+    const existingNum = match?.[2] ? Number.parseInt(match[2], 10) : 1;
     let num = existingNum + 1;
     let newName = `${base}-${num}`;
     while (existingConfigs.some(c => c.name === newName)) {

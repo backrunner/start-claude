@@ -1,6 +1,9 @@
 import type { SubagentDefinition } from '../config/types'
 import inquirer from 'inquirer'
 import { ConfigManager } from '../config/manager'
+import { isSafeSubagentName } from '../extensions/names'
+import { pruneMissingExtensionReferences } from '../extensions/references'
+import { ExtensionsWriter } from '../extensions/writer'
 import { UILogger } from '../utils/cli/ui'
 
 const configManager = ConfigManager.getInstance()
@@ -129,14 +132,16 @@ export async function handleAgentAddCommand(options: { verbose?: boolean } = {})
         if (!name)
           return 'Name is required'
 
-        const nameRegex = /^[a-z0-9-]+$/
-        if (!nameRegex.test(name)) {
+        if (!isSafeSubagentName(name)) {
           return 'Name must be lowercase with hyphens only (e.g., my-agent)'
         }
 
         const id = generateId(name)
         if (library.subagents[id]) {
           return `A subagent with ID "${id}" already exists. Please use a different name.`
+        }
+        if (Object.values(library.subagents).some(agent => agent.name.toLowerCase() === name.toLowerCase())) {
+          return `A subagent named "${name}" already exists. Please use a different name.`
         }
         return true
       },
@@ -191,6 +196,17 @@ export async function handleAgentAddCommand(options: { verbose?: boolean } = {})
   // Save to config
   library.subagents[subagent.id] = subagent
   configFile.settings.extensionsLibrary = library
+
+  const defaultEnabled = configFile.settings.defaultEnabledExtensions || {
+    mcpServers: [],
+    skills: [],
+    subagents: [],
+  }
+  if (!defaultEnabled.subagents.includes(subagent.id)) {
+    defaultEnabled.subagents.push(subagent.id)
+  }
+  configFile.settings.defaultEnabledExtensions = defaultEnabled
+
   await configManager.save(configFile)
 
   ui.displaySuccess(`✅ Subagent "${subagent.name}" added successfully!`)
@@ -206,6 +222,7 @@ export async function handleAgentEditCommand(agentId: string, options: { verbose
 
   const configFile = await configManager.load()
   const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
+  const previousLibrary = structuredClone(library)
   const subagent = library.subagents[agentId]
 
   if (!subagent) {
@@ -249,9 +266,13 @@ export async function handleAgentEditCommand(agentId: string, options: { verbose
             if (!name)
               return 'Name is required'
 
-            const nameRegex = /^[a-z0-9-]+$/
-            if (!nameRegex.test(name)) {
+            if (!isSafeSubagentName(name)) {
               return 'Name must be lowercase with hyphens only (e.g., my-agent)'
+            }
+            const duplicate = Object.entries(library.subagents)
+              .some(([id, agent]) => id !== agentId && agent.name.toLowerCase() === name.toLowerCase())
+            if (duplicate) {
+              return `A subagent named "${name}" already exists. Please use a different name.`
             }
             return true
           },
@@ -329,6 +350,7 @@ export async function handleAgentEditCommand(agentId: string, options: { verbose
   // Save changes
   library.subagents[agentId] = subagent
   configFile.settings.extensionsLibrary = library
+  new ExtensionsWriter().reconcileLibraryChanges(previousLibrary, library)
   await configManager.save(configFile)
 
   ui.displaySuccess(`✅ Subagent "${subagent.name}" updated successfully!`)
@@ -343,6 +365,7 @@ export async function handleAgentDeleteCommand(agentId: string, options: { verbo
 
   const configFile = await configManager.load()
   const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} }
+  const previousLibrary = structuredClone(library)
   const subagent = library.subagents[agentId]
 
   if (!subagent) {
@@ -370,6 +393,8 @@ export async function handleAgentDeleteCommand(agentId: string, options: { verbo
   // Delete the subagent
   delete library.subagents[agentId]
   configFile.settings.extensionsLibrary = library
+  pruneMissingExtensionReferences(configFile)
+  new ExtensionsWriter().reconcileLibraryChanges(previousLibrary, library)
   await configManager.save(configFile)
 
   ui.displaySuccess(`✅ Subagent "${subagent.name}" deleted successfully!`)

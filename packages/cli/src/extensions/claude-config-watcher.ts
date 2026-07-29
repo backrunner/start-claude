@@ -1,5 +1,5 @@
 import type { FSWatcher } from 'node:fs'
-import type { ExtensionsLibrary } from '../config/types'
+import type { ExtensionsLibrary, SystemSettings } from '../config/types'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import process from 'node:process'
@@ -17,7 +17,12 @@ export class ClaudeConfigWatcher {
   private watchers: FSWatcher[] = []
   private debounceTimer: NodeJS.Timeout | null = null
   private debounceMs: number = 1000
-  private onSyncCallback?: (library: ExtensionsLibrary) => void | Promise<void>
+  private currentLibrary: ExtensionsLibrary | null = null
+  private getCurrentLibraryCallback?: () => ExtensionsLibrary | Promise<ExtensionsLibrary>
+  private onSyncCallback?: (
+    library: ExtensionsLibrary,
+    defaultEnabled: NonNullable<SystemSettings['defaultEnabledExtensions']>,
+  ) => void | Promise<void>
 
   constructor(
     projectRoot: string = process.cwd(),
@@ -27,7 +32,7 @@ export class ClaudeConfigWatcher {
     this.projectRoot = projectRoot
     this.ui = ui || new UILogger(false)
     this.syncer = new ClaudeConfigSyncer(projectRoot, this.ui)
-    if (options?.debounceMs) {
+    if (options?.debounceMs !== undefined) {
       this.debounceMs = options.debounceMs
     }
   }
@@ -39,27 +44,34 @@ export class ClaudeConfigWatcher {
    */
   start(
     currentLibrary: ExtensionsLibrary,
-    onSync?: (library: ExtensionsLibrary) => void | Promise<void>,
+    onSync?: (
+      library: ExtensionsLibrary,
+      defaultEnabled: NonNullable<SystemSettings['defaultEnabledExtensions']>,
+    ) => void | Promise<void>,
+    getCurrentLibrary?: () => ExtensionsLibrary | Promise<ExtensionsLibrary>,
   ): void {
+    this.stop()
+    this.currentLibrary = currentLibrary
     this.onSyncCallback = onSync
+    this.getCurrentLibraryCallback = getCurrentLibrary
     this.ui.verbose('Starting Claude Code config file watcher...')
 
     // Watch .mcp.json
     const mcpConfigPath = path.join(this.projectRoot, '.mcp.json')
     if (fs.existsSync(mcpConfigPath)) {
-      this.watchFile(mcpConfigPath, currentLibrary)
+      this.watchFile(mcpConfigPath)
     }
 
     // Watch .claude/skills/ directory
     const skillsDir = path.join(this.projectRoot, '.claude', 'skills')
     if (fs.existsSync(skillsDir)) {
-      this.watchDirectory(skillsDir, currentLibrary)
+      this.watchDirectory(skillsDir)
     }
 
     // Watch .claude/agents/ directory
     const agentsDir = path.join(this.projectRoot, '.claude', 'agents')
     if (fs.existsSync(agentsDir)) {
-      this.watchDirectory(agentsDir, currentLibrary)
+      this.watchDirectory(agentsDir)
     }
 
     this.ui.verbose(`Watching ${this.watchers.length} paths for changes`)
@@ -83,18 +95,21 @@ export class ClaudeConfigWatcher {
     }
 
     this.watchers = []
+    this.currentLibrary = null
+    this.getCurrentLibraryCallback = undefined
+    this.onSyncCallback = undefined
     this.ui.verbose('File watcher stopped')
   }
 
   /**
    * Watch a single file
    */
-  private watchFile(filePath: string, currentLibrary: ExtensionsLibrary): void {
+  private watchFile(filePath: string): void {
     try {
       const watcher = fs.watch(filePath, (eventType) => {
         if (eventType === 'change') {
           this.ui.verbose(`Detected change in ${path.basename(filePath)}`)
-          this.debouncedSync(currentLibrary)
+          this.debouncedSync()
         }
       })
 
@@ -113,12 +128,12 @@ export class ClaudeConfigWatcher {
   /**
    * Watch a directory recursively
    */
-  private watchDirectory(dirPath: string, currentLibrary: ExtensionsLibrary): void {
+  private watchDirectory(dirPath: string): void {
     try {
       const watcher = fs.watch(dirPath, { recursive: true }, (eventType, filename) => {
         if (filename) {
           this.ui.verbose(`Detected ${eventType} in ${dirPath}/${filename}`)
-          this.debouncedSync(currentLibrary)
+          this.debouncedSync()
         }
       })
 
@@ -137,7 +152,7 @@ export class ClaudeConfigWatcher {
   /**
    * Debounced sync - waits for a pause in file changes before syncing
    */
-  private debouncedSync(currentLibrary: ExtensionsLibrary): void {
+  private debouncedSync(): void {
     // Clear existing timer
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer)
@@ -145,16 +160,24 @@ export class ClaudeConfigWatcher {
 
     // Set new timer
     this.debounceTimer = setTimeout(() => {
-      void this.performSync(currentLibrary)
+      void this.performSync()
     }, this.debounceMs)
   }
 
   /**
    * Perform the actual sync operation
    */
-  private async performSync(currentLibrary: ExtensionsLibrary): Promise<void> {
+  private async performSync(): Promise<void> {
     try {
       this.ui.verbose('Syncing Claude Code config changes...')
+
+      const currentLibrary = this.getCurrentLibraryCallback
+        ? await this.getCurrentLibraryCallback()
+        : this.currentLibrary
+
+      if (!currentLibrary) {
+        return
+      }
 
       const syncResult = await this.syncer.syncClaudeConfig(currentLibrary)
 
@@ -181,8 +204,10 @@ export class ClaudeConfigWatcher {
 
         // Call the sync callback if provided
         if (this.onSyncCallback) {
-          await this.onSyncCallback(syncResult.library)
+          await this.onSyncCallback(syncResult.library, syncResult.defaultEnabled)
         }
+
+        this.currentLibrary = syncResult.library
       }
       else {
         this.ui.verbose('No new extensions detected')

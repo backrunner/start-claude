@@ -1,8 +1,8 @@
 import process from 'node:process'
 import { ManagerServer } from '../core/manager-server'
+import { getProductDefinition, isExternalProductId } from '../products/registry'
 import { S3SyncManager } from '../storage/s3-sync'
 import { UILogger } from '../utils/cli/ui'
-import { getProductDefinition, isExternalProductId } from '../products/registry'
 
 export async function handleManagerCommand(options: { port?: string, verbose?: boolean, debug?: boolean, defaultMode?: string } = {}): Promise<void> {
   // Create UILogger with verbose mode configured

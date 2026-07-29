@@ -60,6 +60,7 @@ export async function handleProxyMode(
     await handleClaudeProviderSettingsSync(
       buildProxyProviderConfig(baseConfig, 2333, 'sk-claude-proxy-server'),
       systemSettings,
+      configManager,
       { verbose: options.verbose, debug: debugEnabled },
     )
 
@@ -252,6 +253,7 @@ export async function handleProxyMode(
     await handleClaudeProviderSettingsSync(
       buildProxyProviderConfig(baseConfig, 2333, proxyServer.getProxyApiKey()),
       effectiveSystemSettings,
+      configManager,
       { verbose: options.verbose, debug: debugEnabled },
     )
     const exitCode = await startClaude(baseConfig, allArgs, cliOverrides)
@@ -271,6 +273,7 @@ export async function handleProxyMode(
 async function handleClaudeProviderSettingsSync(
   config: ClaudeConfig | undefined,
   systemSettings: SystemSettings | null | undefined,
+  configManager: ConfigManager,
   options: { verbose?: boolean, debug?: boolean } = {},
 ): Promise<void> {
   if (!config) {
@@ -285,7 +288,8 @@ async function handleClaudeProviderSettingsSync(
   }
 
   try {
-    const result = await syncClaudeProviderSettings(config)
+    const knownConfigs = await configManager.listConfigs()
+    const result = await syncClaudeProviderSettings(config, { knownConfigs })
     if (result.backupPath) {
       ui.warning(`Conflicting Claude Code settings env backed up to: ${result.backupPath}`)
     }

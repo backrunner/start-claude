@@ -36,7 +36,7 @@ export function resolveExternalProductConfig(productId, configName) {
     const manager = ExternalProductConfigManager.getInstance(productId);
     return configName ? manager.getConfig(configName) : manager.getDefaultConfig();
 }
-function startProductProcess(productTitle, executablePath, args, env) {
+async function startProductProcess(productTitle, executablePath, args, env) {
     return new Promise((resolve) => {
         const child = spawn(executablePath, args, {
             stdio: 'inherit',
@@ -56,8 +56,12 @@ function startProductProcess(productTitle, executablePath, args, env) {
             removeSignalHandlers();
             child.kill(signal);
         };
-        const handleSigint = () => handleSignal('SIGINT');
-        const handleSigterm = () => handleSignal('SIGTERM');
+        function handleSigint() {
+            handleSignal('SIGINT');
+        }
+        function handleSigterm() {
+            handleSignal('SIGTERM');
+        }
         child.on('close', (code) => {
             removeSignalHandlers();
             resolve(code ?? 0);

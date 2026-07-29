@@ -66,7 +66,7 @@ export async function GET(): Promise<NextResponse> {
   }
 
   // Start monitoring on first request
-  if (!initialized) {
+  if (!initialized && process.env.NODE_ENV !== 'development') {
     initialized = true
     startHeartbeatMonitoring()
     console.log('[Heartbeat Monitor] Initialized - will monitor for frontend heartbeats')

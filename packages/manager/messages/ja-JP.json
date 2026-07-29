@@ -510,8 +510,10 @@
         "type": "サーバータイプ",
         "typeStdio": "stdio（ローカルプロセス）",
         "typeHttp": "HTTP（リモートサーバー）",
+        "typeSse": "SSE（リモートサーバー）",
         "typeStdioHint": "ローカルプロセスを実行し、標準入出力で通信",
         "typeHttpHint": "リモート HTTP MCP サーバーに接続",
+        "typeSseHint": "Server-Sent Events を使用してリモート MCP サーバーに接続",
         "command": "コマンド",
         "commandPlaceholder": "例：npx",
         "args": "引数",
@@ -541,23 +543,43 @@
           "nameExists": "同じ名前のサーバーが既に存在します",
           "commandRequired": "stdio サーバーにはコマンドが必要です",
           "urlRequired": "HTTP サーバーには URL が必要です",
-          "urlInvalid": "有効な URL を入力してください"
+          "urlInvalid": "有効な URL を入力してください",
+          "argsInvalid": "引数に閉じられていない引用符があります"
         }
       }
     },
     "skills": {
       "title": "スキル",
-      "description": "スキルは専門的なワークフローで Claude の機能を拡張します",
-      "add": "スキルを追加",
-      "empty": "スキルが設定されていません。最初のスキルを追加して Claude の機能を拡張しましょう。",
-      "form": {
+    "description": "スキルは専門的なワークフローで Claude の機能を拡張します",
+    "add": "スキルを追加",
+    "empty": "スキルが設定されていません。最初のスキルを追加して Claude の機能を拡張しましょう。",
+    "install": {
+      "button": "SkillsCat からインストール",
+      "title": "SkillsCat からスキルをインストール",
+      "description": "公開済みのスキル slug またはスキルリポジトリを Claude Code にインストールします。",
+      "source": "スキル slug またはリポジトリ",
+      "sourcePlaceholder": "例：code-review または owner/repo",
+      "skills": "特定のスキル名",
+      "skillsPlaceholder": "任意、カンマ区切り",
+      "repo": "ソースをリポジトリとして扱う",
+      "force": "既存のスキルファイルを上書きする",
+      "submit": "インストール",
+      "installing": "インストール中...",
+      "cancel": "キャンセル",
+      "sourceRequired": "スキル slug またはリポジトリを入力してください",
+      "success": "スキルをインストールしました",
+      "successDescription": "SkillsCat がスキルをインストールして同期しました。",
+      "failed": "インストールに失敗しました",
+      "failedDescription": "SkillsCat はスキルをインストールできませんでした。"
+    },
+    "form": {
         "addTitle": "スキルを追加",
         "editTitle": "スキルを編集",
         "addDescription": "新しいスキルを作成して Claude の機能を拡張",
         "editDescription": "このスキルの設定を更新",
         "name": "スキル名",
         "namePlaceholder": "例：code-review",
-        "nameHint": "小文字、数字、ハイフンのみ使用可能",
+        "nameHint": "128 文字以内の有効なクロスプラットフォームフォルダー名を使用してください",
         "description": "説明",
         "descriptionPlaceholder": "このスキルをいつ使用しますか？",
         "content": "SKILL.md の内容",
@@ -577,7 +599,7 @@
         "saveErrorDescription": "スキルの保存に失敗しました。もう一度お試しください。",
         "validation": {
           "nameRequired": "スキル名は必須です",
-          "nameFormat": "名前は小文字とハイフンのみを使用する必要があります（例：my-skill）",
+          "nameFormat": "名前は有効なクロスプラットフォームフォルダー名である必要があります",
           "nameExists": "同じ名前のスキルが既に存在します",
           "descriptionRequired": "説明は必須です",
           "contentRequired": "スキルの内容は必須です"

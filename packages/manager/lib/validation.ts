@@ -1,3 +1,4 @@
+import { isSafeSkillName, isSafeSubagentName } from '@start-claude/cli/src/extensions/names'
 import { z } from 'zod'
 import { LoadBalancerStrategy, SpeedTestStrategy } from '@/config/types'
 
@@ -22,9 +23,11 @@ const enabledExtensionsSchema = z.object({
 
 const stringRecordSchema = z.record(z.string(), z.string())
 
-const mcpServerDefinitionSchema = z.object({
-  id: z.string(),
-  name: z.string().min(1),
+const extensionIdSchema = z.string().trim().min(1).max(128)
+
+export const mcpServerDefinitionSchema = z.object({
+  id: extensionIdSchema,
+  name: z.string().trim().min(1),
   description: z.string().optional(),
   type: z.enum(['stdio', 'http', 'sse']),
   scope: z.enum(['local', 'user', 'project']).optional(),
@@ -33,21 +36,36 @@ const mcpServerDefinitionSchema = z.object({
   env: stringRecordSchema.optional(),
   url: z.string().optional(),
   headers: stringRecordSchema.optional(),
+}).superRefine((server, context) => {
+  if (server.type === 'stdio' && !server.command?.trim()) {
+    context.addIssue({
+      code: 'custom',
+      path: ['command'],
+      message: 'stdio MCP servers require a command',
+    })
+  }
+  if ((server.type === 'http' || server.type === 'sse') && !server.url?.trim()) {
+    context.addIssue({
+      code: 'custom',
+      path: ['url'],
+      message: `${server.type} MCP servers require a URL`,
+    })
+  }
 })
 
-const skillDefinitionSchema = z.object({
-  id: z.string(),
-  name: z.string().min(1),
-  description: z.string().min(1),
-  content: z.string().min(1),
+export const skillDefinitionSchema = z.object({
+  id: extensionIdSchema,
+  name: z.string().refine(isSafeSkillName, 'Skill name is not safe for a cross-platform directory'),
+  description: z.string().refine(value => value.trim().length > 0, 'Skill description is required'),
+  content: z.string().refine(value => value.trim().length > 0, 'Skill content is required'),
   allowedTools: z.array(z.string()).optional(),
 })
 
-const subagentDefinitionSchema = z.object({
-  id: z.string(),
-  name: z.string().min(1),
-  description: z.string().min(1),
-  systemPrompt: z.string().min(1),
+export const subagentDefinitionSchema = z.object({
+  id: extensionIdSchema,
+  name: z.string().trim().refine(isSafeSubagentName, 'Subagent name must contain only lowercase letters, numbers, and hyphens'),
+  description: z.string().trim().min(1),
+  systemPrompt: z.string().refine(value => value.trim().length > 0, 'Subagent system prompt is required'),
   tools: z.array(z.string()).optional(),
   model: z.enum(['sonnet', 'opus', 'haiku', 'inherit']).optional(),
 })

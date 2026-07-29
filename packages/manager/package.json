@@ -27,10 +27,9 @@
     "@types/ws": "^8.18.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.292.0",
-    "next-intl": "^4.13.0",
+    "lucide-react": "^0.475.0",
+    "next-intl": "^4.13.4",
     "tailwind-merge": "^2.6.1",
-    "tailwindcss-animate": "^1.0.7",
     "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
@@ -43,6 +42,7 @@
     "eslint-config-next": "15.4.6",
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.9.3"
   }
 }

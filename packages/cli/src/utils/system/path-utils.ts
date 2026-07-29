@@ -9,6 +9,18 @@ export interface FindExecutableOptions {
   skipDirs?: string[]
 }
 
+export const START_CLAUDE_PROJECT_ROOT_ENV = 'START_CLAUDE_PROJECT_ROOT'
+
+export function resolveClaudeProjectRoot(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd(),
+): string {
+  const configuredRoot = env[START_CLAUDE_PROJECT_ROOT_ENV]?.trim()
+    || env.INIT_CWD?.trim()
+    || env.PWD?.trim()
+  return path.resolve(cwd, configuredRoot || '.')
+}
+
 /**
  * Find an executable in the system PATH with cross-platform support
  * This handles Windows, macOS, and Linux environments properly

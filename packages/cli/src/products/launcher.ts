@@ -52,7 +52,7 @@ export function resolveExternalProductConfig(
   return configName ? manager.getConfig(configName) : manager.getDefaultConfig()
 }
 
-function startProductProcess(
+async function startProductProcess(
   productTitle: string,
   executablePath: string,
   args: string[],
@@ -81,8 +81,13 @@ function startProductProcess(
       child.kill(signal)
     }
 
-    const handleSigint = (): void => handleSignal('SIGINT')
-    const handleSigterm = (): void => handleSignal('SIGTERM')
+    function handleSigint(): void {
+      handleSignal('SIGINT')
+    }
+
+    function handleSigterm(): void {
+      handleSignal('SIGTERM')
+    }
 
     child.on('close', (code: number | null) => {
       removeSignalHandlers()

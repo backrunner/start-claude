@@ -1,5 +1,9 @@
 import inquirer from 'inquirer';
 import { ConfigManager } from '../config/manager';
+import { isSafeSkillName } from '../extensions/names';
+import { pruneMissingExtensionReferences } from '../extensions/references';
+import { installSkillFromSkillsCat as installWithSkillsCat } from '../extensions/skill-installer';
+import { ExtensionsWriter } from '../extensions/writer';
 import { UILogger } from '../utils/cli/ui';
 const configManager = ConfigManager.getInstance();
 function generateId(name) {
@@ -7,7 +11,7 @@ function generateId(name) {
         .toLowerCase()
         .replace(/[^a-z0-9-]/g, '-')
         .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
+        .replace(/^-|-$/g, '') || 'skill';
 }
 function getUniqueId(baseId, existing) {
     if (!existing[baseId])
@@ -64,27 +68,29 @@ export async function handleSkillShowCommand(skillId, options = {}) {
     ui.displayInfo(`\n  Content (SKILL.md):\n`);
     ui.displayInfo(skill.content);
 }
-export async function handleSkillAddCommand(options = {}) {
+export async function handleSkillAddCommand(source, options = {}) {
     const ui = new UILogger(options.verbose);
     ui.displayWelcome();
+    if (source) {
+        await installSkillFromSkillsCat(source, options, ui);
+        return;
+    }
     const configFile = await configManager.load();
     const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} };
     const questions = [
         {
             type: 'input',
             name: 'name',
-            message: 'Skill name (lowercase, hyphens only):',
+            message: 'Skill name:',
             validate: (input) => {
                 const name = input.trim();
                 if (!name)
                     return 'Name is required';
-                const nameRegex = /^[a-z0-9-]+$/;
-                if (!nameRegex.test(name)) {
-                    return 'Name must be lowercase with hyphens only (e.g., my-skill)';
+                if (!isSafeSkillName(name)) {
+                    return 'Name must be a safe cross-platform folder name';
                 }
-                const id = generateId(name);
-                if (library.skills[id]) {
-                    return `A skill with ID "${id}" already exists. Please use a different name.`;
+                if (Object.values(library.skills).some(skill => skill.name.toLowerCase() === name.toLowerCase())) {
+                    return `A skill named "${name}" already exists. Please use a different name.`;
                 }
                 return true;
             },
@@ -120,15 +126,33 @@ export async function handleSkillAddCommand(options = {}) {
     };
     library.skills[skill.id] = skill;
     configFile.settings.extensionsLibrary = library;
+    const defaultEnabled = configFile.settings.defaultEnabledExtensions || {
+        mcpServers: [],
+        skills: [],
+        subagents: [],
+    };
+    if (!defaultEnabled.skills.includes(skill.id)) {
+        defaultEnabled.skills.push(skill.id);
+    }
+    configFile.settings.defaultEnabledExtensions = defaultEnabled;
     await configManager.save(configFile);
     ui.displaySuccess(`✅ Skill "${skill.name}" added successfully!`);
     ui.displayInfo(`   ID: ${skill.id}`);
+}
+async function installSkillFromSkillsCat(source, options, ui) {
+    const result = await installWithSkillsCat(source, options, undefined, ui);
+    if (result.sync.totalChanged === 0) {
+        ui.displayInfo('SkillsCat completed with no extension library changes.');
+        return;
+    }
+    ui.displaySuccess(`Synced ${result.sync.skillsAdded} new and ${result.sync.skillsUpdated} updated skill(s) from SkillsCat.`);
 }
 export async function handleSkillEditCommand(skillId, options = {}) {
     const ui = new UILogger(options.verbose);
     ui.displayWelcome();
     const configFile = await configManager.load();
     const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} };
+    const previousLibrary = structuredClone(library);
     const skill = library.skills[skillId];
     if (!skill) {
         ui.displayError(`Skill "${skillId}" not found.`);
@@ -157,15 +181,19 @@ export async function handleSkillEditCommand(skillId, options = {}) {
                 {
                     type: 'input',
                     name: 'name',
-                    message: 'New name (lowercase, hyphens only):',
+                    message: 'New name:',
                     default: skill.name,
                     validate: (input) => {
                         const name = input.trim();
                         if (!name)
                             return 'Name is required';
-                        const nameRegex = /^[a-z0-9-]+$/;
-                        if (!nameRegex.test(name)) {
-                            return 'Name must be lowercase with hyphens only (e.g., my-skill)';
+                        if (!isSafeSkillName(name)) {
+                            return 'Name must be a safe cross-platform folder name';
+                        }
+                        const duplicate = Object.entries(library.skills)
+                            .some(([id, item]) => id !== skillId && item.name.toLowerCase() === name.toLowerCase());
+                        if (duplicate) {
+                            return `A skill named "${name}" already exists. Please use a different name.`;
                         }
                         return true;
                     },
@@ -218,6 +246,7 @@ export async function handleSkillEditCommand(skillId, options = {}) {
     }
     library.skills[skillId] = skill;
     configFile.settings.extensionsLibrary = library;
+    new ExtensionsWriter().reconcileLibraryChanges(previousLibrary, library);
     await configManager.save(configFile);
     ui.displaySuccess(`✅ Skill "${skill.name}" updated successfully!`);
 }
@@ -226,6 +255,7 @@ export async function handleSkillDeleteCommand(skillId, options = {}) {
     ui.displayWelcome();
     const configFile = await configManager.load();
     const library = configFile.settings.extensionsLibrary || { mcpServers: {}, skills: {}, subagents: {} };
+    const previousLibrary = structuredClone(library);
     const skill = library.skills[skillId];
     if (!skill) {
         ui.displayError(`Skill "${skillId}" not found.`);
@@ -247,6 +277,8 @@ export async function handleSkillDeleteCommand(skillId, options = {}) {
     }
     delete library.skills[skillId];
     configFile.settings.extensionsLibrary = library;
+    pruneMissingExtensionReferences(configFile);
+    new ExtensionsWriter().reconcileLibraryChanges(previousLibrary, library);
     await configManager.save(configFile);
     ui.displaySuccess(`✅ Skill "${skill.name}" deleted successfully!`);
 }

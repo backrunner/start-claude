@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import type { McpServerDefinition } from '@/config/types'
 import { Save, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -31,7 +31,7 @@ interface McpServerFormModalProps {
   onClose: () => void
   onSave: (server: McpServerDefinition) => Promise<void>
   initialData?: McpServerDefinition
-  existingIds: string[]
+  existingServers: McpServerDefinition[]
 }
 
 export function McpServerFormModal({
@@ -39,7 +39,7 @@ export function McpServerFormModal({
   onClose,
   onSave,
   initialData,
-  existingIds,
+  existingServers,
 }: McpServerFormModalProps): ReactNode {
   const t = useTranslations('extensions.mcp.form')
   const toastT = useTranslations('toast')
@@ -70,7 +70,7 @@ export function McpServerFormModal({
   )
 
   const [argsText, setArgsText] = useState<string>(
-    initialData?.args ? initialData.args.join(' ') : '',
+    initialData?.args ? formatCommandArgs(initialData.args) : '',
   )
 
   const [saving, setSaving] = useState(false)
@@ -78,12 +78,50 @@ export function McpServerFormModal({
 
   const { toast } = useToast()
 
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    setFormData(initialData || {
+      id: '',
+      name: '',
+      description: '',
+      type: 'stdio',
+      command: '',
+      args: [],
+      env: {},
+    })
+    setEnvVars(initialData?.env
+      ? Object.entries(initialData.env).map(([key, value]) => ({ key, value }))
+      : [{ key: '', value: '' }])
+    setHeaders(initialData?.headers
+      ? Object.entries(initialData.headers).map(([key, value]) => ({ key, value }))
+      : [{ key: '', value: '' }])
+    setArgsText(initialData?.args ? formatCommandArgs(initialData.args) : '')
+    setErrors({})
+  }, [initialData, open])
+
   const generateId = (name: string): string => {
     return name
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, '-')
       .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
+      .replace(/^-|-$/g, '') || 'mcp-server'
+  }
+
+  const generateUniqueId = (name: string): string => {
+    const baseId = generateId(name)
+    const existingIds = new Set(existingServers.map(server => server.id))
+    if (!existingIds.has(baseId)) {
+      return baseId
+    }
+
+    let suffix = 2
+    while (existingIds.has(`${baseId}-${suffix}`)) {
+      suffix++
+    }
+    return `${baseId}-${suffix}`
   }
 
   const validateForm = (): boolean => {
@@ -94,12 +132,12 @@ export function McpServerFormModal({
       newErrors.name = t('validation.nameRequired')
     }
 
-    // Check name uniqueness (only for new servers or if name changed)
-    const generatedId = generateId(formData.name)
-    if (!isEdit || generatedId !== initialData?.id) {
-      if (existingIds.includes(generatedId)) {
-        newErrors.name = t('validation.nameExists')
-      }
+    const duplicateName = existingServers.some(server => (
+      server.id !== initialData?.id
+      && server.name.toLowerCase() === formData.name.trim().toLowerCase()
+    ))
+    if (duplicateName) {
+      newErrors.name = t('validation.nameExists')
     }
 
     // Type-specific validation
@@ -108,7 +146,7 @@ export function McpServerFormModal({
         newErrors.command = t('validation.commandRequired')
       }
     }
-    else if (formData.type === 'http') {
+    else if (formData.type === 'http' || formData.type === 'sse') {
       if (!formData.url?.trim()) {
         newErrors.url = t('validation.urlRequired')
       }
@@ -120,6 +158,15 @@ export function McpServerFormModal({
         catch {
           newErrors.url = t('validation.urlInvalid')
         }
+      }
+    }
+
+    if (formData.type === 'stdio' && argsText.trim()) {
+      try {
+        parseCommandArgs(argsText)
+      }
+      catch {
+        newErrors.args = t('validation.argsInvalid')
       }
     }
 
@@ -137,22 +184,20 @@ export function McpServerFormModal({
       // Build the final server object
       const server: McpServerDefinition = {
         ...formData,
-        id: isEdit ? formData.id : generateId(formData.name),
+        id: isEdit ? formData.id : generateUniqueId(formData.name),
         name: formData.name.trim(),
         description: formData.description?.trim() || undefined,
       }
 
       if (formData.type === 'stdio') {
         server.command = formData.command?.trim() || ''
-        server.args = argsText.trim()
-          ? argsText.trim().split(/\s+/)
-          : []
+        server.args = argsText.trim() ? parseCommandArgs(argsText) : []
 
         // Build env object from envVars array
         const envObj: Record<string, string> = {}
         for (const { key, value } of envVars) {
-          if (key.trim() && value.trim()) {
-            envObj[key.trim()] = value.trim()
+          if (key.trim()) {
+            envObj[key.trim()] = value
           }
         }
         server.env = Object.keys(envObj).length > 0 ? envObj : undefined
@@ -167,8 +212,8 @@ export function McpServerFormModal({
         // Build headers object from headers array
         const headersObj: Record<string, string> = {}
         for (const { key, value } of headers) {
-          if (key.trim() && value.trim()) {
-            headersObj[key.trim()] = value.trim()
+          if (key.trim()) {
+            headersObj[key.trim()] = value
           }
         }
         server.headers = Object.keys(headersObj).length > 0 ? headersObj : undefined
@@ -206,7 +251,7 @@ export function McpServerFormModal({
     void handleSave()
   }
 
-  const handleTypeChange = (type: 'stdio' | 'http'): void => {
+  const handleTypeChange = (type: 'stdio' | 'http' | 'sse'): void => {
     setFormData({ ...formData, type })
     setErrors({}) // Clear errors when switching types
   }
@@ -296,7 +341,7 @@ export function McpServerFormModal({
             </Label>
             <Select
               value={formData.type}
-              onValueChange={(value: 'stdio' | 'http') => handleTypeChange(value)}
+              onValueChange={(value: 'stdio' | 'http' | 'sse') => handleTypeChange(value)}
             >
               <SelectTrigger id="type">
                 <SelectValue />
@@ -304,10 +349,15 @@ export function McpServerFormModal({
               <SelectContent>
                 <SelectItem value="stdio">{t('typeStdio')}</SelectItem>
                 <SelectItem value="http">{t('typeHttp')}</SelectItem>
+                <SelectItem value="sse">{t('typeSse')}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-sm text-muted-foreground">
-              {formData.type === 'stdio' ? t('typeStdioHint') : t('typeHttpHint')}
+              {formData.type === 'stdio'
+                ? t('typeStdioHint')
+                : formData.type === 'sse'
+                  ? t('typeSseHint')
+                  : t('typeHttpHint')}
             </p>
           </div>
 
@@ -341,8 +391,11 @@ export function McpServerFormModal({
                   value={argsText}
                   onChange={e => setArgsText(e.target.value)}
                   placeholder={t('argsPlaceholder')}
+                  className={errors.args ? 'border-destructive' : ''}
                 />
-                <p className="text-sm text-muted-foreground">{t('argsHint')}</p>
+                {errors.args
+                  ? <p className="text-sm text-destructive">{errors.args}</p>
+                  : <p className="text-sm text-muted-foreground">{t('argsHint')}</p>}
               </div>
 
               {/* Environment Variables */}
@@ -385,7 +438,7 @@ export function McpServerFormModal({
           )}
 
           {/* HTTP-specific fields */}
-          {formData.type === 'http' && (
+          {(formData.type === 'http' || formData.type === 'sse') && (
             <>
               {/* URL */}
               <div className="space-y-2">
@@ -458,4 +511,67 @@ export function McpServerFormModal({
       </DialogContent>
     </Dialog>
   )
+}
+
+function formatCommandArgs(args: string[]): string {
+  return args.map((arg) => {
+    if (!arg || /[\s"'\\]/.test(arg)) {
+      return JSON.stringify(arg)
+    }
+    return arg
+  }).join(' ')
+}
+
+function parseCommandArgs(value: string): string[] {
+  const args: string[] = []
+  let current = ''
+  let quote: '"' | '\'' | null = null
+  let tokenStarted = false
+
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index]
+
+    if (quote) {
+      if (character === quote) {
+        quote = null
+      }
+      else if (character === '\\' && quote === '"' && index + 1 < value.length) {
+        current += value[++index]
+      }
+      else {
+        current += character
+      }
+      tokenStarted = true
+      continue
+    }
+
+    if (character === '"' || character === '\'') {
+      quote = character
+      tokenStarted = true
+    }
+    else if (/\s/.test(character)) {
+      if (tokenStarted) {
+        args.push(current)
+        current = ''
+        tokenStarted = false
+      }
+    }
+    else if (character === '\\' && index + 1 < value.length && /[\s"'\\]/.test(value[index + 1])) {
+      current += value[++index]
+      tokenStarted = true
+    }
+    else {
+      current += character
+      tokenStarted = true
+    }
+  }
+
+  if (quote) {
+    throw new Error('Unterminated quoted argument')
+  }
+  if (tokenStarted) {
+    args.push(current)
+  }
+
+  return args
 }

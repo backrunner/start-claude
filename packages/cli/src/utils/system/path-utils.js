@@ -2,6 +2,13 @@ import { execSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+export const START_CLAUDE_PROJECT_ROOT_ENV = 'START_CLAUDE_PROJECT_ROOT';
+export function resolveClaudeProjectRoot(env = process.env, cwd = process.cwd()) {
+    const configuredRoot = env[START_CLAUDE_PROJECT_ROOT_ENV]?.trim()
+        || env.INIT_CWD?.trim()
+        || env.PWD?.trim();
+    return path.resolve(cwd, configuredRoot || '.');
+}
 export function findExecutable(command, options = {}) {
     const { env = process.env, extensions = process.platform === 'win32' ? ['.exe', '.cmd', '.ps1', '.bat', ''] : [''], skipDirs = ['.start-claude'], } = options;
     const pathEnv = env.PATH || env.Path || '';

@@ -5,8 +5,8 @@ import { ConfigManager } from '../config/manager';
 import { ClaudeConfigSyncer } from '../extensions/claude-config-syncer';
 import { ClaudeConfigWatcher } from '../extensions/claude-config-watcher';
 import { ExtensionsWriter } from '../extensions/writer';
+import { cleanClaudeSettingsEnvConflicts, MANAGED_CLAUDE_PROVIDER_ENV_KEYS, } from '../utils/claude/provider-settings';
 import { detectAvailableInstallMethods, findClaudeExecutable } from '../utils/cli/install-methods';
-import { cleanClaudeSettingsEnvConflicts, MANAGED_CLAUDE_PROVIDER_ENV_KEYS } from '../utils/claude/provider-settings';
 import { UILogger } from '../utils/cli/ui';
 import { CacheManager } from '../utils/config/cache-manager';
 let configWatcher = null;
@@ -34,6 +34,7 @@ export async function startClaude(config, args = [], cliOverrides) {
         try {
             const cleanupResult = cleanClaudeSettingsEnvConflicts(env, {
                 envKeys: getClaudeSettingsControlledEnvKeys(config, cliOverrides),
+                knownConfigs: await loadKnownClaudeConfigs(),
             });
             if (cleanupResult.backupPath) {
                 const ui = new UILogger();
@@ -149,8 +150,12 @@ async function startClaudeProcess(executablePath, args, env, config) {
             cleanup();
             claude.kill(signal);
         };
-        const handleSigint = () => handleSignal('SIGINT');
-        const handleSigterm = () => handleSignal('SIGTERM');
+        function handleSigint() {
+            handleSignal('SIGINT');
+        }
+        function handleSigterm() {
+            handleSignal('SIGTERM');
+        }
         claude.on('close', (code) => {
             removeSignalHandlers();
             cleanup();
@@ -302,6 +307,14 @@ async function loadSystemSettings() {
         return undefined;
     }
 }
+async function loadKnownClaudeConfigs() {
+    try {
+        return await ConfigManager.getInstance().listConfigs();
+    }
+    catch {
+        return [];
+    }
+}
 function applySystemSettingsEnv(env, settings) {
     env.ENABLE_TOOL_SEARCH = formatBooleanEnvValue(settings?.enableToolSearch ?? false);
 }
@@ -446,12 +459,30 @@ async function startConfigWatcher(config) {
             subagents: {},
         };
         configWatcher = new ClaudeConfigWatcher(process.cwd(), ui, { debounceMs: 1000 });
-        configWatcher.start(library, async (updatedLibrary) => {
-            configFile.settings.extensionsLibrary = updatedLibrary;
-            await configManager.save(configFile);
+        configWatcher.start(library, async (updatedLibrary, addedDefaults) => {
+            const latestConfigFile = await configManager.load();
+            const currentDefaults = latestConfigFile.settings.defaultEnabledExtensions || {
+                mcpServers: [],
+                skills: [],
+                subagents: [],
+            };
+            latestConfigFile.settings.extensionsLibrary = updatedLibrary;
+            latestConfigFile.settings.defaultEnabledExtensions = {
+                mcpServers: [...new Set([...currentDefaults.mcpServers, ...addedDefaults.mcpServers])],
+                skills: [...new Set([...currentDefaults.skills, ...addedDefaults.skills])],
+                subagents: [...new Set([...currentDefaults.subagents, ...addedDefaults.subagents])],
+            };
+            await configManager.save(latestConfigFile);
             const writer = new ExtensionsWriter(process.cwd(), ui);
-            await writer.writeExtensions(config, updatedLibrary, configFile.settings, false);
+            await writer.writeExtensions(config, updatedLibrary, latestConfigFile.settings, false);
             ui.verbose('Extensions config updated from file changes');
+        }, async () => {
+            const latestConfigFile = await configManager.load();
+            return latestConfigFile.settings.extensionsLibrary || {
+                mcpServers: {},
+                skills: {},
+                subagents: {},
+            };
         });
     }
     catch (error) {

@@ -30,7 +30,8 @@ export async function handleSwitchCommand(name, options = {}) {
         const providerConfig = shouldUseProxyProviderConfig(config, proxyStatus)
             ? buildProxyClaudeProviderConfig(config, { port: proxyPort })
             : config;
-        const result = await syncClaudeProviderSettings(providerConfig);
+        const knownConfigs = await configManager.listConfigs();
+        const result = await syncClaudeProviderSettings(providerConfig, { knownConfigs });
         ui.success(`Claude Code provider settings switched to "${config.name}"`);
         if (result.backupPath) {
             ui.info(`Backup: ${result.backupPath}`);

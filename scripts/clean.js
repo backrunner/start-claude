@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 async function cleanDirectories() {
     const directories = [
-        join(process.cwd(), 'src/manager/.next'),
+        join(process.cwd(), 'packages/manager/.next'),
         join(process.cwd(), 'bin'),
     ];
     console.log('🧹 Cleaning build directories...');

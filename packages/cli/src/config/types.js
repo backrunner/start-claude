@@ -10,8 +10,6 @@ export var LoadBalancerStrategy;
     LoadBalancerStrategy["Polling"] = "Polling";
     LoadBalancerStrategy["SpeedFirst"] = "Speed First";
 })(LoadBalancerStrategy || (LoadBalancerStrategy = {}));
-export const CURRENT_CONFIG_VERSION = 3;
-export const CURRENT_S3_CONFIG_VERSION = 1;
 export function createDefaultBalanceMode() {
     return {
         enableByDefault: false,
@@ -62,3 +60,5 @@ export function createDefaultSystemSettings(settings = {}) {
         },
     };
 }
+export const CURRENT_CONFIG_VERSION = 3;
+export const CURRENT_S3_CONFIG_VERSION = 1;

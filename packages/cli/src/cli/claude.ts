@@ -8,11 +8,11 @@ import { ConfigManager } from '../config/manager'
 import { ClaudeConfigSyncer } from '../extensions/claude-config-syncer'
 import { ClaudeConfigWatcher } from '../extensions/claude-config-watcher'
 import { ExtensionsWriter } from '../extensions/writer'
-import { detectAvailableInstallMethods, findClaudeExecutable } from '../utils/cli/install-methods'
 import {
   cleanClaudeSettingsEnvConflicts,
   MANAGED_CLAUDE_PROVIDER_ENV_KEYS,
 } from '../utils/claude/provider-settings'
+import { detectAvailableInstallMethods, findClaudeExecutable } from '../utils/cli/install-methods'
 import { UILogger } from '../utils/cli/ui'
 import { CacheManager } from '../utils/config/cache-manager'
 
@@ -52,6 +52,7 @@ export async function startClaude(config: ClaudeConfig | undefined, args: string
     try {
       const cleanupResult = cleanClaudeSettingsEnvConflicts(env, {
         envKeys: getClaudeSettingsControlledEnvKeys(config, cliOverrides),
+        knownConfigs: await loadKnownClaudeConfigs(),
       })
 
       if (cleanupResult.backupPath) {
@@ -206,8 +207,13 @@ async function startClaudeProcess(
       claude.kill(signal)
     }
 
-    const handleSigint = (): void => handleSignal('SIGINT')
-    const handleSigterm = (): void => handleSignal('SIGTERM')
+    function handleSigint(): void {
+      handleSignal('SIGINT')
+    }
+
+    function handleSigterm(): void {
+      handleSignal('SIGTERM')
+    }
 
     claude.on('close', (code: number | null) => {
       removeSignalHandlers()
@@ -398,6 +404,15 @@ async function loadSystemSettings(): Promise<SystemSettings | undefined> {
   }
   catch {
     return undefined
+  }
+}
+
+async function loadKnownClaudeConfigs(): Promise<ClaudeConfig[]> {
+  try {
+    return await ConfigManager.getInstance().listConfigs()
+  }
+  catch {
+    return []
   }
 }
 
@@ -599,15 +614,32 @@ async function startConfigWatcher(config: ClaudeConfig): Promise<void> {
     // Create and start watcher
     configWatcher = new ClaudeConfigWatcher(process.cwd(), ui, { debounceMs: 1000 })
 
-    configWatcher.start(library, async (updatedLibrary) => {
-      // Save the updated library when changes are detected
-      configFile.settings.extensionsLibrary = updatedLibrary
-      await configManager.save(configFile)
+    configWatcher.start(library, async (updatedLibrary, addedDefaults) => {
+      const latestConfigFile = await configManager.load()
+      const currentDefaults = latestConfigFile.settings.defaultEnabledExtensions || {
+        mcpServers: [],
+        skills: [],
+        subagents: [],
+      }
+      latestConfigFile.settings.extensionsLibrary = updatedLibrary
+      latestConfigFile.settings.defaultEnabledExtensions = {
+        mcpServers: [...new Set([...currentDefaults.mcpServers, ...addedDefaults.mcpServers])],
+        skills: [...new Set([...currentDefaults.skills, ...addedDefaults.skills])],
+        subagents: [...new Set([...currentDefaults.subagents, ...addedDefaults.subagents])],
+      }
+      await configManager.save(latestConfigFile)
 
       // Re-write extensions config files
       const writer = new ExtensionsWriter(process.cwd(), ui)
-      await writer.writeExtensions(config, updatedLibrary, configFile.settings, false)
+      await writer.writeExtensions(config, updatedLibrary, latestConfigFile.settings, false)
       ui.verbose('Extensions config updated from file changes')
+    }, async () => {
+      const latestConfigFile = await configManager.load()
+      return latestConfigFile.settings.extensionsLibrary || {
+        mcpServers: {},
+        skills: {},
+        subagents: {},
+      }
     })
   }
   catch (error) {

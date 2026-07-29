@@ -510,8 +510,10 @@
         "type": "服务器类型",
         "typeStdio": "stdio（本地进程）",
         "typeHttp": "HTTP（远程服务器）",
+        "typeSse": "SSE（远程服务器）",
         "typeStdioHint": "运行本地进程并通过标准输入/输出通信",
         "typeHttpHint": "连接到远程 HTTP MCP 服务器",
+        "typeSseHint": "通过服务器发送事件连接远程 MCP 服务器",
         "command": "命令",
         "commandPlaceholder": "例如：npx",
         "args": "参数",
@@ -541,23 +543,43 @@
           "nameExists": "已存在同名服务器",
           "commandRequired": "stdio 服务器需要提供命令",
           "urlRequired": "HTTP 服务器需要提供 URL",
-          "urlInvalid": "请输入有效的 URL"
+          "urlInvalid": "请输入有效的 URL",
+          "argsInvalid": "参数中存在未闭合的引号"
         }
       }
     },
     "skills": {
       "title": "技能",
-      "description": "技能通过专门的工作流程扩展 Claude 的能力",
-      "add": "添加技能",
-      "empty": "未配置技能。添加您的第一个技能以扩展 Claude 的能力。",
-      "form": {
+    "description": "技能通过专门的工作流程扩展 Claude 的能力",
+    "add": "添加技能",
+    "empty": "未配置技能。添加您的第一个技能以扩展 Claude 的能力。",
+    "install": {
+      "button": "从 SkillsCat 安装",
+      "title": "从 SkillsCat 安装技能",
+      "description": "将已发布的技能 slug 或技能仓库安装到 Claude Code。",
+      "source": "技能 slug 或仓库",
+      "sourcePlaceholder": "例如：code-review 或 owner/repo",
+      "skills": "指定技能名称",
+      "skillsPlaceholder": "可选，使用逗号分隔",
+      "repo": "将来源视为仓库",
+      "force": "覆盖现有技能文件",
+      "submit": "安装",
+      "installing": "安装中...",
+      "cancel": "取消",
+      "sourceRequired": "请输入技能 slug 或仓库",
+      "success": "技能已安装",
+      "successDescription": "SkillsCat 已安装并同步该技能。",
+      "failed": "安装失败",
+      "failedDescription": "SkillsCat 无法安装该技能。"
+    },
+    "form": {
         "addTitle": "添加技能",
         "editTitle": "编辑技能",
         "addDescription": "创建新技能以扩展 Claude 的能力",
         "editDescription": "更新此技能的配置",
         "name": "技能名称",
         "namePlaceholder": "例如：code-review",
-        "nameHint": "仅限小写字母、数字和连字符",
+        "nameHint": "使用有效的跨平台文件夹名称，最多 128 个字符",
         "description": "描述",
         "descriptionPlaceholder": "何时使用此技能？",
         "content": "SKILL.md 内容",
@@ -577,7 +599,7 @@
         "saveErrorDescription": "无法保存技能，请重试。",
         "validation": {
           "nameRequired": "技能名称为必填项",
-          "nameFormat": "名称必须仅包含小写字母和连字符（例如：my-skill）",
+          "nameFormat": "名称必须是有效的跨平台文件夹名称",
           "nameExists": "已存在同名技能",
           "descriptionRequired": "描述为必填项",
           "contentRequired": "技能内容为必填项"

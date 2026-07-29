@@ -1,15 +1,43 @@
-import type { ClaudeConfig, ExtensionsLibrary, SystemSettings } from '../config/types'
+import type {
+  ClaudeConfig,
+  ExtensionsLibrary,
+  McpServerDefinition,
+  SkillDefinition,
+  SubagentDefinition,
+  SystemSettings,
+} from '../config/types'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import process from 'node:process'
+import { isDeepStrictEqual } from 'node:util'
 import { UILogger } from '../utils/cli/ui'
+import {
+  getFrontmatterString,
+  getFrontmatterStringList,
+  parseMarkdownFrontmatter,
+  renderMarkdownFrontmatter,
+} from './frontmatter'
+import { isSafeSkillName, isSafeSubagentName } from './names'
 import { resolveEnabledExtensions } from './resolver'
 
-/**
- * ExtensionsWriter - Generates Claude Code configuration files for MCP servers, skills, and subagents
- * based on the profile's enabled extensions.
- */
+interface NativeMcpConfig {
+  mcpServers: Record<string, Record<string, unknown>>
+}
+
+interface PreparedSkill {
+  id: string
+  name: string
+  content: string
+  definition: SkillDefinition
+}
+
+interface PreparedSubagent {
+  id: string
+  name: string
+  content: string
+}
+
 export class ExtensionsWriter {
   private projectRoot: string
   private ui: UILogger
@@ -19,9 +47,6 @@ export class ExtensionsWriter {
     this.ui = ui || new UILogger(false)
   }
 
-  /**
-   * Write all extension configurations for a profile
-   */
   async writeExtensions(
     profile: ClaudeConfig,
     library: ExtensionsLibrary,
@@ -31,44 +56,242 @@ export class ExtensionsWriter {
     this.ui.verbose(`Writing extensions for profile: ${profile.name}`)
     this.ui.verbose(`Proxy mode: ${isProxyMode}`)
 
-    // Clean up old extension files first
-    await this.cleanupExtensionFiles()
-
-    // Resolve which extensions should actually be enabled
     const enabled = resolveEnabledExtensions(profile, settings, isProxyMode)
-
     this.ui.verbose(`Resolved enabled extensions: ${enabled.mcpServers.length} MCP servers, ${enabled.skills.length} skills, ${enabled.subagents.length} subagents`)
 
-    // Write MCP servers
-    await this.writeMcpConfig(enabled.mcpServers, library, profile)
+    const mcpConfig = this.prepareMcpConfig(enabled.mcpServers, library, profile)
+    const skills = this.prepareSkills(enabled.skills, library)
+    const subagents = this.prepareSubagents(enabled.subagents, library)
 
-    // Write Skills
-    await this.writeSkills(enabled.skills, library)
-
-    // Write Subagents
-    await this.writeSubagents(enabled.subagents, library)
+    this.writePreparedMcpConfig(mcpConfig)
+    this.writePreparedSkills(skills, library)
+    this.writePreparedSubagents(subagents, library)
 
     this.ui.verbose('All extensions written successfully')
   }
 
-  /**
-   * Write MCP configuration to .mcp.json
-   */
   async writeMcpConfig(
     enabledIds: string[],
     library: ExtensionsLibrary,
     profile: ClaudeConfig,
   ): Promise<void> {
-    if (enabledIds.length === 0) {
-      this.ui.verbose('No MCP servers enabled')
+    const config = this.prepareMcpConfig(enabledIds, library, profile)
+    this.writePreparedMcpConfig(config)
+  }
+
+  async writeSkills(
+    enabledIds: string[],
+    library: ExtensionsLibrary,
+  ): Promise<void> {
+    const skills = this.prepareSkills(enabledIds, library)
+    this.writePreparedSkills(skills, library)
+  }
+
+  async writeSubagents(
+    enabledIds: string[],
+    library: ExtensionsLibrary,
+  ): Promise<void> {
+    const subagents = this.prepareSubagents(enabledIds, library)
+    this.writePreparedSubagents(subagents, library)
+  }
+
+  async cleanupExtensionFiles(): Promise<void> {
+    this.writePreparedMcpConfig({ mcpServers: {} })
+
+    const skillsDir = path.join(this.projectRoot, '.claude', 'skills')
+    fs.mkdirSync(skillsDir, { recursive: true })
+    for (const dirent of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+      if (dirent.isDirectory()) {
+        this.removeFileIfExists(path.join(skillsDir, dirent.name, 'SKILL.md'))
+      }
+    }
+
+    const agentsDir = path.join(this.projectRoot, '.claude', 'agents')
+    fs.mkdirSync(agentsDir, { recursive: true })
+    for (const dirent of fs.readdirSync(agentsDir, { withFileTypes: true })) {
+      if (dirent.isFile() && dirent.name.endsWith('.md')) {
+        this.removeFileIfExists(path.join(agentsDir, dirent.name))
+      }
+    }
+  }
+
+  reconcileLibraryChanges(
+    previousLibrary: ExtensionsLibrary,
+    nextLibrary: ExtensionsLibrary,
+  ): void {
+    this.reconcileMcpChanges(previousLibrary, nextLibrary)
+    this.reconcileSkillChanges(previousLibrary, nextLibrary)
+    this.reconcileSubagentChanges(previousLibrary, nextLibrary)
+  }
+
+  private reconcileMcpChanges(
+    previousLibrary: ExtensionsLibrary,
+    nextLibrary: ExtensionsLibrary,
+  ): void {
+    const mcpConfigPath = path.join(this.projectRoot, '.mcp.json')
+    if (!fs.existsSync(mcpConfigPath)) {
       return
     }
 
-    const mcpConfig: {
-      mcpServers: Record<string, any>
-    } = {
-      mcpServers: {},
+    const parsed = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf-8')) as unknown
+    if (!isRecord(parsed) || !isRecord(parsed.mcpServers)) {
+      return
     }
+
+    const mcpServers = { ...parsed.mcpServers }
+    let changed = false
+
+    for (const [id, previousServer] of Object.entries(previousLibrary.mcpServers)) {
+      const nextServer = nextLibrary.mcpServers[id]
+      if (nextServer && isDeepStrictEqual(previousServer, nextServer)) {
+        continue
+      }
+
+      const nativeServer = mcpServers[previousServer.name]
+      if (!this.matchesManagedMcpServer(nativeServer, previousServer)) {
+        continue
+      }
+
+      delete mcpServers[previousServer.name]
+      if (nextServer) {
+        if (nextServer.name !== previousServer.name && hasOwn(mcpServers, nextServer.name)) {
+          throw new Error(`Cannot rename MCP server to "${nextServer.name}" because that name already exists in .mcp.json`)
+        }
+        mcpServers[nextServer.name] = this.prepareMcpServer(nextServer)
+      }
+      changed = true
+    }
+
+    if (changed) {
+      fs.writeFileSync(mcpConfigPath, JSON.stringify({ ...parsed, mcpServers }, null, 2), 'utf-8')
+    }
+  }
+
+  private reconcileSkillChanges(
+    previousLibrary: ExtensionsLibrary,
+    nextLibrary: ExtensionsLibrary,
+  ): void {
+    const skillsDir = path.join(this.projectRoot, '.claude', 'skills')
+    if (!fs.existsSync(skillsDir)) {
+      return
+    }
+
+    for (const [id, previousSkill] of Object.entries(previousLibrary.skills)) {
+      const nextSkill = nextLibrary.skills[id]
+      if (nextSkill && isDeepStrictEqual(previousSkill, nextSkill)) {
+        continue
+      }
+
+      const skillFile = this.findManagedSkillFile(skillsDir, id, previousSkill)
+      if (!skillFile) {
+        continue
+      }
+
+      if (!nextSkill) {
+        fs.unlinkSync(skillFile)
+        continue
+      }
+
+      this.assertSafeSkillName(nextSkill.name)
+      const previousDir = path.dirname(skillFile)
+      const nextDir = path.join(skillsDir, nextSkill.name)
+      if (previousDir !== nextDir) {
+        if (fs.existsSync(nextDir)) {
+          throw new Error(`Cannot rename skill to "${nextSkill.name}" because that directory already exists`)
+        }
+        fs.renameSync(previousDir, nextDir)
+      }
+
+      fs.writeFileSync(
+        path.join(nextDir, 'SKILL.md'),
+        this.renderSkillContent(nextSkill),
+        'utf-8',
+      )
+    }
+  }
+
+  private findManagedSkillFile(
+    skillsDir: string,
+    id: string,
+    skill: SkillDefinition,
+  ): string | undefined {
+    for (const name of new Set([skill.name, id])) {
+      if (!isSafeSkillName(name)) {
+        continue
+      }
+
+      const skillFile = path.join(skillsDir, name, 'SKILL.md')
+      if (fs.existsSync(skillFile) && this.isManagedSkillFile(skillFile, skill)) {
+        return skillFile
+      }
+    }
+
+    return undefined
+  }
+
+  private reconcileSubagentChanges(
+    previousLibrary: ExtensionsLibrary,
+    nextLibrary: ExtensionsLibrary,
+  ): void {
+    const agentsDir = path.join(this.projectRoot, '.claude', 'agents')
+    if (!fs.existsSync(agentsDir)) {
+      return
+    }
+
+    for (const [id, previousSubagent] of Object.entries(previousLibrary.subagents)) {
+      const nextSubagent = nextLibrary.subagents[id]
+      if (nextSubagent && isDeepStrictEqual(previousSubagent, nextSubagent)) {
+        continue
+      }
+
+      const agentFile = this.findManagedSubagentFile(agentsDir, id, previousSubagent)
+      if (!agentFile) {
+        continue
+      }
+
+      if (!nextSubagent) {
+        fs.unlinkSync(agentFile)
+        continue
+      }
+
+      this.assertSafeExtensionName(nextSubagent.name, 'Subagent')
+      const nextFile = path.join(agentsDir, `${nextSubagent.name}.md`)
+      if (agentFile !== nextFile) {
+        if (fs.existsSync(nextFile)) {
+          throw new Error(`Cannot rename subagent to "${nextSubagent.name}" because that file already exists`)
+        }
+        fs.renameSync(agentFile, nextFile)
+      }
+
+      fs.writeFileSync(nextFile, this.renderSubagentContent(nextSubagent), 'utf-8')
+    }
+  }
+
+  private findManagedSubagentFile(
+    agentsDir: string,
+    id: string,
+    subagent: SubagentDefinition,
+  ): string | undefined {
+    for (const name of new Set([subagent.name, id])) {
+      if (!isSafeSubagentName(name)) {
+        continue
+      }
+
+      const agentFile = path.join(agentsDir, `${name}.md`)
+      if (fs.existsSync(agentFile) && this.isManagedSubagentFile(agentFile, subagent)) {
+        return agentFile
+      }
+    }
+
+    return undefined
+  }
+
+  private prepareMcpConfig(
+    enabledIds: string[],
+    library: ExtensionsLibrary,
+    profile: ClaudeConfig,
+  ): NativeMcpConfig {
+    const mcpConfig: NativeMcpConfig = { mcpServers: {} }
 
     for (const id of enabledIds) {
       const server = library.mcpServers[id]
@@ -77,61 +300,69 @@ export class ExtensionsWriter {
         continue
       }
 
-      // Build server config based on type
-      const serverConfig: any = {}
-
-      if (server.type === 'stdio') {
-        serverConfig.command = this.expandEnvVars(server.command || '', profile)
-        if (server.args && server.args.length > 0) {
-          serverConfig.args = server.args.map(arg => this.expandEnvVars(arg, profile))
-        }
-        if (server.env && Object.keys(server.env).length > 0) {
-          serverConfig.env = {}
-          for (const [key, value] of Object.entries(server.env)) {
-            serverConfig.env[key] = this.expandEnvVars(value, profile)
-          }
-        }
-      }
-      else if (server.type === 'http' || server.type === 'sse') {
-        serverConfig.type = server.type
-        serverConfig.url = this.expandEnvVars(server.url || '', profile)
-        if (server.headers && Object.keys(server.headers).length > 0) {
-          serverConfig.headers = {}
-          for (const [key, value] of Object.entries(server.headers)) {
-            serverConfig.headers[key] = this.expandEnvVars(value, profile)
-          }
-        }
+      if (hasOwn(mcpConfig.mcpServers, server.name)) {
+        throw new Error(`Multiple enabled MCP servers use the name "${server.name}"`)
       }
 
-      // Use server name as the key in mcpServers
-      mcpConfig.mcpServers[server.name] = serverConfig
+      mcpConfig.mcpServers[server.name] = this.prepareMcpServer(server, profile)
       this.ui.verbose(`Added MCP server: ${server.name} (${server.type})`)
     }
 
-    // Write to .mcp.json
+    return mcpConfig
+  }
+
+  private prepareMcpServer(
+    server: McpServerDefinition,
+    profile?: ClaudeConfig,
+  ): Record<string, unknown> {
+    if (server.type === 'stdio') {
+      if (!server.command?.trim()) {
+        throw new Error(`MCP server "${server.name}" is missing a command`)
+      }
+
+      const config: Record<string, unknown> = {
+        command: this.expandMcpValue(server.command, profile),
+      }
+
+      if (server.args?.length) {
+        config.args = server.args.map(arg => this.expandMcpValue(arg, profile))
+      }
+      if (server.env && Object.keys(server.env).length > 0) {
+        config.env = Object.fromEntries(
+          Object.entries(server.env).map(([key, value]) => [key, this.expandMcpValue(value, profile)]),
+        )
+      }
+
+      return config
+    }
+
+    if (!server.url?.trim()) {
+      throw new Error(`MCP server "${server.name}" is missing a URL`)
+    }
+
+    const config: Record<string, unknown> = {
+      type: server.type,
+      url: this.expandMcpValue(server.url, profile),
+    }
+
+    if (server.headers && Object.keys(server.headers).length > 0) {
+      config.headers = Object.fromEntries(
+        Object.entries(server.headers).map(([key, value]) => [key, this.expandMcpValue(value, profile)]),
+      )
+    }
+
+    return config
+  }
+
+  private writePreparedMcpConfig(config: NativeMcpConfig): void {
     const mcpConfigPath = path.join(this.projectRoot, '.mcp.json')
-    fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), 'utf-8')
+    fs.writeFileSync(mcpConfigPath, JSON.stringify(config, null, 2), 'utf-8')
     this.ui.verbose(`MCP config written to: ${mcpConfigPath}`)
   }
 
-  /**
-   * Write Skills to .claude/skills/
-   */
-  async writeSkills(
-    enabledIds: string[],
-    library: ExtensionsLibrary,
-  ): Promise<void> {
-    if (enabledIds.length === 0) {
-      this.ui.verbose('No skills enabled')
-      return
-    }
-
-    const skillsDir = path.join(this.projectRoot, '.claude', 'skills')
-
-    // Ensure skills directory exists
-    if (!fs.existsSync(skillsDir)) {
-      fs.mkdirSync(skillsDir, { recursive: true })
-    }
+  private prepareSkills(enabledIds: string[], library: ExtensionsLibrary): PreparedSkill[] {
+    const skills: PreparedSkill[] = []
+    const names = new Set<string>()
 
     for (const id of enabledIds) {
       const skill = library.skills[id]
@@ -140,58 +371,99 @@ export class ExtensionsWriter {
         continue
       }
 
-      // Create skill directory
-      const skillDir = path.join(skillsDir, skill.name)
-      if (!fs.existsSync(skillDir)) {
-        fs.mkdirSync(skillDir, { recursive: true })
+      this.assertSafeSkillName(skill.name)
+      const normalizedName = skill.name.toLowerCase()
+      if (names.has(normalizedName)) {
+        throw new Error(`Multiple enabled skills use the name "${skill.name}"`)
       }
+      names.add(normalizedName)
 
-      // Check if content already has frontmatter
-      let skillContent: string
-      if (this.hasFrontmatter(skill.content)) {
-        // Content already has frontmatter, use as-is
-        skillContent = skill.content
-        this.ui.verbose(`Skill "${skill.name}" already has frontmatter, using content as-is`)
-      }
-      else {
-        // Build SKILL.md with frontmatter
-        skillContent = '---\n'
-        skillContent += `name: ${skill.name}\n`
-        skillContent += `description: ${skill.description}\n`
-        if (skill.allowedTools && skill.allowedTools.length > 0) {
-          skillContent += `allowed-tools: ${skill.allowedTools.join(', ')}\n`
-        }
-        skillContent += '---\n\n'
-        skillContent += skill.content
-      }
+      skills.push({
+        id,
+        name: skill.name,
+        content: this.renderSkillContent(skill),
+        definition: skill,
+      })
+    }
 
-      // Write SKILL.md
-      const skillFilePath = path.join(skillDir, 'SKILL.md')
-      fs.writeFileSync(skillFilePath, skillContent, 'utf-8')
+    return skills
+  }
+
+  private writePreparedSkills(skills: PreparedSkill[], library: ExtensionsLibrary): void {
+    const skillsDir = path.join(this.projectRoot, '.claude', 'skills')
+    fs.mkdirSync(skillsDir, { recursive: true })
+
+    const enabledIds = new Set(skills.map(skill => skill.id))
+    for (const [id, skill] of Object.entries(library.skills)) {
+      if (!enabledIds.has(id)) {
+        this.disableManagedSkill(skillsDir, id, skill)
+      }
+    }
+
+    for (const skill of skills) {
+      const skillDir = this.prepareSkillDirectory(skillsDir, skill)
+      fs.mkdirSync(skillDir, { recursive: true })
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skill.content, 'utf-8')
       this.ui.verbose(`Written skill: ${skill.name}`)
     }
 
     this.ui.verbose(`Skills written to: ${skillsDir}`)
   }
 
-  /**
-   * Write Subagents to .claude/agents/
-   */
-  async writeSubagents(
-    enabledIds: string[],
-    library: ExtensionsLibrary,
-  ): Promise<void> {
-    if (enabledIds.length === 0) {
-      this.ui.verbose('No subagents enabled')
-      return
+  private prepareSkillDirectory(skillsDir: string, skill: PreparedSkill): string {
+    const targetDir = path.join(skillsDir, skill.name)
+    if (skill.id === skill.name || !this.isSafeExtensionName(skill.id)) {
+      return targetDir
     }
 
-    const agentsDir = path.join(this.projectRoot, '.claude', 'agents')
-
-    // Ensure agents directory exists
-    if (!fs.existsSync(agentsDir)) {
-      fs.mkdirSync(agentsDir, { recursive: true })
+    const previousDir = path.join(skillsDir, skill.id)
+    const previousFile = path.join(previousDir, 'SKILL.md')
+    if (!fs.existsSync(previousFile) || !this.isManagedSkillFile(previousFile, skill.definition)) {
+      return targetDir
     }
+
+    if (!fs.existsSync(targetDir)) {
+      fs.renameSync(previousDir, targetDir)
+    }
+    else {
+      fs.unlinkSync(previousFile)
+    }
+
+    return targetDir
+  }
+
+  private disableManagedSkill(skillsDir: string, id: string, skill: SkillDefinition): void {
+    const names = new Set([skill.name, id])
+    for (const name of names) {
+      if (!isSafeSkillName(name)) {
+        continue
+      }
+
+      const skillFile = path.join(skillsDir, name, 'SKILL.md')
+      if (fs.existsSync(skillFile) && this.isManagedSkillFile(skillFile, skill)) {
+        fs.unlinkSync(skillFile)
+        this.ui.verbose(`Disabled skill: ${skill.name}`)
+      }
+    }
+  }
+
+  private isManagedSkillFile(filePath: string, skill: SkillDefinition): boolean {
+    const existingContent = fs.readFileSync(filePath, 'utf-8')
+    if (existingContent === skill.content) {
+      return true
+    }
+
+    try {
+      return existingContent === this.renderSkillContent(skill)
+    }
+    catch {
+      return false
+    }
+  }
+
+  private prepareSubagents(enabledIds: string[], library: ExtensionsLibrary): PreparedSubagent[] {
+    const subagents: PreparedSubagent[] = []
+    const names = new Set<string>()
 
     for (const id of enabledIds) {
       const subagent = library.subagents[id]
@@ -200,94 +472,172 @@ export class ExtensionsWriter {
         continue
       }
 
-      // Build agent markdown with frontmatter
-      let agentContent = '---\n'
-      agentContent += `name: ${subagent.name}\n`
-      agentContent += `description: ${subagent.description}\n`
-      if (subagent.tools && subagent.tools.length > 0) {
-        agentContent += `tools: ${subagent.tools.join(', ')}\n`
+      this.assertSafeExtensionName(subagent.name, 'Subagent')
+      const normalizedName = subagent.name.toLowerCase()
+      if (names.has(normalizedName)) {
+        throw new Error(`Multiple enabled subagents use the name "${subagent.name}"`)
       }
-      if (subagent.model) {
-        agentContent += `model: ${subagent.model}\n`
-      }
-      agentContent += '---\n\n'
-      agentContent += subagent.systemPrompt
+      names.add(normalizedName)
 
-      // Write agent file
-      const agentFilePath = path.join(agentsDir, `${subagent.name}.md`)
-      fs.writeFileSync(agentFilePath, agentContent, 'utf-8')
+      subagents.push({
+        id,
+        name: subagent.name,
+        content: this.renderSubagentContent(subagent),
+      })
+    }
+
+    return subagents
+  }
+
+  private writePreparedSubagents(subagents: PreparedSubagent[], library: ExtensionsLibrary): void {
+    const agentsDir = path.join(this.projectRoot, '.claude', 'agents')
+    fs.mkdirSync(agentsDir, { recursive: true })
+
+    const enabledIds = new Set(subagents.map(subagent => subagent.id))
+    for (const [id, subagent] of Object.entries(library.subagents)) {
+      if (!enabledIds.has(id)) {
+        this.removeSubagentFiles(agentsDir, id, subagent)
+      }
+    }
+
+    for (const subagent of subagents) {
+      fs.writeFileSync(path.join(agentsDir, `${subagent.name}.md`), subagent.content, 'utf-8')
       this.ui.verbose(`Written subagent: ${subagent.name}`)
     }
 
     this.ui.verbose(`Subagents written to: ${agentsDir}`)
   }
 
-  /**
-   * Clean up old extension configuration files
-   */
-  async cleanupExtensionFiles(): Promise<void> {
-    this.ui.verbose('Cleaning up old extension files...')
+  private renderSubagentContent(subagent: SubagentDefinition): string {
+    return renderMarkdownFrontmatter(`\n${subagent.systemPrompt}`, {
+      name: subagent.name,
+      description: subagent.description,
+      tools: subagent.tools?.length ? subagent.tools.join(', ') : undefined,
+      model: subagent.model,
+    })
+  }
 
-    // Remove .mcp.json
-    const mcpConfigPath = path.join(this.projectRoot, '.mcp.json')
-    if (fs.existsSync(mcpConfigPath)) {
-      fs.unlinkSync(mcpConfigPath)
-      this.ui.verbose('Removed old .mcp.json')
-    }
+  private removeSubagentFiles(agentsDir: string, id: string, subagent: SubagentDefinition): void {
+    const names = new Set([subagent.name, id])
+    for (const name of names) {
+      if (!isSafeSubagentName(name)) {
+        continue
+      }
 
-    // Remove .claude/skills/
-    const skillsDir = path.join(this.projectRoot, '.claude', 'skills')
-    if (fs.existsSync(skillsDir)) {
-      fs.rmSync(skillsDir, { recursive: true, force: true })
-      this.ui.verbose('Removed old skills directory')
-    }
-
-    // Remove .claude/agents/
-    const agentsDir = path.join(this.projectRoot, '.claude', 'agents')
-    if (fs.existsSync(agentsDir)) {
-      fs.rmSync(agentsDir, { recursive: true, force: true })
-      this.ui.verbose('Removed old agents directory')
+      const agentFile = path.join(agentsDir, `${name}.md`)
+      if (fs.existsSync(agentFile) && this.isManagedSubagentFile(agentFile, subagent)) {
+        fs.unlinkSync(agentFile)
+      }
     }
   }
 
-  /**
-   * Expand environment variables in a string
-   * Supports ${VAR} and ${VAR:-default} syntax
-   */
+  private isManagedSubagentFile(filePath: string, subagent: SubagentDefinition): boolean {
+    try {
+      const { attributes, body } = parseMarkdownFrontmatter(fs.readFileSync(filePath, 'utf-8'))
+      const fileName = path.basename(filePath)
+      const name = getFrontmatterString(attributes, 'name') || fileName.replace(/\.md$/, '')
+      const description = getFrontmatterString(attributes, 'description')
+        || `Imported from .claude/agents/${fileName}`
+      const model = attributes.model === 'sonnet'
+        || attributes.model === 'opus'
+        || attributes.model === 'haiku'
+        || attributes.model === 'inherit'
+        ? attributes.model
+        : undefined
+
+      return name === subagent.name
+        && description === subagent.description
+        && body === subagent.systemPrompt
+        && isDeepStrictEqual(getFrontmatterStringList(attributes, 'tools'), subagent.tools)
+        && model === subagent.model
+    }
+    catch {
+      return false
+    }
+  }
+
+  private removeFileIfExists(filePath: string): void {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+  }
+
   private expandEnvVars(value: string, profile: ClaudeConfig): string {
     if (!value) {
       return value
     }
 
-    // Replace ${VAR:-default} patterns
-    let expanded = value.replace(/\$\{([^}:]+):-([^}]+)\}/g, (match, varName, defaultValue) => {
-      // Check profile env first, then process.env, then use default
-      const envValue = profile.env?.[varName] || process.env[varName]
+    let expanded = value.replace(/\$\{([^}:]+):-([^}]*)\}/g, (match, varName: string, defaultValue: string) => {
+      const envValue = profile.env?.[varName] ?? process.env[varName]
       return envValue !== undefined ? envValue : defaultValue
     })
 
-    // Replace ${VAR} patterns
-    expanded = expanded.replace(/\$\{([^}:]+)\}/g, (match, varName) => {
-      // Check profile env first, then process.env
-      const envValue = profile.env?.[varName] || process.env[varName]
-      return envValue !== undefined ? envValue : match // Keep original if not found
+    expanded = expanded.replace(/\$\{([^}:]+)\}/g, (match, varName: string) => {
+      const envValue = profile.env?.[varName] ?? process.env[varName]
+      return envValue !== undefined ? envValue : match
     })
 
-    // Replace special variables
-    expanded = expanded.replace(/\$\{HOME\}/g, os.homedir())
-    expanded = expanded.replace(/~/g, os.homedir())
-
-    return expanded
+    return expanded.replace(/^~(?=$|[\\/])/, os.homedir())
   }
 
-  /**
-   * Check if content already has YAML frontmatter
-   */
-  private hasFrontmatter(content: string): boolean {
-    if (!content) {
+  private expandMcpValue(value: string, profile?: ClaudeConfig): string {
+    return profile ? this.expandEnvVars(value, profile) : value
+  }
+
+  private matchesManagedMcpServer(value: unknown, server: McpServerDefinition): boolean {
+    if (!isRecord(value)) {
       return false
     }
-    // Frontmatter must start at the beginning of the file with ---
-    return content.trimStart().startsWith('---')
+
+    const normalizedValue = { ...value }
+    if (normalizedValue.type === 'stdio') {
+      delete normalizedValue.type
+    }
+    for (const key of ['args', 'env', 'headers']) {
+      const field = normalizedValue[key]
+      if ((Array.isArray(field) && field.length === 0) || (isRecord(field) && Object.keys(field).length === 0)) {
+        delete normalizedValue[key]
+      }
+    }
+
+    try {
+      return isDeepStrictEqual(normalizedValue, this.prepareMcpServer(server))
+    }
+    catch {
+      return false
+    }
   }
+
+  private renderSkillContent(skill: SkillDefinition): string {
+    const attributes: Record<string, unknown> = {
+      name: skill.name,
+      description: skill.description,
+    }
+    attributes['allowed-tools'] = skill.allowedTools?.length ? skill.allowedTools.join(', ') : undefined
+    return renderMarkdownFrontmatter(skill.content, attributes)
+  }
+
+  private assertSafeExtensionName(name: string, type: string): void {
+    if (!this.isSafeExtensionName(name)) {
+      throw new Error(`${type} name "${name}" must contain only lowercase letters, numbers, and hyphens`)
+    }
+  }
+
+  private assertSafeSkillName(name: string): void {
+    if (!isSafeSkillName(name)) {
+      throw new Error(`Skill name "${name}" is not a safe cross-platform directory name`)
+    }
+  }
+
+  private isSafeExtensionName(name: string): boolean {
+    return isSafeSubagentName(name)
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function hasOwn(value: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
 }
