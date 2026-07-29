@@ -1,7 +1,7 @@
 {
   "name": "start-claude",
   "type": "module",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "packageManager": "pnpm@11.11.0",
   "engines": {
     "node": ">=24"

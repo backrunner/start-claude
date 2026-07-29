@@ -1,7 +1,7 @@
 {
   "name": "@start-claude/cli",
   "type": "module",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "description": "Start Claude CLI main package",
   "main": "src/cli/main.ts",
   "scripts": {
