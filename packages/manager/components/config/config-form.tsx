@@ -42,27 +42,28 @@ const transformerTranslationKeys: Record<string, string> = {
 }
 
 const modelPresets: ModelPreset[] = [
-  { key: 'claudeFable5', model: 'claude-fable-5', color: 'purple' },
-  { key: 'claudeOpus5', model: 'claude-opus-5', color: 'purple' },
-  { key: 'claudeSonnet5', model: 'claude-sonnet-5', color: 'purple' },
-  { key: 'claudeHaiku45', model: 'claude-haiku-4-5-20251001', color: 'purple' },
-  { key: 'gpt56Sol', model: 'gpt-5.6-sol', color: 'green' },
-  { key: 'gpt56Terra', model: 'gpt-5.6-terra', color: 'green' },
-  { key: 'gpt56Luna', model: 'gpt-5.6-luna', color: 'green' },
-  { key: 'gemini31Pro', model: 'gemini-3.1-pro-preview', color: 'blue' },
+  { key: 'claudeFable51', model: 'claude-fable-5.1', color: 'purple' },
+  { key: 'claudeOpus55', model: 'claude-opus-5.5', color: 'purple' },
+  { key: 'claudeSonnet55', model: 'claude-sonnet-5.5', color: 'purple' },
+  { key: 'claudeHaiku45', model: 'claude-haiku-4.5-20251001', color: 'purple' },
+  { key: 'gpt6Astra', model: 'gpt-6-astra', color: 'green' },
+  { key: 'gpt61Sol', model: 'gpt-6.1-sol', color: 'green' },
+  { key: 'gpt6Sol', model: 'gpt-6-sol', color: 'green' },
+  { key: 'gpt6Terra', model: 'gpt-6-terra', color: 'green' },
+  { key: 'o1', model: 'o1', color: 'green' },
+  { key: 'gemini38Flash', model: 'gemini-3.8-flash', color: 'blue' },
+  { key: 'gemini35Flash', model: 'gemini-3.5-flash', color: 'blue' },
+  { key: 'gemini3Pro', model: 'gemini-3-pro', color: 'blue' },
   { key: 'deepseekV4Pro', model: 'deepseek-v4-pro', color: 'teal' },
-  { key: 'deepseekV4Flash', model: 'deepseek-v4-flash', color: 'teal' },
-  { key: 'glm52', model: 'glm-5.2', color: 'orange' },
-  { key: 'kimiK27Code', model: 'kimi-k2.7-code', color: 'blue' },
-  { key: 'kimiK27CodeHighspeed', model: 'kimi-k2.7-code-highspeed', color: 'blue' },
+  { key: 'deepseekFlash', model: 'deepseek-flash', color: 'teal' },
 ]
 
 const modelPresetButtonClasses: Record<ModelPreset['color'], string> = {
-  blue: 'hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 dark:hover:bg-blue-950/30 dark:hover:text-blue-300',
-  green: 'hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:hover:bg-green-950/30 dark:hover:text-green-300',
-  purple: 'hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300',
-  orange: 'hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300',
-  teal: 'hover:bg-teal-50 hover:text-teal-700 hover:border-teal-300 dark:hover:bg-teal-950/30 dark:hover:text-teal-300',
+  blue: 'hover:bg-accent',
+  green: 'hover:bg-accent',
+  purple: 'hover:bg-accent',
+  orange: 'hover:bg-accent',
+  teal: 'hover:bg-accent',
 }
 
 const fallbackTransformers: TransformerOption[] = [
@@ -296,13 +297,25 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
   const handleModelChange = (value: string): void => {
     const valueHasSuffix = hasOneMillionContextSuffix(value)
-    const suffixEnabled = valueHasSuffix || (oneMillionContextEnabled && isClaudeModel(value))
+    const cleanValue = removeOneMillionContextSuffix(value)
 
-    if (valueHasSuffix) {
-      setOneMillionContextEnabled(true)
+    // If user manually removed [1m] suffix, turn off the switch
+    if (!valueHasSuffix && oneMillionContextEnabled && formData.model && hasOneMillionContextSuffix(formData.model)) {
+      setOneMillionContextEnabled(false)
+      handleChange('model', cleanValue)
+      return
     }
 
-    handleChange('model', getModelValue(value, suffixEnabled))
+    // If user manually added [1m] suffix, turn on the switch
+    if (valueHasSuffix) {
+      setOneMillionContextEnabled(true)
+      handleChange('model', cleanValue + oneMillionContextSuffix)
+      return
+    }
+
+    // Normal input: apply suffix based on switch state and model type
+    const suffixEnabled = oneMillionContextEnabled && isClaudeModel(cleanValue)
+    handleChange('model', getModelValue(cleanValue, suffixEnabled))
   }
 
   const handleOneMillionContextChange = (checked: boolean): void => {
@@ -425,23 +438,23 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full" id="config-form">
-      <div className="flex-1 space-y-6 pr-2">
+      <div className="flex-1 space-y-5 pr-2">
         {/* Basic Information */}
-        <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/10 border-2 hover:border-blue-500/30 group">
-          <CardHeader className="pb-5 bg-gradient-to-br from-blue-50/50 via-transparent to-transparent dark:from-blue-950/20">
+        <Card className="border">
+          <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30 group-hover:shadow-blue-500/50 transition-all duration-300">
-                <Settings className="h-5 w-5 text-white" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                <Settings className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <CardTitle className="text-xl font-bold">{t('basicInfo.title')}</CardTitle>
-                <CardDescription className="text-sm mt-0.5">{t('basicInfo.description')}</CardDescription>
+                <CardTitle className="text-base font-semibold">{t('basicInfo.title')}</CardTitle>
+                <CardDescription className="text-xs mt-0.5">{t('basicInfo.description')}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name" className="font-medium">{t('basicInfo.name')} *</Label>
+              <Label htmlFor="name" className="text-sm font-medium">{t('basicInfo.name')} *</Label>
               <Input
                 id="name"
                 value={formData.name ?? ''}
@@ -450,7 +463,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                 className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
               />
               {errors.name && (
-                <div className="flex items-center gap-2 text-sm text-destructive">
+                <div className="flex items-center gap-1.5 text-xs text-destructive">
                   <AlertCircle className="h-3 w-3" />
                   {errors.name}
                 </div>
@@ -458,7 +471,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="profileType" className="font-medium">{t('basicInfo.profileType')}</Label>
+              <Label htmlFor="profileType" className="text-sm font-medium">{t('basicInfo.profileType')}</Label>
               <Select
                 value={formData.profileType ?? 'default'}
                 onValueChange={(value) => {
@@ -491,21 +504,21 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
 
         {/* API Configuration */}
         {formData.profileType !== 'official' && (
-          <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-green-500/10 border-2 hover:border-green-500/30 group">
-            <CardHeader className="pb-5 bg-gradient-to-br from-green-50/50 via-transparent to-transparent dark:from-green-950/20">
+          <Card className="border">
+            <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-green-600 shadow-lg shadow-green-500/30 group-hover:shadow-green-500/50 transition-all duration-300">
-                  <Key className="h-5 w-5 text-white" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                  <Key className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl font-bold">{t('apiConfig.title')}</CardTitle>
-                  <CardDescription className="text-sm mt-0.5">{t('apiConfig.description')}</CardDescription>
+                  <CardTitle className="text-base font-semibold">{t('apiConfig.title')}</CardTitle>
+                  <CardDescription className="text-xs mt-0.5">{t('apiConfig.description')}</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="baseUrl" className="font-medium flex items-center gap-2">
+                <Label htmlFor="baseUrl" className="text-sm font-medium flex items-center gap-2">
                   <Globe className="h-3 w-3" />
                   {t('apiConfig.baseUrl')} *
                 </Label>
@@ -517,7 +530,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   className={errors.baseUrl ? 'border-destructive focus-visible:ring-destructive' : ''}
                 />
                 {errors.baseUrl && (
-                  <div className="flex items-center gap-2 text-sm text-destructive">
+                  <div className="flex items-center gap-1.5 text-xs text-destructive">
                     <AlertCircle className="h-3 w-3" />
                     {errors.baseUrl}
                   </div>
@@ -525,7 +538,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="authToken" className="font-medium flex items-center gap-2">
+                <Label htmlFor="authToken" className="text-sm font-medium flex items-center gap-2">
                   <Key className="h-3 w-3" />
                   {t('apiConfig.apiKey')} *
                 </Label>
@@ -543,7 +556,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-10 px-3 text-xs font-medium whitespace-nowrap hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                      className="h-10 px-3 text-xs whitespace-nowrap"
                       onClick={convertLegacyApiKeyToAuthToken}
                       title={t('apiConfig.convertToAuthTokenHint')}
                     >
@@ -553,17 +566,17 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                   )}
                 </div>
                 {errors.authToken && (
-                  <div className="flex items-center gap-2 text-sm text-destructive">
+                  <div className="flex items-center gap-1.5 text-xs text-destructive">
                     <AlertCircle className="h-3 w-3" />
                     {errors.authToken}
                   </div>
                 )}
-                <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                <div className="p-3 rounded-lg bg-muted/50 border">
                   <div className="flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm">
-                      <p className="font-medium text-blue-900 dark:text-blue-100">{t('apiConfig.securityNote')}</p>
-                      <p className="text-blue-700 dark:text-blue-300 mt-1">
+                    <AlertCircle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div className="text-xs">
+                      <p className="font-medium">{t('apiConfig.securityNote')}</p>
+                      <p className="text-muted-foreground mt-1">
                         {t('apiConfig.securityNoteText')}
                       </p>
                     </div>
@@ -575,30 +588,30 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
         )}
 
         {/* Model & Permissions */}
-        <Card className="transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/10 border-2 hover:border-purple-500/30 group">
-          <CardHeader className="pb-5 bg-gradient-to-br from-purple-50/50 via-transparent to-transparent dark:from-purple-950/20">
+        <Card className="border">
+          <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg shadow-purple-500/30 group-hover:shadow-purple-500/50 transition-all duration-300">
-                <Brain className="h-5 w-5 text-white" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                <Brain className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <CardTitle className="text-xl font-bold">{t('modelPermissions.title')}</CardTitle>
-                <CardDescription className="text-sm mt-0.5">{t('modelPermissions.description')}</CardDescription>
+                <CardTitle className="text-base font-semibold">{t('modelPermissions.title')}</CardTitle>
+                <CardDescription className="text-xs mt-0.5">{t('modelPermissions.description')}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Model Presets */}
             <div className="space-y-2">
-              <Label className="font-medium text-sm text-muted-foreground">{t('modelPresets.title')}</Label>
-              <div className="flex flex-wrap gap-2">
+              <Label className="text-xs font-medium text-muted-foreground">{t('modelPresets.title')}</Label>
+              <div className="flex flex-wrap gap-1.5">
                 {modelPresets.map(preset => (
                   <Button
                     key={preset.key}
                     type="button"
                     variant="outline"
                     size="sm"
-                    className={`h-8 text-xs font-medium ${modelPresetButtonClasses[preset.color]}`}
+                    className={`h-7 text-xs ${modelPresetButtonClasses[preset.color]}`}
                     onClick={() => handleModelChange(preset.model)}
                   >
                     {t(`modelPresets.${preset.key}`)}
@@ -608,10 +621,10 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="model" className="font-medium flex items-center gap-2">
+              <Label htmlFor="model" className="text-sm font-medium flex items-center gap-2">
                 <Brain className="h-3 w-3" />
                 {t('modelPermissions.model')}
-                <Badge variant="outline" className="text-xs">Optional</Badge>
+                <Badge variant="outline" className="text-xs font-normal">Optional</Badge>
               </Label>
               <div className="flex items-stretch gap-2">
                 <Input
@@ -662,7 +675,7 @@ export function ConfigForm({ config, onSave, onFormDataChange }: ConfigFormProps
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-10 px-3 text-xs font-medium whitespace-nowrap hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 dark:hover:bg-purple-950/30 dark:hover:text-purple-300"
+                    className="h-10 px-3 text-xs whitespace-nowrap"
                     onClick={() => handleChange('smallFastModel', formData.model ?? '')}
                     title={t('modelPermissions.useMainModelHint')}
                   >

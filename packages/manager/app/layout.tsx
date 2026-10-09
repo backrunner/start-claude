@@ -11,6 +11,10 @@ export const dynamic = 'force-dynamic'
 export async function generateMetadata() {
   return {
     title: 'Start Claude Manager',
+    description: 'Manage your Claude configurations',
+    icons: {
+      icon: '/icon.svg',
+    },
   }
 }
 

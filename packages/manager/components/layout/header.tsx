@@ -33,11 +33,11 @@ export function Header({
   const displaySubtitle = subtitle || t('subtitle')
 
   return (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
       <div className="flex w-full flex-col gap-4 sm:w-auto sm:flex-row sm:items-center">
         <div className="min-w-0">
           {/* Keep "Start Claude" in English for all languages */}
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight break-words">{title}</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight break-words">{title}</h1>
           <p className="text-sm text-muted-foreground mt-1">{displaySubtitle}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -67,7 +67,7 @@ export function Header({
           <Button
             variant="outline"
             onClick={onOpenExtensions}
-            className="flex-1 sm:flex-none"
+            className="flex-1 sm:flex-none rounded-full"
           >
             <Blocks className="h-4 w-4 mr-2" />
             {t('extensions')}
@@ -77,7 +77,7 @@ export function Header({
           <Button
             variant="outline"
             onClick={onOpenSettings}
-            className="flex-1 sm:flex-none"
+            className="flex-1 sm:flex-none rounded-full"
           >
             <Settings className="h-4 w-4 mr-2" />
             {t('settings')}
@@ -85,7 +85,7 @@ export function Header({
         )}
         <Button
           onClick={onAddConfig}
-          className="flex-1 sm:flex-none"
+          className="flex-1 sm:flex-none rounded-full"
         >
           <Plus className="h-4 w-4 mr-2" />
           {t('addConfig')}

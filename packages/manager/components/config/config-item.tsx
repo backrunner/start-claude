@@ -99,35 +99,35 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
     switch (config.permissionMode) {
       case 'acceptEdits':
         return (
-          <Badge variant="secondary" className={`${className} bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20 hover:bg-green-500/20`}>
+          <Badge variant="secondary" className={`${className}`}>
             <ShieldCheck className="h-3 w-3 mr-1" />
             {t('acceptEditsBadge')}
           </Badge>
         )
       case 'auto':
         return (
-          <Badge variant="secondary" className={`${className} bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/20 hover:bg-violet-500/20`}>
+          <Badge variant="secondary" className={`${className}`}>
             <Sparkles className="h-3 w-3 mr-1" />
             {t('autoModeBadge')}
           </Badge>
         )
       case 'dontAsk':
         return (
-          <Badge variant="secondary" className={`${className} bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20 hover:bg-slate-500/20`}>
+          <Badge variant="secondary" className={`${className}`}>
             <CircleSlash className="h-3 w-3 mr-1" />
             {t('dontAskBadge')}
           </Badge>
         )
       case 'plan':
         return (
-          <Badge variant="secondary" className={`${className} bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20`}>
+          <Badge variant="secondary" className={`${className}`}>
             <FileCheck className="h-3 w-3 mr-1" />
             {t('planModeBadge')}
           </Badge>
         )
       case 'bypassPermissions':
         return (
-          <Badge variant="destructive" className={`${className} bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20`}>
+          <Badge variant="destructive" className={`${className}`}>
             <ShieldOff className="h-3 w-3 mr-1" />
             {t('bypassBadge')}
           </Badge>
@@ -139,11 +139,8 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
 
   return (
     <div ref={setNodeRef} style={style} className={isDragging ? 'opacity-50' : ''}>
-      <Card className={`group relative overflow-hidden transition-all duration-300 hover:shadow-xl ${isEnabled ? 'border-l-4 border-l-primary shadow-sm' : ''}`}>
-        {/* Gradient overlay on hover */}
-        <div className="absolute inset-0 bg-gradient-to-br from-white/[0.15] via-white/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none dark:from-white/[0.08] dark:via-white/[0.03]" />
-
-        <CardContent className="p-4 sm:p-5 relative z-10">
+      <Card className="group relative overflow-hidden transition-all">
+        <CardContent className="p-4 sm:p-5 relative">
           {/* Mobile Layout */}
           <div className="flex flex-col gap-3 sm:hidden">
             <div
@@ -156,7 +153,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
 
             <div className="flex items-start gap-4 pr-12">
               <div className="relative flex-shrink-0">
-                <div className={`rounded-xl bg-muted flex items-center justify-center font-bold text-sm border-2 ${
+                <div className={`rounded-lg bg-muted/50 flex items-center justify-center font-semibold text-sm border ${
                   String((config.order ?? 0) || 1).length === 1 ? 'w-10 h-10' : 'w-12 h-10 px-2'
                 }`}
                 >
@@ -169,7 +166,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-base font-bold mb-1 truncate">{config.name}</h3>
+                <h3 className="text-base font-semibold mb-1 truncate">{config.name}</h3>
                 <Badge variant="outline" className="text-xs">
                   {config.profileType === 'official' && <Shield className="h-3 w-3 mr-1" />}
                   {config.profileType === 'official' ? t('officialBadge') : t('customApiBadge')}
@@ -180,12 +177,12 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
             {(cleanBaseUrl || config.model) && (
               <div className="flex flex-col gap-1.5">
                 {cleanBaseUrl && (
-                  <code className="text-xs px-2 py-1 rounded bg-muted/70 font-mono text-muted-foreground truncate">
+                  <code className="text-xs px-2 py-1 rounded bg-muted/50 font-mono text-muted-foreground truncate">
                     {cleanBaseUrl}
                   </code>
                 )}
                 {config.model && (
-                  <code className="text-xs px-2 py-1 rounded bg-primary/10 font-mono text-primary truncate">
+                  <code className="text-xs px-2 py-1 rounded bg-muted/50 font-mono truncate">
                     {config.model}
                   </code>
                 )}
@@ -260,14 +257,14 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
             </div>
 
             <div className="relative flex-shrink-0">
-              <div className={`rounded-xl bg-muted flex items-center justify-center font-bold text-lg border-2 ${
+              <div className={`rounded-lg bg-muted/50 flex items-center justify-center font-semibold text-lg border ${
                 String((config.order ?? 0) || 1).length === 1 ? 'w-14 h-14' : 'w-16 h-14 px-2'
               }`}
               >
                 {(config.order ?? 0) || 1}
               </div>
               {isDefault && (
-                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center shadow-md">
+                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
                   <Star className="h-3 w-3 text-white fill-white" />
                 </div>
               )}
@@ -275,7 +272,7 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
-                <h3 className="text-lg font-bold truncate">{config.name}</h3>
+                <h3 className="text-lg font-semibold truncate">{config.name}</h3>
                 <Badge variant="outline" className="text-xs flex-shrink-0">
                   {config.profileType === 'official' && <Shield className="h-3 w-3 mr-1" />}
                   {config.profileType === 'official' ? t('officialBadge') : t('customApiBadge')}
@@ -294,12 +291,12 @@ export function ConfigItem({ config, onEdit, onDelete, onToggleEnabled, onSetDef
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {cleanBaseUrl && (
-                  <code className="text-xs px-2.5 py-1 rounded bg-muted/70 font-mono text-muted-foreground truncate max-w-md">
+                  <code className="text-xs px-2.5 py-1 rounded bg-muted/50 font-mono text-muted-foreground truncate max-w-md">
                     {cleanBaseUrl}
                   </code>
                 )}
                 {config.model && (
-                  <code className="text-xs px-2.5 py-1 rounded bg-primary/10 font-mono text-primary truncate max-w-sm">
+                  <code className="text-xs px-2.5 py-1 rounded bg-muted/50 font-mono truncate max-w-sm">
                     {config.model}
                   </code>
                 )}

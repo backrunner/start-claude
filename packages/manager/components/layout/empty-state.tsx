@@ -21,12 +21,12 @@ export function EmptyState({ type, title, description, createButton, onAddConfig
 
   if (type === 'no-search-results') {
     return (
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center text-center py-16 px-6">
-          <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-            <Search className="w-8 h-8 text-muted-foreground" />
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center text-center py-12 px-6">
+          <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+            <Search className="w-6 h-6 text-muted-foreground" />
           </div>
-          <h3 className="text-lg font-semibold mb-2">
+          <h3 className="text-base font-semibold mb-2">
             {tSearch('noResults')}
           </h3>
           <p className="text-sm text-muted-foreground mb-6 max-w-sm">
@@ -44,18 +44,17 @@ export function EmptyState({ type, title, description, createButton, onAddConfig
   }
 
   return (
-    <Card className="border-dashed">
-      <CardContent className="flex flex-col items-center justify-center text-center py-16 px-6">
-        <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
-          <FolderOpen className="w-10 h-10 text-primary" />
+    <Card>
+      <CardContent className="flex flex-col items-center justify-center text-center py-12 px-6">
+        <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-6">
+          <FolderOpen className="w-8 h-8 text-muted-foreground" />
         </div>
-        <h3 className="text-xl font-bold mb-2">{title || tEmpty('title')}</h3>
+        <h3 className="text-lg font-semibold mb-2">{title || tEmpty('title')}</h3>
         <p className="text-sm text-muted-foreground mb-8 max-w-md">
           {description || tEmpty('description')}
         </p>
         <Button
           onClick={onAddConfig}
-          size="lg"
         >
           <Plus className="w-4 h-4 mr-2" />
           {createButton || tEmpty('createButton')}
